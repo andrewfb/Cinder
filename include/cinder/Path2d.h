@@ -109,13 +109,21 @@ class Path2d {
 	//! Returns the precise bounding box around the curve itself. Slower to calculate than calcBoundingBox().
 	Rectf	calcPreciseBoundingBox() const;	
 
-	//! Returns whether the point \a pt is contained within the boundaries of the path
+	//! Returns whether the point \a pt is contained within the boundaries of the path. Assumes the path to be closed.
 	bool	contains( const vec2 &pt ) const;
 
 	//! Returns the minimum distance from point \a pt to the path
 	float	calcDistance( const vec2 &pt ) const;
 	//! Returns the minimum distance from point \a pt to segment \a segment
 	float	calcDistance( const vec2 &pt, size_t segment ) const { return calcDistance( pt, segment, 0 ); }
+	//! Returns the minimum distance from the path to point \a pt. For points inside the path, the distance is negative. Assumes the path to be closed.
+	float	calcSignedDistance( const vec2 &pt ) const
+	{
+		if( contains( pt ) )
+			return -calcDistance( pt );
+		else
+			return calcDistance( pt );
+	}
 
 	//! Returns the point on the path closest to point \a pt.
 	vec2	calcClosestPoint( const vec2 &pt ) const;

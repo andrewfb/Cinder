@@ -77,13 +77,13 @@ class Shape2d {
 	Rectf	calcPreciseBoundingBox() const;
 	//! Returns the minimum distance from the shape to point \a pt.
 	float	calcDistance( const vec2 &pt ) const;
-	//! Returns the minimum distance from the shape to point \a pt. For points outside the shape, the distance is negative.
+	//! Returns the minimum distance from the shape to point \a pt. For points inside the shape, the distance is negative.
 	float	calcSignedDistance( const vec2 &pt ) const
 	{
 		if( contains( pt ) )
-			return calcDistance( pt );
-		else
 			return -calcDistance( pt );
+		else
+			return calcDistance( pt );
 	}
 	//! Returns the point on the shape that is closest to point \a pt.
 	vec2	calcClosestPoint( const vec2 &pt ) const;
