@@ -870,9 +870,12 @@ float linearYatX( const vec2 p[2], float x )
 
 size_t linearCrossings( const vec2 p[2], const vec2 &pt )
 {
-	if( (p[0].x < pt.x && pt.x <= p[1].x ) ||
-		(p[1].x < pt.x && pt.x <= p[0].x )) {
-		if( pt.y > linearYatX( p, pt.x ) )
+	if( fabs( p[0].x - p[1].x ) < 0.00001f && fabs( p[0].x - pt.x ) < 0.00001f )
+		return (size_t)(p[0].y < pt.y) + (size_t)(p[1].y < pt.y);
+
+	if( (p[0].x <= pt.x && pt.x <= p[1].x ) ||
+		(p[1].x <= pt.x && pt.x <= p[0].x )) {
+		if( linearYatX( p, pt.x ) < pt.y )
 			return 1;
 	}
 	return 0;
@@ -898,7 +901,7 @@ size_t cubicBezierCrossings( const vec2 p[4], const vec2 &pt )
 
 	int result = 0;
 	for( int n = 0; n < numRoots; ++n )
-		if( roots[n] > 0 && roots[n] < 1 )
+		if( roots[n] >= 0 && roots[n] <= 1 )
 			if( Ay * roots[n] * roots[n] * roots[n] + By * roots[n] * roots[n] + Cy * roots[n] + Dy < pt.y )
 				++result;
 	
@@ -907,23 +910,24 @@ size_t cubicBezierCrossings( const vec2 p[4], const vec2 &pt )
 
 size_t quadraticBezierCrossings( const vec2 p[3], const vec2 &pt )
 {
-	float Ax = 1.0f * p[0].x - 2.0f * p[1].x + 1.0f * p[2].x;
-	float Bx = -2.0f * p[0].x + 2.0f * p[1].x;
-	float Cx = 1.0f * p[0].x - pt.x;
+	double Ax = 1.0 * p[0].x - 2.0 * p[1].x + 1.0 * p[2].x;
+	double Bx = -2.0 * p[0].x + 2.0 * p[1].x;
+	double Cx = 1.0 * p[0].x - pt.x;
 
-	float Ay = 1.0f * p[0].y - 2.0f * p[1].y + 1.0f * p[2].y;
-	float By = -2.0f * p[0].y + 2.0f * p[1].y;
-	float Cy = 1.0f * p[0].y;
+	double Ay = 1.0 * p[0].y - 2.0 * p[1].y + 1.0 * p[2].y;
+	double By = -2.0 * p[0].y + 2.0 * p[1].y;
+	double Cy = 1.0 * p[0].y;
 
-	float roots[2];
+	double roots[2];
 	int numRoots = solveQuadratic( Ax, Bx, Cx, roots );
 
-	if( numRoots < 1)
+	if( numRoots < 1) {
 		return 0;
+	}
 
 	int result = 0;
 	for( int n = 0; n < numRoots; ++n )
-		if (roots[n] > 0 && roots[n] < 1 )
+		if (roots[n] > 0 && roots[n] <= 1 )
 			if( Ay * roots[n] * roots[n] + By * roots[n] + Cy < pt.y )
 				++result;
 	
@@ -972,7 +976,8 @@ bool Path2d::contains( const vec2 &pt ) const
 	vec2 temp[2];
 	temp[0] = mPoints[mPoints.size()-1];
 	temp[1] = mPoints[0];
-	crossings += linearCrossings( &(temp[0]), pt );
+	if( distance2( temp[0], temp[1] ) > 0.00001 )
+		crossings += linearCrossings( &(temp[0]), pt );
 	
 	return (crossings & 1) == 1;
 }

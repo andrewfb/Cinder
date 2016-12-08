@@ -9,8 +9,9 @@ using namespace std;
 
 class ShapeTestApp : public App {
   public:
-	void setup();
-	void draw();
+	void setup() override;
+	void draw() override;
+void drawDebugShape( const Shape2d &s, float radius );
 
 	void mouseMove( MouseEvent event ) override;
 	void mouseDown( MouseEvent event ) override;
@@ -36,12 +37,14 @@ class ShapeTestApp : public App {
 	float            mDistance;
 	vec2             mMouse, mClick;
 	vec2             mClosest;
-	vec2             mAnchor, mPosition, mOriginal;
+	vec2             mAnchor, mLocal, mPosition, mOriginal;
 	mat4             mModelMatrix;
 	bool             mIsInside;
 	Rectf            mBounds;
 	Channel32f       mChannel;
 	gl::Texture2dRef mTexture;
+	
+std::vector<vec2> testPoints;
 };
 
 void ShapeTestApp::setup()
@@ -68,12 +71,34 @@ void ShapeTestApp::setRandomFont()
 void ShapeTestApp::setRandomGlyph()
 {
 	size_t glyphIndex = rand() % mFont.getNumGlyphs();
+glyphIndex = mFont.getGlyphChar( ',' );
 	try {
 		mShape = mFont.getGlyphShape( glyphIndex );
 	}
 	catch( FontGlyphFailureExc & ) {
 		console() << "Looks like glyph " << glyphIndex << " doesn't exist in this font." << std::endl;
 	}
+
+console() << mShape.getContour( 0 ) << std::endl;
+
+static bool firstTime = true;
+if( firstTime ) {
+Path2d p;	
+p.moveTo( vec2( 304.5f, -677.5f ) );
+p.quadTo( vec2( 72, -614 ), vec2( 14, -658.5f ) );
+p.lineTo( vec2( 14, -677.5f ) );
+
+mShape = Shape2d();
+mShape.appendContour( p );
+//
+testPoints.push_back( vec2( 14.000f, -640.202f ) ); 
+testPoints.push_back( vec2( 80.5f, -30 ) );
+testPoints.push_back( vec2( 79.5f, -30 ) );
+for( auto &pt : testPoints )
+	std::cout << pt << " : " << p.contains( pt ) << std::endl;
+firstTime = false;
+p.contains( vec2( 14.000, -640.202 ) );
+}
 
 	mBounds = mShape.calcBoundingBox();
 	mAnchor = mBounds.getUpperLeft() + 0.5f * mBounds.getSize();
@@ -95,20 +120,63 @@ void ShapeTestApp::generateSDF()
 	// For each texel, calculate the signed distance, normalize it and store it.
 	const float kRange = 40.0f;
 
+float maxX = 0;
 	auto itr = mChannel.getIter();
 	while( itr.line() ) {
 		while( itr.pixel() ) {
 			auto pt = vec2( itr.getPos() ) + mBounds.getUpperLeft();
-			auto dist = mShape.calcSignedDistance( pt ) / kRange;
-			itr.v() = glm::clamp( dist * 0.5f + 0.5f, 0.0f, 1.0f );
+//			auto dist = mShape.calcSignedDistance( pt ) / kRange;
+			//itr.v() = glm::clamp( dist * 0.5f + 0.5f, 0.0f, 1.0f );
+			itr.v() = (float)( mShape.contains( pt + vec2( 0, 0.5f ) ) );
+			if( itr.v() > 0 && pt.x > maxX )
+				maxX = pt.x;
 		}
 	}
-
+cout << "MaxX: " << maxX;
 	t.stop();
 	console() << "Generate:" << t.getSeconds() << std::endl;
 
 	// Create the texture.
 	mTexture = gl::Texture2d::create( mChannel, gl::Texture2d::Format().magFilter( GL_NEAREST ) );
+}
+
+void ShapeTestApp::drawDebugShape( const Shape2d &s, float radius )
+{
+	Path2d p = s.getContour( 0 );
+
+	size_t firstPoint = 0;
+	for( size_t s = 0; s < p.getNumSegments(); ++s ) {
+		switch( p.getSegmentType( s ) ) {
+			case Path2d::CUBICTO:
+//				crossings += cubicBezierCrossings( &(mPoints[firstPoint]), pt );
+			break;
+			case Path2d::QUADTO:
+				gl::color( 1, 0.5, 0.25f );
+				gl::drawSolidCircle( p.getPoint(firstPoint+0), radius );
+				gl::color( 0.25, 0.5, 1.0f );
+				gl::drawSolidCircle( p.getPoint(firstPoint+1), radius ); 
+				gl::color( 1, 0.5, 0.25f );
+				gl::drawSolidCircle( p.getPoint(firstPoint+2), radius );
+			break;
+			case Path2d::LINETO:
+				gl::color( 0, 1, 0 );
+				gl::drawStrokedCircle( p.getPoint(firstPoint+0), radius );
+				gl::drawStrokedCircle( p.getPoint(firstPoint+1), radius );
+			break;
+			case Path2d::CLOSE: // ignore - we always assume closed
+				gl::color( 1, 0, 0 );
+				gl::drawStrokedCircle( p.getPoint(firstPoint+0), radius );
+			break;
+			default:
+				;//throw Path2dExc();
+		}
+		
+		firstPoint += Path2d::sSegmentTypePointCounts[p.getSegmentType(s)];
+	}
+	
+	gl::color( 0, 1, 0 );
+	for( auto &pt : testPoints )
+		gl::drawStrokedCircle( pt, radius );
 }
 
 void ShapeTestApp::draw()
@@ -132,12 +200,13 @@ void ShapeTestApp::draw()
 	// Draw shape outlines.
 	gl::color( mIsInside ? Color( 0.4f, 0.8f, 0.0f ) : Color( 0.8f, 0.4f, 0.0f ) );
 	gl::draw( mShape );
+	drawDebugShape( mShape, 2.0f );
 
 	gl::popModelMatrix();
 
 	// Draw closest point on shape.
-	gl::color( 0, 0.5f, 0.5f );
-	gl::drawSolidCircle( mClosest, 5 );
+//	gl::color( 0, 0.5f, 0.5f );
+//	gl::drawSolidCircle( mClosest, 5 );
 
 	// Draw distance as a circle.
 	gl::color( 0.5f, 0.5f, 0 );
@@ -159,6 +228,7 @@ void ShapeTestApp::mouseDown( MouseEvent event )
 	mOriginal = mPosition;
 
 	calculate();
+std::cout << "Mouse: " << event.getPos() << " : " << mLocal << std::endl;
 }
 
 void ShapeTestApp::mouseDrag( MouseEvent event )
@@ -188,7 +258,7 @@ void ShapeTestApp::keyDown( KeyEvent event )
 	case KeyEvent::KEY_s:
 		generateSDF();
 		break;
-	default:
+	case KeyEvent::KEY_g:
 		setRandomGlyph();
 		break;
 	}
@@ -209,9 +279,9 @@ void ShapeTestApp::calculate()
 {
 	calculateModelMatrix();
 
-	auto local = vec2( glm::inverse( mModelMatrix ) * vec4( mMouse, 0, 1 ) );
-	mIsInside = mShape.contains( local );
-	mClosest = vec2( mModelMatrix * vec4( mShape.calcClosestPoint( local ), 0, 1 ) );
+	mLocal = vec2( glm::inverse( mModelMatrix ) * vec4( mMouse, 0, 1 ) );
+	mIsInside = mShape.contains( mLocal );
+	mClosest = vec2( mModelMatrix * vec4( mShape.calcClosestPoint( mLocal ), 0, 1 ) );
 	mDistance = glm::distance( mClosest, mMouse );
 }
 
