@@ -13,7 +13,9 @@ class ShapeTestApp : public App {
   public:
 	void setup() override;
 	void draw() override;
-void drawDebugShape( const Shape2d &s, float radius );
+	
+	void drawDebugShape( const Shape2d &s, float radius );
+	void echoCurrentShape();
 
 	void mouseMove( MouseEvent event ) override;
 	void mouseDown( MouseEvent event ) override;
@@ -32,6 +34,7 @@ void drawDebugShape( const Shape2d &s, float radius );
 	void calculateModelMatrix();
 
 	int				mFontIndex, mGlyphIndex;
+	int				mInitialFontIndex = 206, mInitialGlyphIndex = 711;
 	Font             mFont;
 	Shape2d          mShape;
 	vector<string>   mFontNames;
@@ -59,54 +62,64 @@ void ShapeTestApp::setup()
 
 	mFontNames = Font::getNames();
 	mFontSize = 1024;
-	mFont = Font( "Times", (float)mFontSize );
-
-	setRandomGlyph();
+	setRandomFont();
 }
 
 void ShapeTestApp::setRandomFont()
 {
 	// select a random font from those available on the system
-	mFontIndex = rand() % mFontNames.size();
+	static bool firstCall = true;
+	if( firstCall ) {
+		mFontIndex = mInitialFontIndex;
+		firstCall = false;
+	}
+	else
+		mFontIndex = rand() % mFontNames.size();
 	mFont = Font( mFontNames[mFontIndex], (float)mFontSize );
 	setRandomGlyph();
 }
 
 void ShapeTestApp::setRandomGlyph()
 {
-	mGlyphIndex = rand() % mFont.getNumGlyphs();
-//glyphIndex = mFont.getGlyphChar( 'a' );
-	try {
-		mShape = mFont.getGlyphShape( mGlyphIndex );
-	}
-	catch( FontGlyphFailureExc & ) {
-		console() << "Looks like glyph " << mGlyphIndex << " doesn't exist in this font." << std::endl;
-	}
+	static bool firstTime = false;
+	if( firstTime ) {
+		Path2d p;	
+		p.moveTo( vec2( 350.208 - 40, -642.048 + 40 ) );
+		p.lineTo( vec2( 437.248, -642.048 ) );
+		p.quadTo( vec2( 423.936, -665.6 ), vec2( 401.92, -683.52 ) );
+		p.quadTo( vec2( 379.904, -701.44), vec2( 350.208, -711.168 ) );
+		p.close();
 
-	console() << "Font: "<< mFontIndex << " glyph: " << mGlyphIndex << std::endl;
+		mShape = Shape2d();
+		mShape.appendContour( p );
+		//
+		testPoints.push_back( vec2( 401.92, -603.52 ) ); 
+		testPoints.push_back( vec2( 80.5f, -30 ) );
+		testPoints.push_back( vec2( 79.5f, -30 ) );
+		for( auto &pt : testPoints )
+			std::cout << pt << " : " << p.contains( pt ) << std::endl;
+		firstTime = false;
+		p.contains( vec2( 14.000, -640.202 ) );
+	}
+	else {
+		static bool firstIndex = true;
+		if( firstIndex ) {
+			mGlyphIndex = mInitialGlyphIndex;
+			firstIndex = false;
+		}
+		else
+			mGlyphIndex = rand() % mFont.getNumGlyphs();
+		try {
+			mShape = mFont.getGlyphShape( mGlyphIndex );
+		}
+		catch( FontGlyphFailureExc & ) {
+			console() << "Looks like glyph " << mGlyphIndex << " doesn't exist in this font." << std::endl;
+		}
+
+		console() << "Font: "<< mFontIndex << "(" << mFontNames[mFontIndex] << ") glyph: " << mGlyphIndex << std::endl;
+	}
 
 //console() << mShape.getContour( 0 ) << std::endl;
-
-static bool firstTime = true;
-if( firstTime ) {
-Path2d p;	
-p.moveTo( vec2( 50, 50 ) );
-p.lineTo( vec2( 70, 30 ) );
-p.lineTo( vec2( 90, 50 ) );
-p.lineTo( vec2( 70, 00 ) );
-p.close();
-
-mShape = Shape2d();
-mShape.appendContour( p );
-//
-testPoints.push_back( vec2( 14.000f, -640.202f ) ); 
-testPoints.push_back( vec2( 80.5f, -30 ) );
-testPoints.push_back( vec2( 79.5f, -30 ) );
-for( auto &pt : testPoints )
-	std::cout << pt << " : " << p.contains( pt ) << std::endl;
-firstTime = false;
-p.contains( vec2( 14.000, -640.202 ) );
-}
 
 	mBounds = mShape.calcBoundingBox();
 	mAnchor = mBounds.getUpperLeft() + 0.5f * mBounds.getSize();
@@ -126,18 +139,16 @@ void ShapeTestApp::generateSDF()
 	Timer t( true );
 
 	// For each texel, calculate the signed distance, normalize it and store it.
-	const float kRange = 40.0f;
-
-float maxX = 0;
 	auto itr = mChannel.getIter();
 	while( itr.line() ) {
 		while( itr.pixel() ) {
 			auto pt = vec2( itr.getPos() ) + mBounds.getUpperLeft();
 //			auto dist = mShape.calcSignedDistance( pt ) / kRange;
 			//itr.v() = glm::clamp( dist * 0.5f + 0.5f, 0.0f, 1.0f );
-			itr.v() = (float)( mShape.contains( pt + vec2( 0, 0.5f ) ) );
-			if( itr.v() > 0 && pt.x > maxX )
-				maxX = pt.x;
+			itr.v() = (float)( mShape.contains( pt ) );
+	if( fabs( pt.x - 401.92 ) < 0.001f )
+		if( itr.v() > 0 )
+			mShape.contains( pt );
 		}
 	}
 
@@ -191,9 +202,15 @@ void ShapeTestApp::drawDebugShape( const Shape2d &s, float radius )
 		}
 	}
 	
-	gl::color( 0, 1, 0 );
+	gl::color( 1, 1, 1 );
 	for( auto &pt : testPoints )
 		gl::drawStrokedCircle( pt, radius );
+}
+
+void ShapeTestApp::echoCurrentShape()
+{
+	for( size_t c = 0; c < mShape.getNumContours(); ++c )
+		console() << mShape.getContour( c ) << std::endl;
 }
 
 void ShapeTestApp::draw()
@@ -244,7 +261,21 @@ void ShapeTestApp::mouseDown( MouseEvent event )
 	mClick = event.getPos();
 	mOriginal = mPosition;
 
+	float closest = 10000000000;
+	vec2 closestPt;
+	for( auto &c : mShape.getContours() ) {
+		for( auto p : c.getPoints() ) {
+			if( distance( p, mLocal ) < closest ) {
+				closest = distance( p, mLocal );
+				closestPt = p; 
+			}
+		} 
+	} 
+
+	console() << "Closest ctrl pt: " << closestPt << std::endl;
+
 gDebugContains = true;
+std::cout << ">>>" << mShape.contains( vec2( 401.92, -603.52 ) ) << std::endl;
 	calculate();
 gDebugContains = false;	
 std::cout << "Mouse: " << event.getPos() << " : " << mLocal << std::endl;
@@ -271,18 +302,22 @@ void ShapeTestApp::mouseWheel( MouseEvent event )
 void ShapeTestApp::keyDown( KeyEvent event )
 {
 	switch( event.getCode() ) {
-	case KeyEvent::KEY_ESCAPE:
-		quit();
-	break;
-	case KeyEvent::KEY_s:
-		generateSDF();
-	break;
-	case KeyEvent::KEY_g:
-		setRandomGlyph();
-	break;
-	case KeyEvent::KEY_f:
-		setRandomFont();
-	break;
+		case KeyEvent::KEY_ESCAPE:
+			quit();
+		break;
+		case KeyEvent::KEY_s:
+			generateSDF();
+		break;
+		case KeyEvent::KEY_g:
+			setRandomGlyph();
+		break;
+		case KeyEvent::KEY_f:
+			setRandomFont();
+		break;
+		case KeyEvent::KEY_e:
+			echoCurrentShape();
+		break;
+		
 	}
 }
 
@@ -302,7 +337,6 @@ void ShapeTestApp::calculate()
 	calculateModelMatrix();
 
 	mLocal = vec2( glm::inverse( mModelMatrix ) * vec4( mMouse, 0, 1 ) );
-mIsInside = mShape.contains( vec2( 107.5f, mLocal.y ) );
 	mClosest = vec2( mModelMatrix * vec4( mShape.calcClosestPoint( mLocal ), 0, 1 ) );
 	mDistance = glm::distance( mClosest, mMouse );
 }
