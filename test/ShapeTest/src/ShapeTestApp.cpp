@@ -7,6 +7,8 @@ using namespace ci;
 using namespace ci::app;
 using namespace std;
 
+bool gDebugContains = false;
+
 class ShapeTestApp : public App {
   public:
 	void setup() override;
@@ -25,10 +27,11 @@ void drawDebugShape( const Shape2d &s, float radius );
 
 	void generateSDF();
 
-	void reposition( const vec2 &point );
+	void reposition( vec2 point );
 	void calculate();
 	void calculateModelMatrix();
 
+	int				mFontIndex, mGlyphIndex;
 	Font             mFont;
 	Shape2d          mShape;
 	vector<string>   mFontNames;
@@ -64,29 +67,34 @@ void ShapeTestApp::setup()
 void ShapeTestApp::setRandomFont()
 {
 	// select a random font from those available on the system
-	mFont = Font( mFontNames[rand() % mFontNames.size()], (float)mFontSize );
+	mFontIndex = rand() % mFontNames.size();
+	mFont = Font( mFontNames[mFontIndex], (float)mFontSize );
 	setRandomGlyph();
 }
 
 void ShapeTestApp::setRandomGlyph()
 {
-	size_t glyphIndex = rand() % mFont.getNumGlyphs();
-glyphIndex = mFont.getGlyphChar( ',' );
+	mGlyphIndex = rand() % mFont.getNumGlyphs();
+//glyphIndex = mFont.getGlyphChar( 'a' );
 	try {
-		mShape = mFont.getGlyphShape( glyphIndex );
+		mShape = mFont.getGlyphShape( mGlyphIndex );
 	}
 	catch( FontGlyphFailureExc & ) {
-		console() << "Looks like glyph " << glyphIndex << " doesn't exist in this font." << std::endl;
+		console() << "Looks like glyph " << mGlyphIndex << " doesn't exist in this font." << std::endl;
 	}
 
-console() << mShape.getContour( 0 ) << std::endl;
+	console() << "Font: "<< mFontIndex << " glyph: " << mGlyphIndex << std::endl;
+
+//console() << mShape.getContour( 0 ) << std::endl;
 
 static bool firstTime = true;
 if( firstTime ) {
 Path2d p;	
-p.moveTo( vec2( 304.5f, -677.5f ) );
-p.quadTo( vec2( 72, -614 ), vec2( 14, -658.5f ) );
-p.lineTo( vec2( 14, -677.5f ) );
+p.moveTo( vec2( 50, 50 ) );
+p.lineTo( vec2( 70, 30 ) );
+p.lineTo( vec2( 90, 50 ) );
+p.lineTo( vec2( 70, 00 ) );
+p.close();
 
 mShape = Shape2d();
 mShape.appendContour( p );
@@ -132,9 +140,9 @@ float maxX = 0;
 				maxX = pt.x;
 		}
 	}
-cout << "MaxX: " << maxX;
+
 	t.stop();
-	console() << "Generate:" << t.getSeconds() << std::endl;
+//	console() << "Generate:" << t.getSeconds() << std::endl;
 
 	// Create the texture.
 	mTexture = gl::Texture2d::create( mChannel, gl::Texture2d::Format().magFilter( GL_NEAREST ) );
@@ -142,36 +150,45 @@ cout << "MaxX: " << maxX;
 
 void ShapeTestApp::drawDebugShape( const Shape2d &s, float radius )
 {
-	Path2d p = s.getContour( 0 );
+	for( int c = 0; c < s.getNumContours(); ++c ) {
+		Path2d p = s.getContour( c);
 
-	size_t firstPoint = 0;
-	for( size_t s = 0; s < p.getNumSegments(); ++s ) {
-		switch( p.getSegmentType( s ) ) {
-			case Path2d::CUBICTO:
-//				crossings += cubicBezierCrossings( &(mPoints[firstPoint]), pt );
-			break;
-			case Path2d::QUADTO:
-				gl::color( 1, 0.5, 0.25f );
-				gl::drawSolidCircle( p.getPoint(firstPoint+0), radius );
-				gl::color( 0.25, 0.5, 1.0f );
-				gl::drawSolidCircle( p.getPoint(firstPoint+1), radius ); 
-				gl::color( 1, 0.5, 0.25f );
-				gl::drawSolidCircle( p.getPoint(firstPoint+2), radius );
-			break;
-			case Path2d::LINETO:
-				gl::color( 0, 1, 0 );
-				gl::drawStrokedCircle( p.getPoint(firstPoint+0), radius );
-				gl::drawStrokedCircle( p.getPoint(firstPoint+1), radius );
-			break;
-			case Path2d::CLOSE: // ignore - we always assume closed
-				gl::color( 1, 0, 0 );
-				gl::drawStrokedCircle( p.getPoint(firstPoint+0), radius );
-			break;
-			default:
-				;//throw Path2dExc();
+		size_t firstPoint = 0;
+		for( size_t s = 0; s < p.getNumSegments(); ++s ) {
+			switch( p.getSegmentType( s ) ) {
+				case Path2d::CUBICTO:
+					gl::color( 0, 1, 1 );
+					gl::drawSolidCircle( p.getPoint(firstPoint+0), radius, 3 );
+					gl::color( 1, 0, 1 );
+					gl::drawSolidCircle( p.getPoint(firstPoint+1), radius ); 
+					gl::color( 1, 0, 1 );
+					gl::drawSolidCircle( p.getPoint(firstPoint+2), radius );
+					gl::color( 0, 1, 1 );
+					gl::drawSolidCircle( p.getPoint(firstPoint+3), radius, 3 );
+				break;
+				case Path2d::QUADTO:
+					gl::color( 1, 0.5, 0.25f );
+					gl::drawSolidCircle( p.getPoint(firstPoint+0), radius );
+					gl::color( 0.25, 0.5, 1.0f );
+					gl::drawSolidCircle( p.getPoint(firstPoint+1), radius ); 
+					gl::color( 1, 0.5, 0.25f );
+					gl::drawSolidCircle( p.getPoint(firstPoint+2), radius );
+				break;
+				case Path2d::LINETO:
+					gl::color( 0, 1, 0 );
+					gl::drawStrokedCircle( p.getPoint(firstPoint+0), radius );
+					gl::drawStrokedCircle( p.getPoint(firstPoint+1), radius );
+				break;
+				case Path2d::CLOSE: // ignore - we always assume closed
+					gl::color( 1, 0, 0 );
+					gl::drawStrokedCircle( p.getPoint(firstPoint+0), radius );
+				break;
+				default:
+					;//throw Path2dExc();
+			}
+			
+			firstPoint += Path2d::sSegmentTypePointCounts[p.getSegmentType(s)];
 		}
-		
-		firstPoint += Path2d::sSegmentTypePointCounts[p.getSegmentType(s)];
 	}
 	
 	gl::color( 0, 1, 0 );
@@ -227,7 +244,9 @@ void ShapeTestApp::mouseDown( MouseEvent event )
 	mClick = event.getPos();
 	mOriginal = mPosition;
 
+gDebugContains = true;
 	calculate();
+gDebugContains = false;	
 std::cout << "Mouse: " << event.getPos() << " : " << mLocal << std::endl;
 }
 
@@ -254,17 +273,20 @@ void ShapeTestApp::keyDown( KeyEvent event )
 	switch( event.getCode() ) {
 	case KeyEvent::KEY_ESCAPE:
 		quit();
-		break;
+	break;
 	case KeyEvent::KEY_s:
 		generateSDF();
-		break;
+	break;
 	case KeyEvent::KEY_g:
 		setRandomGlyph();
-		break;
+	break;
+	case KeyEvent::KEY_f:
+		setRandomFont();
+	break;
 	}
 }
 
-void ShapeTestApp::reposition( const vec2 &mouse )
+void ShapeTestApp::reposition( vec2 mouse )
 {
 	// Convert mouse to object space.
 	mat4 invModelMatrix = glm::inverse( mModelMatrix );
@@ -280,7 +302,7 @@ void ShapeTestApp::calculate()
 	calculateModelMatrix();
 
 	mLocal = vec2( glm::inverse( mModelMatrix ) * vec4( mMouse, 0, 1 ) );
-	mIsInside = mShape.contains( mLocal );
+mIsInside = mShape.contains( vec2( 107.5f, mLocal.y ) );
 	mClosest = vec2( mModelMatrix * vec4( mShape.calcClosestPoint( mLocal ), 0, 1 ) );
 	mDistance = glm::distance( mClosest, mMouse );
 }
