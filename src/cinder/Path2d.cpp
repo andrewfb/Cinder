@@ -947,22 +947,26 @@ size_t quadraticBezierCrossings( const vec2 p[3], const vec2 &pt )
 		return 0;
 	}
 
-if( gDebugContains && pt.x == 401.92 ) {
-	int a = 3;
-}
-
 	int result = 0;
 	for( int n = 0; n < numRoots; ++n ) {
 		if( fabs( roots[n] ) < 0.000001 ) {
-			if( Ay * roots[n] * roots[n] + By * roots[n] + Cy < pt.y && Path2d::calcQuadraticBezierDerivative( p, 0.00001f ).x > 0 )
-				++result;
+			float deriv = Path2d::calcQuadraticBezierDerivative( p, 0.00001f ).x;
+			if( Ay * roots[n] * roots[n] + By * roots[n] + Cy < pt.y ) {
+				if( deriv > 0 )
+					++result;				
+				else if( deriv == 0 && p[2].x < pt.x ) {
+					//std::cout << "Deriv 0B: " << p[0] << p[1] << p[2] << " @" << pt << std::endl;
+					++result;
+				}
+			}
 		}
 		else if( fabs( 1.0 - roots[n] ) < 0.000001 ) {
 			float deriv = Path2d::calcQuadraticBezierDerivative( p, 0.99999f ).x;
-			if( Ay * roots[n] * roots[n] + By * roots[n] + Cy < pt.y && /*p[0].x > pt.x*/ deriv < 0 )
-				++result;
-			else if( deriv == 0 ) {
-				std::cout << "Deriv 0: " << p[0] << p[1] << p[2] << " @" << pt << std::endl;
+			if( Ay * roots[n] * roots[n] + By * roots[n] + Cy < pt.y ) {
+				if( deriv < 0 )
+					++result;
+				else if( deriv == 0 && p[0].x > pt.x )
+					++result;
 			}
 		}
 		else if (roots[n] > 0 && roots[n] < 1 ) {

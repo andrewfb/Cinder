@@ -34,7 +34,7 @@ class ShapeTestApp : public App {
 	void calculateModelMatrix();
 
 	int				mFontIndex, mGlyphIndex;
-	int				mInitialFontIndex = 206, mInitialGlyphIndex = 711;
+	int				mInitialFontIndex = 206, mInitialGlyphIndex = 1487;
 	Font             mFont;
 	Shape2d          mShape;
 	vector<string>   mFontNames;
@@ -146,7 +146,7 @@ void ShapeTestApp::generateSDF()
 //			auto dist = mShape.calcSignedDistance( pt ) / kRange;
 			//itr.v() = glm::clamp( dist * 0.5f + 0.5f, 0.0f, 1.0f );
 			itr.v() = (float)( mShape.contains( pt ) );
-	if( fabs( pt.x - 401.92 ) < 0.001f )
+	if( fabs( pt.x - 575.0f ) < 0.001f )
 		if( itr.v() > 0 )
 			mShape.contains( pt );
 		}
@@ -275,7 +275,7 @@ void ShapeTestApp::mouseDown( MouseEvent event )
 	console() << "Closest ctrl pt: " << closestPt << std::endl;
 
 gDebugContains = true;
-std::cout << ">>>" << mShape.contains( vec2( 401.92, -603.52 ) ) << std::endl;
+std::cout << ">>>" << mShape.contains( vec2( 575, -631 ) ) << std::endl;
 	calculate();
 gDebugContains = false;	
 std::cout << "Mouse: " << event.getPos() << " : " << mLocal << std::endl;
