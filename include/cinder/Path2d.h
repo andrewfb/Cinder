@@ -109,8 +109,26 @@ class Path2d {
 	//! Returns the precise bounding box around the curve itself. Slower to calculate than calcBoundingBox().
 	Rectf	calcPreciseBoundingBox() const;	
 
-	//! Returns whether the point \a pt is contained within the boundaries of the path
+	//! Returns whether the point \a pt is contained within the boundaries of the path. Assumes the path to be closed.
 	bool	contains( const vec2 &pt ) const;
+
+	//! Returns the minimum distance from point \a pt to the path
+	float	calcDistance( const vec2 &pt ) const;
+	//! Returns the minimum distance from point \a pt to segment \a segment
+	float	calcDistance( const vec2 &pt, size_t segment ) const { return calcDistance( pt, segment, 0 ); }
+	//! Returns the minimum distance from the path to point \a pt. For points inside the path, the distance is negative. Assumes the path to be closed.
+	float	calcSignedDistance( const vec2 &pt ) const
+	{
+		if( contains( pt ) )
+			return -calcDistance( pt );
+		else
+			return calcDistance( pt );
+	}
+
+	//! Returns the point on the path closest to point \a pt.
+	vec2	calcClosestPoint( const vec2 &pt ) const;
+	//! Returns the point on segment \a segment that is closest to point \a pt
+	vec2	calcClosestPoint( const vec2 &pt, size_t segment ) const { return calcClosestPoint( pt, segment, 0 ); }
 
 	//! Calculates the length of the Path2d
 	float	calcLength() const;
@@ -140,6 +158,12 @@ class Path2d {
   private:
 	void	arcHelper( const vec2 &center, float radius, float startRadians, float endRadians, bool forward );
 	void	arcSegmentAsCubicBezier( const vec2 &center, float radius, float startRadians, float endRadians );
+	
+	//! Returns the minimum distance from point \a pt to segment \a segment. The \a firstPoint parameter can be used as an optimization if known, otherwise pass 0.
+	float	calcDistance( const vec2 &pt, size_t segment, size_t firstPoint ) const;
+
+	//! Returns the point on segment \a segment that is closest to \a pt. The \a firstPoint parameter can be used as an optimization if known, otherwise pass 0.
+	vec2	calcClosestPoint( const vec2 &pt, size_t segment, size_t firstPoint ) const;
 	
 	std::vector<vec2>			mPoints;
 	std::vector<SegmentType>	mSegments;
