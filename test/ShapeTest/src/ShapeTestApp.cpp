@@ -34,7 +34,10 @@ class ShapeTestApp : public App {
 	void calculateModelMatrix();
 
 	int				mFontIndex, mGlyphIndex;
-	int				mInitialFontIndex = 206, mInitialGlyphIndex = 1487;
+//	int				mInitialFontIndex = 193, mInitialGlyphIndex = 3208 /* 4137 */;
+//	int				mInitialFontIndex = 777, mInitialGlyphIndex = 14661;
+//	int				mInitialFontIndex = 880, mInitialGlyphIndex = 417;
+	int				mInitialFontIndex = 880, mInitialGlyphIndex = 3361;
 	Font             mFont;
 	Shape2d          mShape;
 	vector<string>   mFontNames;
@@ -115,7 +118,15 @@ void ShapeTestApp::setRandomGlyph()
 		catch( FontGlyphFailureExc & ) {
 			console() << "Looks like glyph " << mGlyphIndex << " doesn't exist in this font." << std::endl;
 		}
+//mShape.removeContour( 2 );
+//mShape.removeContour( 2 );
+//mShape.removeContour( 2 );
+//mShape.removeContour( 2 );
+//mShape.removeContour( 2 );
 
+//Path2d &o = mShape.getContour( 0 );
+//o.transform( glm::translate( mat3(), vec2( 0.005f, 0 ) ) );
+//mShape.removeContour( 1 );
 		console() << "Font: "<< mFontIndex << "(" << mFontNames[mFontIndex] << ") glyph: " << mGlyphIndex << std::endl;
 	}
 
@@ -134,7 +145,8 @@ void ShapeTestApp::setRandomGlyph()
 void ShapeTestApp::generateSDF()
 {
 	// Create a channel large enough for this glyph.
-	mChannel = Channel32f( mBounds.getWidth(), mBounds.getHeight() );
+	const int padding = 0;
+	mChannel = Channel32f( mBounds.getWidth() + padding * 2, mBounds.getHeight() + padding * 2 );
 
 	Timer t( true );
 
@@ -142,7 +154,7 @@ void ShapeTestApp::generateSDF()
 	auto itr = mChannel.getIter();
 	while( itr.line() ) {
 		while( itr.pixel() ) {
-			auto pt = vec2( itr.getPos() ) + mBounds.getUpperLeft();
+			auto pt = vec2( itr.getPos() ) + mBounds.getUpperLeft() - vec2( padding, padding );
 //			auto dist = mShape.calcSignedDistance( pt ) / kRange;
 			//itr.v() = glm::clamp( dist * 0.5f + 0.5f, 0.0f, 1.0f );
 			itr.v() = (float)( mShape.contains( pt ) );
@@ -181,7 +193,7 @@ void ShapeTestApp::drawDebugShape( const Shape2d &s, float radius )
 					gl::color( 1, 0.5, 0.25f );
 					gl::drawSolidCircle( p.getPoint(firstPoint+0), radius );
 					gl::color( 0.25, 0.5, 1.0f );
-					gl::drawSolidCircle( p.getPoint(firstPoint+1), radius ); 
+					gl::drawStrokedRect( Rectf( p.getPoint(firstPoint+1) - vec2( radius ), p.getPoint(firstPoint+1) + vec2( radius ) ) ); 
 					gl::color( 1, 0.5, 0.25f );
 					gl::drawSolidCircle( p.getPoint(firstPoint+2), radius );
 				break;
