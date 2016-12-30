@@ -18,23 +18,17 @@ void linearCrossings( const vec2 p[2], const vec2 &pt, vector<vec2> *result )
 			result->push_back( p[0] );
 		if( p[1].y < pt.y )
 			result->push_back( p[1] );
-std::cout << "Line0 Zero." << std::endl;
 		return;
 	}
 
 	if( fabs( p[0].x - pt.x ) < 0.000001f && p[0].y < pt.y ) {
-std::cout << "Line1 Zero." << std::endl;
 		if( p[1].x > pt.x )
 			result->push_back( p[0] );
 	}
 	else if( fabs( p[1].x - pt.x ) < 0.000001f && p[1].y < pt.y ) {
-std::cout << "Line2 Zero.";
 		if( p[0].x > pt.x ) {
-std::cout << " passed" << std::endl;
 			result->push_back( p[1] );
 		}
-		else
-std::cout << " failed" << std::endl;		
 	} 
 	else if( (p[0].x < pt.x && pt.x < p[1].x ) ||
 		(p[1].x < pt.x && pt.x < p[0].x )) {
@@ -92,30 +86,32 @@ void quadraticBezierCrossings( const vec2 p[3], const vec2 &pt, vector<vec2> *re
 	double roots[2];
 	int numRoots = solveQuadratic( Ax, Bx, Cx, roots );
 
-	if( numRoots < 1) {
+	if( numRoots < 1 ) {
 		return;
 	}
 
 	for( int n = 0; n < numRoots; ++n ) {
-		if( roots[n] == 0.0 ) {
-			float deriv = Path2d::calcQuadraticBezierDerivative( p, 0.01f ).x;
-			if( Ay * roots[n] * roots[n] + By * roots[n] + Cy < pt.y ) {
-				if( deriv > 0 )
-					result->push_back( vec2( pt.x, Ay * roots[n] * roots[n] + By * roots[n] + Cy ) );				
-				else if( deriv == 0 && p[2].x > pt.x ) {
-std::cout << "Zero." << std::endl;				
-					result->push_back( vec2( pt.x, Ay * roots[n] * roots[n] + By * roots[n] + Cy ) );
+		if( roots[n] == 0.0 ) { // is this root unique
+			if( numRoots == 1 || roots[n^1] <= 0 || roots[n^1] >= 1 ) {
+				float deriv = Path2d::calcQuadraticBezierDerivative( p, 0.01f ).x;
+				if( Ay * roots[n] * roots[n] + By * roots[n] + Cy < pt.y ) {
+					if( deriv > 0 )
+						result->push_back( vec2( pt.x, Ay * roots[n] * roots[n] + By * roots[n] + Cy ) );				
+					else if( deriv == 0 && p[2].x > pt.x ) {
+						result->push_back( vec2( pt.x, Ay * roots[n] * roots[n] + By * roots[n] + Cy ) );
+					}
 				}
 			}
 		}
 		else if( roots[n] == 1.0 ) { //fabs( 1.0 - roots[n] ) < 0.000001 ) {
-			float deriv = Path2d::calcQuadraticBezierDerivative( p, 0.99f ).x;
-			if( Ay * roots[n] * roots[n] + By * roots[n] + Cy < pt.y ) {
-				if( deriv < 0 ) //
-					result->push_back( vec2( pt.x, Ay * roots[n] * roots[n] + By * roots[n] + Cy ) );
-				else if( deriv == 0 && p[0].x > pt.x ) {				
-std::cout << "Zero." << std::endl;
-					result->push_back( vec2( pt.x, Ay * roots[n] * roots[n] + By * roots[n] + Cy ) );
+			if( numRoots == 1 || roots[n^1] <= 0 || roots[n^1] >= 1 ) {
+				float deriv = Path2d::calcQuadraticBezierDerivative( p, 0.99f ).x;
+				if( Ay * roots[n] * roots[n] + By * roots[n] + Cy < pt.y ) {
+					if( deriv < 0 ) //
+						result->push_back( vec2( pt.x, Ay * roots[n] * roots[n] + By * roots[n] + Cy ) );
+					else if( deriv == 0 && p[0].x > pt.x ) {				
+						result->push_back( vec2( pt.x, Ay * roots[n] * roots[n] + By * roots[n] + Cy ) );
+					}
 				}
 			}
 		}

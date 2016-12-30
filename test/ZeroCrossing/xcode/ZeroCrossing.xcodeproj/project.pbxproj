@@ -17,6 +17,7 @@
 		00B784B60FF439BC000DE1D7 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00B784B20FF439BC000DE1D7 /* CoreAudio.framework */; };
 		00B9955A1B128DF400A5C623 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00B995581B128DF400A5C623 /* IOKit.framework */; };
 		00B9955B1B128DF400A5C623 /* IOSurface.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00B995591B128DF400A5C623 /* IOSurface.framework */; };
+		00F52B0D1E143F930021B167 /* ZeroCrossings2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00F52B0B1E143F930021B167 /* ZeroCrossings2.cpp */; };
 		1A1A853E6F9047A39B6D9A70 /* ZeroCrossingApp.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C96E5E2CD524464F80333F42 /* ZeroCrossingApp.cpp */; };
 		37F1A218884B46FDA8597758 /* CinderApp.icns in Resources */ = {isa = PBXBuildFile; fileRef = DAB52F2BCB6F455BA9334F14 /* CinderApp.icns */; };
 		5323E6B20EAFCA74003A9687 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5323E6B10EAFCA74003A9687 /* CoreVideo.framework */; };
@@ -35,6 +36,8 @@
 		00B784B20FF439BC000DE1D7 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		00B995581B128DF400A5C623 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		00B995591B128DF400A5C623 /* IOSurface.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOSurface.framework; path = System/Library/Frameworks/IOSurface.framework; sourceTree = SDKROOT; };
+		00F52B0B1E143F930021B167 /* ZeroCrossings2.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = ZeroCrossings2.cpp; path = ../src/ZeroCrossings2.cpp; sourceTree = "<group>"; };
+		00F52B0E1E14464F0021B167 /* ZeroCrossings2.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ZeroCrossings2.h; path = ../include/ZeroCrossings2.h; sourceTree = "<group>"; };
 		1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = /System/Library/Frameworks/Cocoa.framework; sourceTree = "<absolute>"; };
 		29B97324FDCFA39411CA2CEA /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = /System/Library/Frameworks/AppKit.framework; sourceTree = "<absolute>"; };
 		29B97325FDCFA39411CA2CEA /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = /System/Library/Frameworks/Foundation.framework; sourceTree = "<absolute>"; };
@@ -80,6 +83,7 @@
 			isa = PBXGroup;
 			children = (
 				000703271E00D2180086D6CA /* ZeroCrossings.cpp */,
+				00F52B0B1E143F930021B167 /* ZeroCrossings2.cpp */,
 				C96E5E2CD524464F80333F42 /* ZeroCrossingApp.cpp */,
 			);
 			name = Source;
@@ -136,6 +140,7 @@
 		29B97315FDCFA39411CA2CEA /* Headers */ = {
 			isa = PBXGroup;
 			children = (
+				00F52B0E1E14464F0021B167 /* ZeroCrossings2.h */,
 				000703281E00D2180086D6CA /* ZeroCrossings.h */,
 				66D8EB99566E422E881EC149 /* Resources.h */,
 				AA6C66B11B8649929D3A3C2A /* ZeroCrossing_Prefix.pch */,
@@ -226,6 +231,7 @@
 			files = (
 				1A1A853E6F9047A39B6D9A70 /* ZeroCrossingApp.cpp in Sources */,
 				000703291E00D2180086D6CA /* ZeroCrossings.cpp in Sources */,
+				00F52B0D1E143F930021B167 /* ZeroCrossings2.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -290,7 +296,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				CINDER_PATH = ../../../Code/cinder_master;
+				CINDER_PATH = ../../../;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++11";
 				CLANG_CXX_LIBRARY = "libc++";
 				ENABLE_TESTABILITY = YES;
@@ -308,7 +314,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				CINDER_PATH = ../../../Code/cinder_master;
+				CINDER_PATH = ../../../;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++11";
 				CLANG_CXX_LIBRARY = "libc++";
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;

@@ -4,6 +4,7 @@
 #include "cinder/gl/gl.h"
 
 #include "ZeroCrossings.h"
+#include "ZeroCrossings2.h"
 
 using namespace ci;
 using namespace ci::app;
@@ -31,6 +32,7 @@ class ShapeTestApp : public App {
 
 	void generateSDF();
 	void generateContains();
+	void generateContains2();
 	void generateCrossings();
 
 	void reposition( vec2 point );
@@ -40,8 +42,11 @@ class ShapeTestApp : public App {
 	int				mFontIndex, mGlyphIndex;
 //	int				mInitialFontIndex = 193, mInitialGlyphIndex = /*3208*/ 4137;
 //	int				mInitialFontIndex = 777, mInitialGlyphIndex = 14661;
-	int				mInitialFontIndex = 880, mInitialGlyphIndex = 417;
+//	int				mInitialFontIndex = 880, mInitialGlyphIndex = 417;
 //	int				mInitialFontIndex = 880, mInitialGlyphIndex = 3361; // fixed
+//	int				mInitialFontIndex = 733, mInitialGlyphIndex = 1441; // fixed 25
+//	int				mInitialFontIndex = 733, mInitialGlyphIndex = 1050;
+	int				mInitialFontIndex = 324, mInitialGlyphIndex = 594;
 	Font             mFont;
 	Shape2d          mShape;
 	vector<string>   mFontNames;
@@ -123,6 +128,10 @@ void ShapeTestApp::setRandomGlyph()
 			console() << "Looks like glyph " << mGlyphIndex << " doesn't exist in this font." << std::endl;
 		}
 
+//mShape.removeContour( 1 );
+//mShape.removeContour( 1 );
+//mShape.removeContour( 1 );
+
 		console() << "Font: "<< mFontIndex << "(" << mFontNames[mFontIndex] << ") glyph: " << mGlyphIndex << std::endl;
 	}
 
@@ -186,7 +195,7 @@ void ShapeTestApp::generateContains()
 	mTexture = gl::Texture2d::create( mChannel, gl::Texture2d::Format().magFilter( GL_NEAREST ) );
 }
 
-void ShapeTestApp::generateCrossings()
+void ShapeTestApp::generateContains2()
 {
 	mChannel = Channel32f( mBounds.getWidth(), mBounds.getHeight() );
 
@@ -197,20 +206,32 @@ void ShapeTestApp::generateCrossings()
 		vec2 pt;
 		while( itr.pixel() ) {
 			pt = vec2( itr.getPos() ) + mBounds.getUpperLeft();
+			itr.v() = contains2( mShape, pt ) ? 1 : 0;
+		}
+	}
+
+	mTexture = gl::Texture2d::create( mChannel, gl::Texture2d::Format().magFilter( GL_NEAREST ) );
+}
+
+void ShapeTestApp::generateCrossings()
+{
+	Surface32f s( mBounds.getWidth(), mBounds.getHeight(), false );
+
+	// For each texel, calculate the signed distance, normalize it and store it.
+	auto itr = s.getIter();
+	vector<vec2> zeros;
+	while( itr.line() ) {
+		vec2 pt;
+		while( itr.pixel() ) {
+			pt = vec2( itr.getPos() ) + mBounds.getUpperLeft();
 			findZeroes( mShape, pt, &zeros );
-			if( fabs( pt.y - -672.808f ) < 0.001f && pt.x > 455 && zeros.size() == 1 ) {
-				findZeroes( mShape, pt - vec2( 0.5, 0 ), &zeros );
-				findZeroes( mShape, pt, &zeros );
-				itr.v() = 0.0f;	
-			}
-			else
-				itr.v() = 1.0f;
-//			itr.v() = (float)( zeros.size() / 8.0f );
+			itr.r() = (float)( zeros.size() / 7.0f );
+			itr.g() = ( zeros.size() & 1 ) ? 1.0f : 0.0f;
 		}
 //		std::cout << pt.y << " ";
 	}
 
-	mTexture = gl::Texture2d::create( mChannel, gl::Texture2d::Format().magFilter( GL_NEAREST ) );
+	mTexture = gl::Texture2d::create( s, gl::Texture2d::Format().magFilter( GL_NEAREST ) );
 }
 
 void ShapeTestApp::drawDebugShape( const Shape2d &s, float radius )
@@ -232,11 +253,11 @@ void ShapeTestApp::drawDebugShape( const Shape2d &s, float radius )
 					gl::drawSolidCircle( p.getPoint(firstPoint+3), radius, 3 );
 				break;
 				case Path2d::QUADTO:
-					gl::color( 1, 0.5, 0.25f );
+					gl::color( 1, 0.5, 0.25f, 0.5f );
 					gl::drawSolidCircle( p.getPoint(firstPoint+0), radius );
 					gl::color( 0.25, 0.5, 1.0f );
 					gl::drawStrokedRect( Rectf( p.getPoint(firstPoint+1) - vec2( radius ), p.getPoint(firstPoint+1) + vec2( radius ) ) ); 
-					gl::color( 1, 0.5, 0.25f );
+					gl::color( 1, 0.5, 0.25f, 0.5f );
 					gl::drawSolidCircle( p.getPoint(firstPoint+2), radius );
 				break;
 				case Path2d::LINETO:
@@ -245,7 +266,7 @@ void ShapeTestApp::drawDebugShape( const Shape2d &s, float radius )
 					gl::drawStrokedCircle( p.getPoint(firstPoint+1), radius );
 				break;
 				case Path2d::CLOSE: // ignore - we always assume closed
-					gl::color( 1, 0, 0 );
+					gl::color( 0.9, 0.1, 0.1 );
 					gl::drawStrokedCircle( p.getPoint(firstPoint+0), radius );
 				break;
 				default:
@@ -330,11 +351,11 @@ void ShapeTestApp::mouseDown( MouseEvent event )
 
 gDebugContains = true;
 	calculate();
-	if( event.isMiddle() ) {
+	if( event.isMiddle() || event.isShiftDown() ) {
 		findZeroes( mShape, mLocal, &testPoints );
 		std::cout << "Zeroes: " << testPoints.size();
 	}
-	else if( event.isRight() ) {
+	else if( event.isRight() || event.isControlDown() ) {
 		findZeroes( mShape, { closestPt.x, mLocal.y }, &testPoints );
 		std::cout << "Snapped Zeroes: " << testPoints.size();
 		for( auto &tp : testPoints )
@@ -371,6 +392,12 @@ void ShapeTestApp::keyDown( KeyEvent event )
 		case KeyEvent::KEY_c:
 			if( ! mTexture )
 				generateContains();
+			else
+				mTexture.reset();
+		break;
+		case KeyEvent::KEY_2:
+			if( ! mTexture )
+				generateContains2();
 			else
 				mTexture.reset();
 		break;
