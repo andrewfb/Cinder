@@ -46,7 +46,7 @@ class ShapeTestApp : public App {
 //	int				mInitialFontIndex = 880, mInitialGlyphIndex = 3361; // fixed
 //	int				mInitialFontIndex = 733, mInitialGlyphIndex = 1441; // fixed 25
 //	int				mInitialFontIndex = 733, mInitialGlyphIndex = 1050;
-	int				mInitialFontIndex = 324, mInitialGlyphIndex = 594;
+	int				mInitialFontIndex = 20, mInitialGlyphIndex = 1045;
 	Font             mFont;
 	Shape2d          mShape;
 	vector<string>   mFontNames;
@@ -206,7 +206,7 @@ void ShapeTestApp::generateContains2()
 		vec2 pt;
 		while( itr.pixel() ) {
 			pt = vec2( itr.getPos() ) + mBounds.getUpperLeft();
-			itr.v() = contains2( mShape, pt ) ? 1 : 0;
+			itr.v() = contains2( mShape, pt, true ) ? 1 : 0;
 		}
 	}
 
@@ -352,6 +352,8 @@ void ShapeTestApp::mouseDown( MouseEvent event )
 gDebugContains = true;
 	calculate();
 	if( event.isMiddle() || event.isShiftDown() ) {
+		bool result = contains2( mShape, mLocal );
+		std::cout << "Middle result: " << result << std::endl;
 		findZeroes( mShape, mLocal, &testPoints );
 		std::cout << "Zeroes: " << testPoints.size();
 	}

@@ -188,36 +188,46 @@ bool chopMonoAtY( const vec2 pts[4], float y, float* t )
 	ycrv[2] = pts[2].y - y;
 	ycrv[3] = pts[3].y - y;
 
-	// Initial guess.
-	float t1 = ycrv[0] / (ycrv[0] - ycrv[3]);
+    // Check that the endpoints straddle zero.
+	float tNeg, tPos;	// Negative and positive function parameters.
+	if( ycrv[0] < 0 ) {
+		if( ycrv[3] < 0 )
+			return false;
+		tNeg = 0;
+		tPos = 1.0f;
+	}
+	else if( ycrv[0] > 0 ) {
+		if( ycrv[3] > 0 )
+			return false;
+		tNeg = 1.0f;
+		tPos = 0;
+	}
+	else {
+		*t = 0;
+		return true;
+	}
 
-	// Newton's iterations.
-	const float tol = 1.0f / 16384;  // This leaves 2 fixed noise bits.
-	float t0;
-	const int maxiters = 5;
+	const float tol = 1.0f / 65536;  // 1 for fixed, 1e-5 for float.
 	int iters = 0;
-	bool converged;
 	do {
-		t0 = t1;
-		float y01   = scalarInterp( ycrv[0], ycrv[1], t0 );
-		float y12   = scalarInterp( ycrv[1], ycrv[2], t0 );
-		float y23   = scalarInterp( ycrv[2], ycrv[3], t0 );
-		float y012  = scalarInterp( y01,  y12,  t0 );
-		float y123  = scalarInterp( y12,  y23,  t0 );
-		float y0123 = scalarInterp( y012, y123, t0 );
-		float yder  = (y123 - y012) * 3;
-		// TODO(turk): check for yder==0: horizontal.
-		t1 -= y0123 / yder;
-		converged = fabsf(t1 - t0) <= tol;  // NaN-safe
+		float tMid = (tPos + tNeg) / 2;
+		float y01   = lerp( ycrv[0], ycrv[1], tMid );
+		float y12   = lerp( ycrv[1], ycrv[2], tMid );
+		float y23   = lerp( ycrv[2], ycrv[3], tMid );
+		float y012  = lerp( y01, y12, tMid );
+		float y123  = lerp( y12, y23, tMid );
+		float y0123 = lerp( y012, y123, tMid );
+		if( y0123 == 0 ) {
+			*t = tMid;
+			return true;
+		}
+		if (y0123 < 0)	tNeg = tMid;
+		else			tPos = tMid;
 		++iters;
-	} while( ! converged && (iters < maxiters) );
-	*t = t1;                  // Return the result.
+	} while( ! (fabsf(tPos - tNeg) <= tol) );
 
-	// The result might be valid, even if outside of the range [0, 1], but
-	// we never evaluate a Bezier outside this interval, so we return false.
-	if( t1 < 0 || t1 > 1.0f ) 
-		return false;         // This shouldn't happen, but check anyway.
-	return converged;
+	*t = (tNeg + tPos) / 2;
+	return true;
 }
 /** Cubic'(t) = At^2 + Bt + C, where
     A = 3(-a + 3(b - c) + d)
@@ -308,20 +318,19 @@ bool checkOnCurve( const vec2 &test, const vec2& start, const vec2& end )
     }
 }
 
-bool contains2( const ci::Shape2d &shape, const ci::vec2 &pt )
+bool contains2( const ci::Shape2d &shape, const ci::vec2 &pt, bool evenOddFill )
 {
 	int numPathsInside = 0;
 	for( auto &cont : shape.getContours() ) {
-		if( contains2( cont, pt ) )
+		if( contains2( cont, pt, evenOddFill ) )
 			numPathsInside++;
 	}
 	
 	return ( numPathsInside % 2 ) == 1;
 }
 
-bool contains2( const ci::Path2d &path, const ci::vec2 &pt )
+bool contains2( const ci::Path2d &path, const ci::vec2 &pt, bool evenOddFill )
 {
-bool evenOddFill = true;
 	auto points = path.getPoints();
 
 	int w = 0;
@@ -498,14 +507,14 @@ int windingMonoCubic( const vec2 pts[], const vec2 &test, int *onCurveCount )
 	}
 
 	// quickreject or quickaccept
-//	float minX, maxX;
-//	findMinMaxX<4>( pts, &minX, &maxX );
-//	if( test.x < minX ) {
-//		return 0;
-//	}
-//	if( test.x > maxX ) {
-//		return dir;
-//	}
+	float minX, maxX;
+	findMinMaxX<4>( pts, &minX, &maxX );
+	if( test.x < minX ) {
+		return 0;
+	}
+	if( test.x > maxX ) {
+		return dir;
+	}
 
 	// compute the actual x(t) value
 	float t;
