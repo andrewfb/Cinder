@@ -1,3 +1,4 @@
+REM Run this from Visual Studio Command Prompt. Requires msys2 to be in the PATH
 @echo off
 setlocal enableextensions
 set me=%~n0
@@ -11,6 +12,12 @@ if not exist C:\msys64 (
 	exit
 )
 
+if not defined Platform (
+	set cairo_final_lib_path="%cd%\..\lib\msw\x86"
+) else (
+	set cairo_final_lib_path="%cd%\..\lib\msw\x64\"
+)
+
 set PATH=%PATH%;C:\msys64\usr\bin
 echo %me%: set msys64 into path.
 
@@ -20,11 +27,9 @@ if not exist C:\msys64\usr\bin\tar.exe pacman -S tar
 
 if not exist C:\msys64\usr\bin\make.exe pacman -S make
 
-set cairo_final_lib_path="%cd%\..\lib\msw\"
 rmdir %cairo_final_lib_path% /q /s
 mkdir %cairo_final_lib_path%
 echo Cairo final path: %cairo_final_lib_path%
-
 set cairo_final_include_path="%cd%\..\include\msw\cairo"
 rmdir %cairo_final_include_path% /q /s
 mkdir %cairo_final_include_path%
@@ -34,17 +39,16 @@ mkdir %pixman_final_include_path%
 set libpng_final_include_path="%cd%\..\include\msw\libpng"
 rmdir %libpng_final_include_path% /q /s
 mkdir %libpng_final_include_path%
-
 cd tmp
 
 echo %me%: Downloading libs...
 
-curl http://zlib.net/zlib-1.2.8.tar.gz -o zlib.tar.gz
+curl http://zlib.net/zlib-1.2.11.tar.gz -o zlib.tar.gz
 tar -xf zlib.tar.gz
 mv zlib-* zlib
 rm zlib.tar.gz
 
-curl ftp://ftp.simplesystems.org/pub/libpng/png/src/libpng16/libpng-1.6.25.tar.gz -o libpng.tar.gz
+curl ftp://ftp.simplesystems.org/pub/libpng/png/src/libpng16/libpng-1.6.34.tar.gz -o libpng.tar.gz
 tar -xf libpng.tar.gz
 mv libpng-* libpng 
 rm libpng.tar.gz
@@ -54,7 +58,7 @@ tar -xf pixman.tar.gz
 mv pixman-* pixman 
 rm pixman.tar.gz
 
-curl https://www.cairographics.org/releases/cairo-1.14.6.tar.xz -o cairo.tar.xz
+curl https://www.cairographics.org/releases/cairo-1.14.8.tar.xz -o cairo.tar.xz
 tar -xf cairo.tar.xz
 mv cairo-* cairo 
 rm cairo.tar.xz
@@ -64,41 +68,19 @@ echo %me%: Finished downloading. Preparing to build...
 set ROOTDIR=%cd%
 echo "%me%: setting working directory. %ROOTDIR%"
 
-rmdir "%ROOTDIR%\zlib\projects\visualc71" /q /s
-mkdir "%ROOTDIR%\zlib\projects\visualc71"
-cd "%ROOTDIR%\zlib\projects\visualc71"
-copy "%ROOTDIR%\libpng\projects\visualc71\zlib.vcproj" .
+cd "%ROOTDIR%\zlib\contrib\vstudio\vc14"
 
 echo Building zlib...
-start /w devenv zlib.vcproj /upgrade 
-sed /RuntimeLibrary=/s/2/0/ zlib.vcproj > fixed.vcproj 
-move /Y fixed.vcproj zlib.vcproj
-sed 's/Win32/x64/g' zlib.vcxproj > fixed.vcxproj
-move /Y fixed.vcxproj zlib.vcxproj
-msbuild zlib.vcxproj /p:PlatformToolset=v140 /p:Configuration="LIB Release" /t:Build 
-
-move /Y x64_LIB_Release\Zlib\zlib.lib "%ROOTDIR%\zlib"
-
-echo Building libpng...
-cd "%ROOTDIR%\libpng\projects\visualc71"
-for %%i in (*) do if not %%i == libpng.vcproj del %%i
-start /w devenv libpng.vcproj /upgrade 
-sed /RuntimeLibrary=/s/2/0/ libpng.vcproj > fixed.vcproj
-move /Y fixed.vcproj libpng.vcproj
-sed 's/Win32/x64/g' libpng.vcxproj > fixed.vcxproj
-move /Y fixed.vcxproj libpng.vcxproj
-sed 's/Win32/x64/g' libpng.sln > fixed.sln
-move /Y fixed.sln libpng.sln
-sed 's/x86/x64/g' libpng.sln > fixed.sln
-move /Y fixed.sln libpng.sln
-msbuild libpng.vcxproj /p:PlatformToolset=v140 /p:Configuration="LIB Release" /t:Build 
-
-move /Y x64_LIB_Release\libpng.lib "%ROOTDIR%\libpng"
+sed "/RuntimeLibrary=/s/2/0/;s=x64\\\ZlibStat$(Configuration)=ZlibStat=;s=x86\\\ZlibStat$(Configuration)=ZlibStat=;s=ZLIB_WINAPI;==" zlibstat.vcxproj > fixed.vcxproj 
+move /Y fixed.vcxproj zlibstat.vcxproj
+msbuild.exe zlibstat.vcxproj /p:PlatformToolset=v140 /p:Configuration="ReleaseWithoutAsm" /t:Build
+move /Y ZlibStat\zlibstat.lib ..\..\..\zlibstat.lib
 
 echo Building Pixman...
-cd %ROOTDIR%\pixman\pixman
-sed s/-MD/-MT/ Makefile.win32 > Makefile.fixed
-move /Y Makefile.fixed Makefile.win32
+cd %ROOTDIR%\pixman
+sed s/-MD/-MT/ Makefile.win32.common > Makefile.fixed
+move /Y Makefile.fixed Makefile.win32.common
+cd pixman
 make -f Makefile.win32 "CFG=release" "MMX=off"
 
 set INCLUDE=%INCLUDE%;"%ROOTDIR%\zlib"
@@ -107,23 +89,50 @@ set INCLUDE=%INCLUDE%;"%ROOTDIR%\pixman\pixman"
 set INCLUDE=%INCLUDE%;"%ROOTDIR%\cairo\boilerplate"
 set INCLUDE=%INCLUDE%;"%ROOTDIR%\cairo\src"
 
-set LIB=%LIB%;"%ROOTDIR%\zlib\projects\visualc71\x64_LIB_Release\Zlib"
-set LIB=%LIB%;"%ROOTDIR%\libpng\projects\visualc71\x64_LIB_Release"
+set LIB=%LIB%;"%ROOTDIR%\zlib\contrib\vstudio\vc14\ZlibStat"
+if not defined Platform (
+	set LIBPNGOUTPUT="x64"
+) else (
+	set LIBPNGOUTPUT="x86"
+)
+set LIB=%LIB%;"%ROOTDIR%\libpng\projects\vstudio\%LIBPNGOUTPUT%\Release Library\"
+
+echo Building libpng...
+cd "%ROOTDIR%\libpng\projects\vstudio"
+if defined Platform (
+	sed "s=$(SolutionDir)=..=;s/Win32/x64/" libpng\libpng.vcxproj > libpng\fixed.vcxproj
+	move /Y libpng\fixed.vcxproj libpng\libpng.vcxproj
+	sed 's/Win32/x64/g' zlib\zlib.vcxproj > zlib\fixed.vcxproj
+	move /Y zlib\fixed.vcxproj zlib\zlib.vcxproj
+	sed 's/Win32/x64/g' pnglibconf\pnglibconf.vcxproj > pnglibconf\fixed.vcxproj
+	move /Y pnglibconf\fixed.vcxproj pnglibconf\pnglibconf.vcxproj
+	sed 's/Win32/x64/g' vstudio.sln > fixed.sln
+	move /Y fixed.sln vstudio.sln
+) else (
+	sed "s=$(SolutionDir)=..=" libpng\libpng.vcxproj > libpng\fixed.vcxproj
+	move /Y libpng\fixed.vcxproj libpng\libpng.vcxproj
+)
+sed 's/zlib-1.2.8/zlib/' zlib.props > libpng\zlib.props
+move /Y libpng\zlib.props zlib.props
+if not defined Platform (
+	msbuild vstudio.sln /p:PlatformToolset=v140 /p:Configuration="Release Library" /t:libpng:Rebuild
+	move /Y "Release Library\libpng16.lib" "%ROOTDIR%\libpng\libpng.lib"
+)
+else (
+	msbuild vstudio.sln /p:PlatformToolset=v140 /p:Configuration="Release Library" /p:Platform="x64" /t:libpng:Rebuild
+	move /Y "x64\Release Library\libpng16.lib" "%ROOTDIR%\libpng\libpng.lib"
+)
 
 echo Building Cairo...
 cd %ROOTDIR%\cairo
 sed s/-MD/-MT/ build\Makefile.win32.common > build\Makefile.fixed
 move /Y build\Makefile.fixed build\Makefile.win32.common
-sed s/zdll.lib/zlib.lib/ build\Makefile.win32.common > build\Makefile.fixed
+sed s/zdll.lib/zlibstat.lib/ build\Makefile.win32.common > build\Makefile.fixed
 move /Y build\Makefile.fixed build\Makefile.win32.common
 
 make -f Makefile.win32 "CFG=release"
 
-move /Y "%ROOTDIR%\libpng\libpng.lib" %cairo_final_lib_path%
-cd "%ROOTDIR%\libpng\"
-for %%I in (pnglibconf.h pngconf.h png.h) do copy %%I %libpng_final_include_path%
-
-move /Y "%ROOTDIR%\pixman\pixman\release\pixman-1.lib" %cairo_final_lib_path%
+echo move /Y "%ROOTDIR%\pixman\pixman\release\pixman-1.lib" %cairo_final_lib_path%
 cd "%ROOTDIR%\pixman\pixman\"
 for %%I in (pixman.h pixman-version.h) do copy %%I %pixman_final_include_path%
    
@@ -133,4 +142,4 @@ copy cairo-version.h %cairo_final_include_path%
 cd src\
 for %%I in (cairo-features.h cairo.h cairo-deprecated.h cairo-win32.h cairo-script.h cairo-ps.h cairo-pdf.h cairo-svg.h cairo-pdf.h) do copy %%I %cairo_final_include_path%
 cd "%ROOTDIR%\.."
-rmdir tmp\ /q /s      
+echo "rmdir tmp\ /q /s"

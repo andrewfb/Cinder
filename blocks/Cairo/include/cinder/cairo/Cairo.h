@@ -38,6 +38,8 @@
 	#include <CoreGraphics/CoreGraphics.h>
 #elif defined( CINDER_MAC )
 	#include <ApplicationServices/ApplicationServices.h>
+#elif defined( CINDER_MSW )
+	#define CAIRO_WIN32_STATIC_BUILD 1
 #endif
 
 #include <string>

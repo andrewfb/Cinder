@@ -5,6 +5,8 @@
 using namespace ci;
 
 #include <vector>
+#include "glm/detail/type_vec.hpp"          // for vec2
+#include "glm/detail/type_vec2.hpp"  // for tvec2
 
 class Branch {
  public:

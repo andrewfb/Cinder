@@ -10,6 +10,16 @@ using namespace ci::app;
 using std::vector;
 
 #include "Branch.h"
+#include "cinder/app/KeyEvent.h"            // for KeyEvent
+#include "cinder/app/MouseEvent.h"          // for MouseEvent
+#include "cinder/app/msw/AppMsw.h"          // for AppMsw::Settings
+#include "cinder/app/Renderer.h"            // for Renderer2d
+#include "cinder/Surface.h"                 // for Surface
+#include "glm/detail/type_vec.hpp"          // for vec2
+#include "glm/detail/type_vec2.hpp"  // for tvec2
+#include "glm/detail/type_vec2.inl"         // for tvec2::tvec2<T, P>
+#include <filesystem>                       // for operator/, path
+#include <functional>                       // for _Func_impl<>::_Mybase
 
 
 int MAX_BRANCHES = 40;

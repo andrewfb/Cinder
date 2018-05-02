@@ -1,6 +1,8 @@
 #include "Branch.h"
 
 #include "cinder/Rand.h"
+#include "glm/detail/type_vec2.inl"  // for operator*, tvec2::operator+=, tvec2::tvec2<T, P>
+
 
 using std::vector;
 
