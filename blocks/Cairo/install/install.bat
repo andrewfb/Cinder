@@ -58,7 +58,7 @@ tar -xf pixman.tar.gz
 mv pixman-* pixman 
 rm pixman.tar.gz
 
-curl https://www.cairographics.org/releases/cairo-1.14.8.tar.xz -o cairo.tar.xz
+curl https://cairographics.org/snapshots/cairo-1.15.12.tar.xz -o cairo.tar.xz
 tar -xf cairo.tar.xz
 mv cairo-* cairo 
 rm cairo.tar.xz
@@ -127,6 +127,8 @@ echo Building Cairo...
 cd %ROOTDIR%\cairo
 sed s/-MD/-MT/ build\Makefile.win32.common > build\Makefile.fixed
 move /Y build\Makefile.fixed build\Makefile.win32.common
+sed "s/CAIRO_HAS_FT_FONT=./CAIRO_HAS_FT_FONT=1/" build\Makefile.win32.features > build\Makefile.win32.features.fixed
+move /Y build\Makefile.win32.features.fixed build\Makefile.win32.common
 sed s/zdll.lib/zlibstat.lib/ build\Makefile.win32.common > build\Makefile.fixed
 move /Y build\Makefile.fixed build\Makefile.win32.common
 
