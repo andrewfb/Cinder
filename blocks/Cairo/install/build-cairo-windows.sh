@@ -11,7 +11,7 @@ CAIRO_VERSION=cairo-1.15.12
 PIXMAN_VERSION=pixman-0.34.0
 LIBPNG_VERSION=libpng-1.6.34
 ZLIB_VERSION=zlib-1.2.11
-FREETYPE_VERSION=freetype-2.8.1
+FREETYPE_VERSION=freetype-2.9.1
 
 # Set variables according to command line argument
 if [ ${1:-x86} = x64 ]; then
@@ -133,14 +133,13 @@ for file in cairo/cairo-version.h \
             cairo/src/cairo-ps.h \
             cairo/src/cairo-pdf.h \
             cairo/src/cairo-svg.h; do
-    cp $file $OUTPUT_FOLDER/include
+    cp $file ../include/msw/cairo
 done
 if [ $USE_FREETYPE -ne 0 ]; then
-    cp cairo/src/cairo-ft.h $OUTPUT_FOLDER/include
+    cp cairo/src/cairo-ft.h ../include/msw/cairo
 fi
-mkdir -p $OUTPUT_FOLDER/lib/$OUTPUT_PLATFORM_NAME
-cp cairo/src/release/cairo-static.lib $OUTPUT_FOLDER/lib/$OUTPUT_PLATFORM_NAME
-cp cairo/COPYING* $OUTPUT_FOLDER
+mkdir -p ../lib/msw/$OUTPUT_PLATFORM_NAME
+cp cairo/src/release/cairo-static.lib ../lib/msw/$OUTPUT_PLATFORM_NAME
 
 trap - EXIT
 echo 'Success!'
