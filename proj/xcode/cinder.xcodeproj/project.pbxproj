@@ -258,6 +258,9 @@
 		00BC8A0910D2EE2000D6DC59 /* ImageTargetFileQuartz.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00BC8A0810D2EE2000D6DC59 /* ImageTargetFileQuartz.cpp */; };
 		00C071B00FF16244004801EA /* Font.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00C071AF0FF16244004801EA /* Font.cpp */; };
 		00C071B30FF16261004801EA /* Font.h in Headers */ = {isa = PBXBuildFile; fileRef = 00C071B20FF16261004801EA /* Font.h */; };
+		00C7BBBC2411F2E6001D5238 /* MediaTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBBB2411F2E6001D5238 /* MediaTime.cpp */; };
+		00C7BBBD2411F2E6001D5238 /* MediaTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBBB2411F2E6001D5238 /* MediaTime.cpp */; };
+		00C7BBBE2411F2E6001D5238 /* MediaTime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBBB2411F2E6001D5238 /* MediaTime.cpp */; };
 		00CFE37D113B85F60091E310 /* Path2d.h in Headers */ = {isa = PBXBuildFile; fileRef = 00CFE37B113B85F60091E310 /* Path2d.h */; };
 		00CFE37E113B85F60091E310 /* Thread.h in Headers */ = {isa = PBXBuildFile; fileRef = 00CFE37C113B85F60091E310 /* Thread.h */; };
 		00D23A540EAEB4C00002BF91 /* Color.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00D23A530EAEB4C00002BF91 /* Color.cpp */; };
@@ -1849,6 +1852,8 @@
 		00BFB0531A99175F00DDC921 /* PlatformWinRt.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PlatformWinRt.h; path = app/winrt/PlatformWinRt.h; sourceTree = "<group>"; };
 		00C071AF0FF16244004801EA /* Font.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; path = Font.cpp; sourceTree = "<group>"; };
 		00C071B20FF16261004801EA /* Font.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Font.h; sourceTree = "<group>"; };
+		00C7BBBA2411F2A2001D5238 /* MediaTime.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MediaTime.h; sourceTree = "<group>"; };
+		00C7BBBB2411F2E6001D5238 /* MediaTime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MediaTime.cpp; sourceTree = "<group>"; };
 		00CFE37B113B85F60091E310 /* Path2d.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Path2d.h; sourceTree = "<group>"; };
 		00CFE37C113B85F60091E310 /* Thread.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Thread.h; sourceTree = "<group>"; };
 		00D23A530EAEB4C00002BF91 /* Color.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Color.cpp; sourceTree = "<group>"; };
@@ -2649,6 +2654,7 @@
 				277C2CEC1366632B00178A29 /* Matrix22.h */,
 				277C2CED1366632B00178A29 /* Matrix33.h */,
 				277C2CEE1366632B00178A29 /* Matrix44.h */,
+				00C7BBBA2411F2A2001D5238 /* MediaTime.h */,
 				00FF554C1AEADF9C0085071E /* CameraUi.h */,
 				002DFD530FA5602900E45AE0 /* ObjLoader.h */,
 				00CFE37B113B85F60091E310 /* Path2d.h */,
@@ -2732,6 +2738,7 @@
 				43F78EF11516DAB700EB63B5 /* Json.cpp */,
 				0003F47E1992DA9A00647C8B /* Log.cpp */,
 				00241ABD0E830DD5004D34EB /* Matrix.cpp */,
+				00C7BBBB2411F2E6001D5238 /* MediaTime.cpp */,
 				002DFD500FA5600900E45AE0 /* ObjLoader.cpp */,
 				001F52090FCF99A10021731E /* Path2d.cpp */,
 				00D2F1850F8D8ACD00A7189A /* Perlin.cpp */,
@@ -4733,6 +4740,7 @@
 				27C100231BD16D4800AF387F /* Stream.cpp in Sources */,
 				27C100241BD16D4800AF387F /* ChannelRouterNode.cpp in Sources */,
 				27C100251BD16D4800AF387F /* framing.c in Sources */,
+				00C7BBBE2411F2E6001D5238 /* MediaTime.cpp in Sources */,
 				27C100261BD16D4800AF387F /* AppBase.cpp in Sources */,
 				27C100271BD16D4800AF387F /* Color.cpp in Sources */,
 				27C100281BD16D4800AF387F /* Checkerboard.cpp in Sources */,
@@ -4985,6 +4993,7 @@
 				27C1FECD1BD0AE3400AF387F /* Stream.cpp in Sources */,
 				27C1FECE1BD0AE3400AF387F /* ChannelRouterNode.cpp in Sources */,
 				27C1FECF1BD0AE3400AF387F /* framing.c in Sources */,
+				00C7BBBD2411F2E6001D5238 /* MediaTime.cpp in Sources */,
 				27C1FED01BD0AE3400AF387F /* AppBase.cpp in Sources */,
 				27C1FED11BD0AE3400AF387F /* Color.cpp in Sources */,
 				27C1FED21BD0AE3400AF387F /* Checkerboard.cpp in Sources */,
@@ -5303,6 +5312,7 @@
 				B3EA40B21DD0F00900E34348 /* ftstroke.c in Sources */,
 				003ADB65103884C800ACF6F2 /* Params.cpp in Sources */,
 				003ADB971038974A00ACF6F2 /* TwMgr.cpp in Sources */,
+				00C7BBBC2411F2E6001D5238 /* MediaTime.cpp in Sources */,
 				0031D7BA1E9FE45100668F15 /* Sampler.cpp in Sources */,
 				003ADB981038974A00ACF6F2 /* TwPrecomp.cpp in Sources */,
 				111A5FC2191F72AE005C3166 /* Biquad.cpp in Sources */,
