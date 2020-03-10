@@ -38,6 +38,8 @@
 
 #include <freetype/config/ftheader.h>
 
+#define FT_CONFIG_OPTION_SYSTEM_ZLIB 1
+
 #endif /* FT2BUILD_H_ */
 
 

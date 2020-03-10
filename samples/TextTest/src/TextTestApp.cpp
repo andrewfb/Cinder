@@ -1,6 +1,61 @@
 #include "cinder/app/App.h"
 #include "cinder/app/RendererGl.h"
 #include "cinder/gl/gl.h"
+#include "cinder/text/Text.h"
+#include "cinder/Utilities.h"
+#include "cinder/ImageIo.h"
+#include "cinder/Font.h"
+#include "Resources.h"
+
+using namespace ci;
+using namespace ci::app;
+using namespace std;
+
+class TextTestApp : public App {
+ public:
+	void setup();
+	void draw();
+
+	text::Face*		mFace;
+};
+
+void printFontNames()
+{
+	for( vector<string>::const_iterator fontName = Font::getNames().begin(); fontName != Font::getNames().end(); ++fontName )
+		console() << *fontName << endl;
+}
+
+void TextTestApp::setup()
+{
+	printFontNames();
+
+	mFace = text::loadFace( getResourcePath( "Saint-Andrews Queen.ttf" ) );
+	console() << "Family: '" << mFace->getFamilyName() << "'  Style: '" << mFace->getStyleName() << "'  Total Glyphs: " << mFace->getNumGlyphs() << std::endl;
+}
+
+void TextTestApp::draw()
+{
+	// this pair of lines is the standard way to clear the screen in OpenGL
+	glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
+
+}
+
+CINDER_APP( TextTestApp, RendererGl )
+
+
+
+
+
+
+
+
+
+
+
+
+/*#include "cinder/app/App.h"
+#include "cinder/app/RendererGl.h"
+#include "cinder/gl/gl.h"
 #include "cinder/Text.h"
 #include "cinder/Utilities.h"
 #include "cinder/ImageIo.h"
@@ -132,3 +187,4 @@ void TextTestApp::draw()
 
 // This line tells Cinder to actually create the application
 CINDER_APP( TextTestApp, RendererGl )
+*/
