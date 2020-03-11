@@ -58,12 +58,37 @@ Face* Manager::loadFace( const ci::fs::path &path, int faceIndex )
 	if( error )
 	 	throw FreetypeExc();
 	
+	Face *result;
 	{
 		lock_guard<mutex> lock( mFaceMutex );
 		mFaces.emplace_back( new Face( ftFace ) );
+		result = mFaces.back().get(); 
 	}
 	
-	return mFaces.back().get();
+	return result;
+}
+
+Font* Manager::findFont( const Face *face, float size ) const
+{
+	int32_t discreteSize = static_cast<int32_t>( size * 64 ); // 26.6 fixed point
+	for( const auto &font : mFonts )
+		if( font->getFace() == face && font->getDiscreteSize() == discreteSize )
+		   	return font.get();
+
+	return nullptr;
+}
+
+Font* Manager::loadFont( Face *face, float size )
+{
+	Font *result;
+	result = findFont( face, size );
+	if( ! result ) { // couldn't find a match - create a new Font
+		lock_guard<mutex> lock( mFaceMutex );
+		mFonts.emplace_back( new Font( face, size ) );
+		result = mFonts.back().get(); 
+	}	
+	
+	return result;
 }
 
 } } // namespace cinder::text

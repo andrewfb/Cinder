@@ -1176,6 +1176,9 @@
 		00C7BBE3241740DA001D5238 /* infcodes.c in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBDF241740DA001D5238 /* infcodes.c */; };
 		00C7BBE4241740DA001D5238 /* infcodes.c in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBDF241740DA001D5238 /* infcodes.c */; };
 		00C7BBE5241740DA001D5238 /* infcodes.c in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBDF241740DA001D5238 /* infcodes.c */; };
+		00C7BBE724187896001D5238 /* Font.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBE624187895001D5238 /* Font.cpp */; };
+		00C7BBE824187896001D5238 /* Font.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBE624187895001D5238 /* Font.cpp */; };
+		00C7BBE924187896001D5238 /* Font.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBE624187895001D5238 /* Font.cpp */; };
 		00CFE37D113B85F60091E310 /* Path2d.h in Headers */ = {isa = PBXBuildFile; fileRef = 00CFE37B113B85F60091E310 /* Path2d.h */; };
 		00CFE37E113B85F60091E310 /* Thread.h in Headers */ = {isa = PBXBuildFile; fileRef = 00CFE37C113B85F60091E310 /* Thread.h */; };
 		00D23A540EAEB4C00002BF91 /* Color.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00D23A530EAEB4C00002BF91 /* Color.cpp */; };
@@ -2775,6 +2778,8 @@
 		00C7BBD4241740AF001D5238 /* ftgzip.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = ftgzip.c; path = ../../../src/freetype/gzip/ftgzip.c; sourceTree = "<group>"; };
 		00C7BBDE241740DA001D5238 /* infcodes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = infcodes.h; path = ../../../src/freetype/gzip/infcodes.h; sourceTree = "<group>"; };
 		00C7BBDF241740DA001D5238 /* infcodes.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = infcodes.c; path = ../../../src/freetype/gzip/infcodes.c; sourceTree = "<group>"; };
+		00C7BBE624187895001D5238 /* Font.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Font.cpp; path = text/Font.cpp; sourceTree = "<group>"; };
+		00C7BBEA241878B3001D5238 /* Font.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Font.h; path = text/Font.h; sourceTree = "<group>"; };
 		00CFE37B113B85F60091E310 /* Path2d.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Path2d.h; sourceTree = "<group>"; };
 		00CFE37C113B85F60091E310 /* Thread.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Thread.h; sourceTree = "<group>"; };
 		00D23A530EAEB4C00002BF91 /* Color.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Color.cpp; sourceTree = "<group>"; };
@@ -4170,6 +4175,7 @@
 			isa = PBXGroup;
 			children = (
 				00C7BBC324172D8E001D5238 /* Face.h */,
+				00C7BBEA241878B3001D5238 /* Font.h */,
 				00C7BBC224172D4E001D5238 /* Text.h */,
 			);
 			name = text;
@@ -4179,6 +4185,7 @@
 			isa = PBXGroup;
 			children = (
 				00C7BBC624172E85001D5238 /* Face.cpp */,
+				00C7BBE624187895001D5238 /* Font.cpp */,
 				00C7BBC524172E85001D5238 /* Text.cpp */,
 			);
 			name = text;
@@ -6156,6 +6163,7 @@
 				00C7BBAA2410B004001D5238 /* cidobjs.c in Sources */,
 				00C7B8DD2410B004001D5238 /* ftfstype.c in Sources */,
 				B322C4691DC7DC7100D2E661 /* gzclose.c in Sources */,
+				00C7BBE924187896001D5238 /* Font.cpp in Sources */,
 				27C100751BD16D4800AF387F /* Timer.cpp in Sources */,
 				00C7B7ED2410B003001D5238 /* cffdecode.c in Sources */,
 				27C100761BD16D4800AF387F /* oldText.cpp in Sources */,
@@ -6530,6 +6538,7 @@
 				00C7BBA92410B004001D5238 /* cidobjs.c in Sources */,
 				00C7B8DC2410B004001D5238 /* ftfstype.c in Sources */,
 				B322C4681DC7DC7100D2E661 /* gzclose.c in Sources */,
+				00C7BBE824187896001D5238 /* Font.cpp in Sources */,
 				27C1FF1F1BD0AE3400AF387F /* Timer.cpp in Sources */,
 				00C7B7EC2410B003001D5238 /* cffdecode.c in Sources */,
 				27C1FF201BD0AE3400AF387F /* oldText.cpp in Sources */,
@@ -7010,6 +7019,7 @@
 				006D704A19942BF5008149E2 /* AvfUtils.mm in Sources */,
 				00C7B9E02410B004001D5238 /* gxvbsln.c in Sources */,
 				0003F3FC1992D64100647C8B /* Shader.cpp in Sources */,
+				00C7BBE724187896001D5238 /* Font.cpp in Sources */,
 				118CA4151A9427F700841458 /* AppMac.cpp in Sources */,
 				111A5FAA191F72AE005C3166 /* CinderCoreAudio.cpp in Sources */,
 				00C7B8932410B004001D5238 /* fthash.c in Sources */,

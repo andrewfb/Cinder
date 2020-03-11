@@ -17,6 +17,8 @@ class TextTestApp : public App {
 	void draw();
 
 	text::Face*		mFace;
+	text::Font*		mFont17;
+	text::Font*		mFont17p2;
 };
 
 void printFontNames()
@@ -31,6 +33,12 @@ void TextTestApp::setup()
 
 	mFace = text::loadFace( getResourcePath( "Saint-Andrews Queen.ttf" ) );
 	console() << "Family: '" << mFace->getFamilyName() << "'  Style: '" << mFace->getStyleName() << "'  Total Glyphs: " << mFace->getNumGlyphs() << std::endl;
+	
+	mFont17 = text::loadFont( mFace, 17 );
+	console() << "  Ascender: " << mFont17->getAscender() << "  Descender: " << mFont17->getDescender() << "  Height: " << mFont17->getHeight() << std::endl;
+
+	mFont17p2 = text::loadFont( mFace, 17.2f );
+	console() << "  Ascender: " << mFont17p2->getAscender() << "  Descender: " << mFont17p2->getDescender() << "  Height: " << mFont17p2->getHeight() << std::endl;
 }
 
 void TextTestApp::draw()

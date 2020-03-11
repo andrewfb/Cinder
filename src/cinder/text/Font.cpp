@@ -23,32 +23,49 @@
 */
 
 #include "cinder/Cinder.h"
+#include "cinder/text/Font.h"
+#include "cinder/text/Face.h"
 
-typedef struct FT_FaceRec_		*FT_Face;
+#include <string>
+
+#include <freetype/ft2build.h>
+#include <freetype/freetype.h>
+#include <freetype/ftsizes.h>
+
+using namespace std;
 
 namespace cinder { namespace text {
 
-class Manager;
+Font::Font( Face *face, float size )
+	: mFace( face ), mSize( size )
+{
+	FT_New_Size( face->getFtFace(), &mFtSize );
+	
+	face->lock();
+	FT_Activate_Size( mFtSize );
+	FT_Set_Char_Size( face->getFtFace(), (FT_F26Dot6)(0), (FT_F26Dot6)(size * 64), 72, 72 );
+	
+	face->unlock();
+}
 
-class Face {
-  public:
-	int32_t			getNumGlyphs() const;
-	std::string		getFamilyName() const;
-	std::string		getStyleName() const;
-	
-	uint32_t		getCharIndex
-	
-	FT_Face			getFtFace() { return mFtFace; }
-	
-	void			lock() {}
-	void			unlock() {}
-	
-  private:
-  	Face( FT_Face face );
-	
-	FT_Face		mFtFace;
-	
-	friend Manager;
-};
+float Font::getAscender() const
+{
+	return mFtSize->metrics.ascender / 64.0f;
+}
+
+float Font::getDescender() const
+{
+	return mFtSize->metrics.descender / 64.0f;
+}
+
+float Font::getHeight() const
+{
+	return mFtSize->metrics.height / 64.0f;
+}
+
+Font::~Font()
+{
+	FT_Done_Size( mFtSize );
+}
 
 } } // namespace cinder::text

@@ -27,6 +27,7 @@
 #include "cinder/Cinder.h"
 #include "cinder/Filesystem.h"
 #include "cinder/text/Face.h"
+#include "cinder/text/Font.h"
 #include "cinder/Exception.h"
 
 #include <vector>
@@ -41,6 +42,10 @@ class Manager {
 	static Manager*		get();
 	
 	Face*				loadFace( const ci::fs::path &path, int faceIndex = 0 );
+	Font*				loadFont( Face *face, float size );
+	
+	//! returns \c nullptr if Font has not been loaded
+	Font*				findFont( const Face *face, float size ) const;
 	
   private:
   	Manager();
@@ -48,10 +53,12 @@ class Manager {
   	
   	std::mutex							mFaceMutex;
   	std::vector<std::unique_ptr<Face>>	mFaces;
-  	std::unique_ptr<FT_Library>			mLibraryPtr;
+  	std::vector<std::unique_ptr<Font>>	mFonts;
+	std::unique_ptr<FT_Library>			mLibraryPtr;
 };
 
-inline Face*		loadFace( const ci::fs::path &path, int faceIndex = 0 ) { return Manager::get()->loadFace( path, faceIndex ); } 
+inline Face*		loadFace( const ci::fs::path &path, int faceIndex = 0 ) { return Manager::get()->loadFace( path, faceIndex ); }
+inline Font*		loadFont( Face *face, float size ) { return Manager::get()->loadFont( face, size ); } 
 
 class FreetypeExc : public Exception {
 };

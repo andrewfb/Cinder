@@ -25,28 +25,35 @@
 #include "cinder/Cinder.h"
 
 typedef struct FT_FaceRec_		*FT_Face;
+typedef struct FT_SizeRec_		*FT_Size;
 
 namespace cinder { namespace text {
 
 class Manager;
+class Face;
 
-class Face {
+class Font {
   public:
-	int32_t			getNumGlyphs() const;
-	std::string		getFamilyName() const;
-	std::string		getStyleName() const;
-	
-	uint32_t		getCharIndex
-	
-	FT_Face			getFtFace() { return mFtFace; }
-	
-	void			lock() {}
-	void			unlock() {}
-	
+  	~Font();
+  	
+  	Face*		getFace() { return mFace; }
+  	
+  	//! Text ascender in pixels
+  	float		getAscender() const;
+  	//! Text descender in pixels
+  	float		getDescender() const;
+  	//! Text height in pixels
+  	float		getHeight() const;
+  	
   private:
-  	Face( FT_Face face );
+	Font( Face *face, float size );
+
+	//! Returns size as 26.6 fixed point
+  	int32_t		getDiscreteSize() const { return static_cast<int32_t>( mSize * 64 ); }
 	
-	FT_Face		mFtFace;
+	Face		*mFace;
+	FT_Size		mFtSize;
+	float		mSize;
 	
 	friend Manager;
 };
