@@ -253,6 +253,7 @@
 				INSTALL_PATH = "$(HOME)/Applications";
 				OTHER_LDFLAGS = "$(CINDER_PATH)/lib/macosx/$(CONFIGURATION)/libcinder.a";
 				PRODUCT_NAME = TextTest;
+				SYMROOT = ./build;
 				WRAPPER_EXTENSION = app;
 				ZERO_LINK = YES;
 			};
@@ -276,6 +277,7 @@
 				OTHER_LDFLAGS = "$(CINDER_PATH)/lib/macosx/$(CONFIGURATION)/libcinder.a";
 				PRODUCT_NAME = TextTest;
 				STRIP_INSTALLED_PRODUCT = YES;
+				SYMROOT = ./build;
 				WRAPPER_EXTENSION = app;
 			};
 			name = Release;

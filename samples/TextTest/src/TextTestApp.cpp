@@ -5,6 +5,7 @@
 #include "cinder/Utilities.h"
 #include "cinder/ImageIo.h"
 #include "cinder/Font.h"
+#include "cinder/GeomIo.h"
 #include "Resources.h"
 
 using namespace ci;
@@ -16,9 +17,11 @@ class TextTestApp : public App {
 	void setup();
 	void draw();
 
-	text::Face*		mFace;
-	text::Font*		mFont17;
-	text::Font*		mFont17p2;
+	text::Face		*mFace, *mEmojiFace;
+	text::Font		*mFont17, *mEmojiFont;
+	
+	gl::TextureRef 	mATex;
+	Shape2d			mGlyphShape;
 };
 
 void printFontNames()
@@ -31,21 +34,35 @@ void TextTestApp::setup()
 {
 	printFontNames();
 
+	auto p = getAssetPath( "Twemoji.ttf" );
+	mEmojiFace = text::loadFace( getAssetPath( "Twemoji.ttf" ) );
 	mFace = text::loadFace( getResourcePath( "Saint-Andrews Queen.ttf" ) );
 	console() << "Family: '" << mFace->getFamilyName() << "'  Style: '" << mFace->getStyleName() << "'  Total Glyphs: " << mFace->getNumGlyphs() << std::endl;
 	
-	mFont17 = text::loadFont( mFace, 17 );
-	console() << "  Ascender: " << mFont17->getAscender() << "  Descender: " << mFont17->getDescender() << "  Height: " << mFont17->getHeight() << std::endl;
+	mFont17 = text::loadFont( mFace, 96 );
+	console() << "  Ascender: " << mFont17->getAscender() << "  Descender: " << mFont17->getDescender() << "  Height: " << mFont17->getHeight() << "  'A' index: " << mFont17->getCharIndex( 65 ) << std::endl;
 
-	mFont17p2 = text::loadFont( mFace, 17.2f );
-	console() << "  Ascender: " << mFont17p2->getAscender() << "  Descender: " << mFont17p2->getDescender() << "  Height: " << mFont17p2->getHeight() << std::endl;
+	mEmojiFont = text::loadFont( mEmojiFace, 96 );
+	console() << "  Ascender: " << mEmojiFont->getAscender() << "  Descender: " << mEmojiFont->getDescender() << "  Height: " << mEmojiFont->getHeight() << "  'A' index: " << mEmojiFont->getCharIndex( 65 ) << std::endl;
+
+	mATex = gl::Texture::create( mFont17->getGlyphBitmap( mFont17->getCharIndex( 'A' ) ) );
+	
+	mGlyphShape = mFont17->getGlyphShape( mFont17->getCharIndex( 'A' ) );
 }
 
 void TextTestApp::draw()
 {
-	// this pair of lines is the standard way to clear the screen in OpenGL
-	glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
-
+	gl::clear( Color( 0.5f, 0.5f, 0.5f ) );
+	gl::enableAlphaBlending();
+	
+	gl::color( Color::white() );
+	//gl::draw( mATex, getWindowCenter() );
+	gl::color( Color8u( 255, 128, 64 ) );
+	{
+		gl::ScopedMatrices s_;
+		gl::translate( getWindowCenter() );
+		gl::draw( mGlyphShape );
+	}
 }
 
 CINDER_APP( TextTestApp, RendererGl )

@@ -39,9 +39,19 @@ Face::Face( FT_Face face )
 {
 }
 
+Face::~Face()
+{
+	FT_Done_Face( mFtFace );
+}
+
 int32_t Face::getNumGlyphs() const
 {
-	return (int32_t)mFtFace->num_faces;
+	return (int32_t)mFtFace->num_glyphs;
+}
+
+uint32_t Face::getCharIndex( uint32_t utf32Char ) const
+{
+	return FT_Get_Char_Index( mFtFace, utf32Char );
 }
 
 std::string Face::getFamilyName() const

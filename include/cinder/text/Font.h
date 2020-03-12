@@ -22,28 +22,45 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
+#pragma once
+
 #include "cinder/Cinder.h"
+#include "cinder/text/Face.h"
 
 typedef struct FT_FaceRec_		*FT_Face;
 typedef struct FT_SizeRec_		*FT_Size;
 
+namespace cinder {
+	template<typename T> 		class ChannelT;
+	typedef ChannelT<uint8_t>	Channel8u;
+	typedef 					class Shape2d;
+} // cinder forward declrations
+
 namespace cinder { namespace text {
 
 class Manager;
-class Face;
 
 class Font {
   public:
-  	~Font();
+	~Font();
+
+	Face*		getFace() { return mFace; }
+
+	//! Text ascender in pixels
+	float		getAscender() const;
+	//! Text descender in pixels
+	float		getDescender() const;
+	//! Text height in pixels
+	float		getHeight() const;
   	
-  	Face*		getFace() { return mFace; }
+	//! Returns a font-relative index for UTF-32 codepoint \a utf32Char. Returns \c 0 if the font cannot represent \a utf32Char. Passes through to Face::getCharIndex()
+	uint32_t		getCharIndex( uint32_t utf32Char ) const { return mFace->getCharIndex( utf32Char ); }
   	
-  	//! Text ascender in pixels
-  	float		getAscender() const;
-  	//! Text descender in pixels
-  	float		getDescender() const;
-  	//! Text height in pixels
-  	float		getHeight() const;
+	//! Returns a Channel8u containing the rasterized glyph \a glyphIndex. Note that this index is not a Unicode codepoint, and can be obtained with \a getCharIndex().
+	cinder::Channel8u		getGlyphBitmap( uint32_t glyphIndex ) const;
+
+	//! Returns a Shape2d containing the outline for glyph \a glyphIndex. Note that this index is not a Unicode codepoint, and can be obtained with \a getCharIndex().
+	cinder::Shape2d			getGlyphShape( uint32_t glyphIndex ) const;
   	
   private:
 	Font( Face *face, float size );

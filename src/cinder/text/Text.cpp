@@ -48,6 +48,8 @@ Manager::Manager()
 
 Manager::~Manager()
 {
+	mFonts.clear();
+	mFaces.clear();
 	FT_Done_FreeType( *mLibraryPtr );
 }
 

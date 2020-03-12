@@ -22,6 +22,8 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
+#pragma once
+
 #include "cinder/Cinder.h"
 
 typedef struct FT_FaceRec_		*FT_Face;
@@ -32,11 +34,14 @@ class Manager;
 
 class Face {
   public:
+  	~Face();
+  	
 	int32_t			getNumGlyphs() const;
 	std::string		getFamilyName() const;
 	std::string		getStyleName() const;
-	
-	uint32_t		getCharIndex
+
+	//! Returns a font-relative index for UTF-32 codepoint \a utf32Char. Returns \c 0 if the font cannot represent \a utf32Char
+	uint32_t		getCharIndex( uint32_t utf32Char ) const;
 	
 	FT_Face			getFtFace() { return mFtFace; }
 	
