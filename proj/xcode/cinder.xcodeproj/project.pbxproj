@@ -1164,6 +1164,9 @@
 		00C7BBE724187896001D5238 /* Font.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBE624187895001D5238 /* Font.cpp */; };
 		00C7BBE824187896001D5238 /* Font.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBE624187895001D5238 /* Font.cpp */; };
 		00C7BBE924187896001D5238 /* Font.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBE624187895001D5238 /* Font.cpp */; };
+		00C7BBEF241B2BB8001D5238 /* infblock.c in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBEC241B2BB8001D5238 /* infblock.c */; };
+		00C7BBF0241B2BB8001D5238 /* infcodes.c in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBED241B2BB8001D5238 /* infcodes.c */; };
+		00C7BBF1241B2BB8001D5238 /* ftgzip.c in Sources */ = {isa = PBXBuildFile; fileRef = 00C7BBEE241B2BB8001D5238 /* ftgzip.c */; };
 		00CFE37D113B85F60091E310 /* Path2d.h in Headers */ = {isa = PBXBuildFile; fileRef = 00CFE37B113B85F60091E310 /* Path2d.h */; };
 		00CFE37E113B85F60091E310 /* Thread.h in Headers */ = {isa = PBXBuildFile; fileRef = 00CFE37C113B85F60091E310 /* Thread.h */; };
 		00D23A540EAEB4C00002BF91 /* Color.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00D23A530EAEB4C00002BF91 /* Color.cpp */; };
@@ -2760,6 +2763,9 @@
 		00C7BBC624172E85001D5238 /* Face.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Face.cpp; path = text/Face.cpp; sourceTree = "<group>"; };
 		00C7BBE624187895001D5238 /* Font.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Font.cpp; path = text/Font.cpp; sourceTree = "<group>"; };
 		00C7BBEA241878B3001D5238 /* Font.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Font.h; path = text/Font.h; sourceTree = "<group>"; };
+		00C7BBEC241B2BB8001D5238 /* infblock.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = infblock.c; path = ../../../src/freetype/gzip/infblock.c; sourceTree = "<group>"; };
+		00C7BBED241B2BB8001D5238 /* infcodes.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = infcodes.c; path = ../../../src/freetype/gzip/infcodes.c; sourceTree = "<group>"; };
+		00C7BBEE241B2BB8001D5238 /* ftgzip.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = ftgzip.c; path = ../../../src/freetype/gzip/ftgzip.c; sourceTree = "<group>"; };
 		00CFE37B113B85F60091E310 /* Path2d.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Path2d.h; sourceTree = "<group>"; };
 		00CFE37C113B85F60091E310 /* Thread.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Thread.h; sourceTree = "<group>"; };
 		00D23A530EAEB4C00002BF91 /* Color.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Color.cpp; sourceTree = "<group>"; };
@@ -4171,6 +4177,16 @@
 			name = text;
 			sourceTree = "<group>";
 		};
+		00C7BBEB241B2B91001D5238 /* gzip */ = {
+			isa = PBXGroup;
+			children = (
+				00C7BBEE241B2BB8001D5238 /* ftgzip.c */,
+				00C7BBEC241B2BB8001D5238 /* infblock.c */,
+				00C7BBED241B2BB8001D5238 /* infcodes.c */,
+			);
+			path = gzip;
+			sourceTree = "<group>";
+		};
 		00CE73910E92DBD60059E09B /* gl */ = {
 			isa = PBXGroup;
 			children = (
@@ -4770,6 +4786,7 @@
 				00C7B70D2410B002001D5238 /* cff */,
 				00C7B7852410B003001D5238 /* cid */,
 				00C7B6E32410B002001D5238 /* gxvalid */,
+				00C7BBEB241B2B91001D5238 /* gzip */,
 				00C7B6522410B001001D5238 /* lzw */,
 				00C7B6632410B001001D5238 /* otvalid */,
 				00C7B61B2410B001001D5238 /* pcf */,
@@ -6696,6 +6713,7 @@
 				007B09840E957B9A0052257E /* KeyEvent.cpp in Sources */,
 				00C7BAB52410B004001D5238 /* ttpload.c in Sources */,
 				0003F3F91992D64100647C8B /* Pbo.cpp in Sources */,
+				00C7BBF1241B2BB8001D5238 /* ftgzip.c in Sources */,
 				00C7BAD62410B004001D5238 /* ttdriver.c in Sources */,
 				003832E40E9C04AD00ACB120 /* Stream.cpp in Sources */,
 				111A5EE1191F703D005C3166 /* synthesis.c in Sources */,
@@ -6708,6 +6726,7 @@
 				1181F7C81A7F8792001BBFA2 /* AppBase.cpp in Sources */,
 				00C7B9F22410B004001D5238 /* gxvmort.c in Sources */,
 				009EEF1A0EB79C89003AB86B /* Rect.cpp in Sources */,
+				00C7BBEF241B2BB8001D5238 /* infblock.c in Sources */,
 				00C7B8C92410B004001D5238 /* fttype1.c in Sources */,
 				00C7B7D92410B003001D5238 /* psauxmod.c in Sources */,
 				B322C4581DC7DC7100D2E661 /* compress.c in Sources */,
@@ -7017,6 +7036,7 @@
 				00C7B9D42410B004001D5238 /* gxvmort2.c in Sources */,
 				00C7B8752410B004001D5238 /* otvgdef.c in Sources */,
 				0034C32A151A5B9F003F2E30 /* linebreakdef.c in Sources */,
+				00C7BBF0241B2BB8001D5238 /* infcodes.c in Sources */,
 				00C7B8CF2410B004001D5238 /* ftsnames.c in Sources */,
 				111A5FCB191F72AE005C3166 /* Dsp.cpp in Sources */,
 				111A5EA5191F703D005C3166 /* framing.c in Sources */,

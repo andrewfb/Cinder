@@ -33,7 +33,7 @@ typedef struct FT_SizeRec_		*FT_Size;
 namespace cinder {
 	template<typename T> 		class ChannelT;
 	typedef ChannelT<uint8_t>	Channel8u;
-	typedef 					class Shape2d;
+	class Shape2d;
 } // cinder forward declrations
 
 namespace cinder { namespace text {

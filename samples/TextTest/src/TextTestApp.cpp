@@ -30,22 +30,29 @@ void printFontNames()
 		console() << *fontName << endl;
 }
 
+void printFaceInfo( const text::Face *face )
+{
+	console() << "Family: '" << face->getFamilyName() << "'  Style: '" << face->getStyleName() << "'  Total Glyphs: " << face->getNumGlyphs() << "  Color: " << (face->hasColor()  ? "true" : "false") << std::endl;
+//	console() << "  Ascender: " << face->getAscender() << "  Descender: " << face->getDescender() << "  Height: " << face->getHeight() << std::endl;
+}
+
 void TextTestApp::setup()
 {
 	printFontNames();
 
-	auto p = getAssetPath( "Twemoji.ttf" );
 	mEmojiFace = text::loadFace( getAssetPath( "Twemoji.ttf" ) );
 	mFace = text::loadFace( getResourcePath( "Saint-Andrews Queen.ttf" ) );
-	console() << "Family: '" << mFace->getFamilyName() << "'  Style: '" << mFace->getStyleName() << "'  Total Glyphs: " << mFace->getNumGlyphs() << std::endl;
+	printFaceInfo( mEmojiFace );
+	printFaceInfo( mFace );
 	
 	mFont17 = text::loadFont( mFace, 96 );
-	console() << "  Ascender: " << mFont17->getAscender() << "  Descender: " << mFont17->getDescender() << "  Height: " << mFont17->getHeight() << "  'A' index: " << mFont17->getCharIndex( 65 ) << std::endl;
 
-	mEmojiFont = text::loadFont( mEmojiFace, 96 );
+	mEmojiFont = text::loadFont( mEmojiFace, 72 );
 	console() << "  Ascender: " << mEmojiFont->getAscender() << "  Descender: " << mEmojiFont->getDescender() << "  Height: " << mEmojiFont->getHeight() << "  'A' index: " << mEmojiFont->getCharIndex( 65 ) << std::endl;
 
-	mATex = gl::Texture::create( mFont17->getGlyphBitmap( mFont17->getCharIndex( 'A' ) ) );
+	//mATex = gl::Texture::create( mFont17->getGlyphBitmap( mFont17->getCharIndex( 'A' ) ) );
+	writeImage( getHomeDirectory() / "out.png", mEmojiFont->getGlyphBitmap( mEmojiFont->getCharIndex( U"😀"[0] ) ) );
+	mATex = gl::Texture::create( mEmojiFont->getGlyphBitmap( mEmojiFont->getCharIndex( U"😀"[0] ) ) );
 	
 	mGlyphShape = mFont17->getGlyphShape( mFont17->getCharIndex( 'A' ) );
 }
@@ -56,7 +63,7 @@ void TextTestApp::draw()
 	gl::enableAlphaBlending();
 	
 	gl::color( Color::white() );
-	//gl::draw( mATex, getWindowCenter() );
+	gl::draw( mATex, getWindowCenter() );
 	gl::color( Color8u( 255, 128, 64 ) );
 	{
 		gl::ScopedMatrices s_;

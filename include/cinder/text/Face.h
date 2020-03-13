@@ -40,6 +40,8 @@ class Face {
 	std::string		getFamilyName() const;
 	std::string		getStyleName() const;
 
+	bool			hasColor() const;
+
 	//! Returns a font-relative index for UTF-32 codepoint \a utf32Char. Returns \c 0 if the font cannot represent \a utf32Char
 	uint32_t		getCharIndex( uint32_t utf32Char ) const;
 	

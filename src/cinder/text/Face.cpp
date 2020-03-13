@@ -64,4 +64,9 @@ std::string	Face::getStyleName() const
 	return std::string( mFtFace->style_name );
 }
 
+bool Face::hasColor() const
+{
+	return (mFtFace->face_flags & FT_FACE_FLAG_COLOR) != 0;
+}
+
 } } // namespace cinder::text

@@ -75,8 +75,8 @@ cinder::Channel8u Font::getGlyphBitmap( uint32_t glyphIndex ) const
 {
 	mFace->lock();
 	FT_Activate_Size( mFtSize );
-	FT_Load_Glyph( mFace->getFtFace(), glyphIndex, FT_LOAD_DEFAULT );
-	FT_Render_Glyph( mFace->getFtFace()->glyph, FT_RENDER_MODE_NORMAL );
+	FT_Error err1 = FT_Load_Glyph( mFace->getFtFace(), glyphIndex, FT_LOAD_COLOR | FT_LOAD_DEFAULT | FT_LOAD_RENDER );
+	FT_Error err2 = FT_Render_Glyph( mFace->getFtFace()->glyph, FT_RENDER_MODE_NORMAL );
 
     const FT_Bitmap &ftBitmap = mFace->getFtFace()->glyph->bitmap; 
 	//Channel8u result( ftBitmap.width - mFace->getFtFace()->glyph->bitmap_left, ftBitmap.rows - mFace->getFtFace()->glyph->bitmap_top );  
