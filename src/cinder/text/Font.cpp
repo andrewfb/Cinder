@@ -54,6 +54,9 @@ Font::Font( Face *face, float size )
 	FT_Set_Char_Size( face->getFtFace(), (FT_F26Dot6)(0), (FT_F26Dot6)(size * 64), 72, 72 );	
 	
 	mHbFont = hb_font_create( face->getHbFace() );
+	hb_font_set_scale( mHbFont,
+		(int)(((uint64_t)face->getFtFace()->size->metrics.x_scale * (uint64_t)face->getFtFace()->units_per_EM + (1u << 15)) >> 16),
+		(int)(((uint64_t)face->getFtFace()->size->metrics.y_scale * (uint64_t)face->getFtFace()->units_per_EM + (1u << 15)) >> 16));
 	hb_ft_font_set_funcs( mHbFont );
 	
 	face->unlock();
@@ -194,7 +197,31 @@ void Font::shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphI
 
 	// Add text and layout it
 	hb_buffer_add_utf8( buf, utf8String, -1, 0, -1 );
+	
+	shapeBuffer( buf, outGlyphIndices, outGlyphPositions );
+	
+	hb_buffer_destroy( buf );
+}  
 
+void Font::shapeString( const uint32_t *utf32String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions ) const
+{
+	hb_buffer_t *buf = hb_buffer_create();
+
+	// Set buffer to LTR direction, common script and default language
+	hb_buffer_set_direction( buf, HB_DIRECTION_LTR );
+	hb_buffer_set_script( buf, HB_SCRIPT_COMMON );
+	hb_buffer_set_language( buf, hb_language_get_default() );
+
+	// Add text and layout it
+	hb_buffer_add_utf32( buf, utf32String, -1, 0, -1 );
+	
+	shapeBuffer( buf, outGlyphIndices, outGlyphPositions );
+	
+	hb_buffer_destroy( buf );
+}  
+
+void Font::shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions ) const
+{
 	mFace->lock();
 	FT_Activate_Size( mFtSize );
 	hb_shape( mHbFont, buf, nullptr, 0 );
@@ -218,10 +245,8 @@ void Font::shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphI
 			(*outGlyphPositions)[g] = (float)offset;
 			offset += glyph_positions[g].x_advance / 64.0;
 		}
-	} 
-	
-	hb_buffer_destroy( buf );
-}  
+	}
+}
 
 Font::~Font()
 {

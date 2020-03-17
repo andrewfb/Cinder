@@ -30,6 +30,7 @@
 typedef struct FT_FaceRec_		*FT_Face;
 typedef struct FT_SizeRec_		*FT_Size;
 typedef struct hb_font_t 		hb_font_t;
+typedef struct hb_buffer_t 		hb_buffer_t;
 
 namespace cinder {
 	template<typename T> 		class ChannelT;
@@ -69,9 +70,11 @@ class Font {
 	float 			calcStringWidth( const char *utf8String ) const;
 	
 	void 			shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr ) const;
+	void 			shapeString( const uint32_t *utf32String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr ) const;
 
   private:
 	Font( Face *face, float size );
+	void 		shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions ) const;
 
 	//! Returns size as 26.6 fixed point
   	int32_t		getDiscreteSize() const { return static_cast<int32_t>( mSize * 64 ); }
