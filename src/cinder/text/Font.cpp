@@ -23,6 +23,7 @@
 */
 
 #include "cinder/Cinder.h"
+#include "cinder/text/Text.h"
 #include "cinder/text/Font.h"
 #include "cinder/text/Face.h"
 #include "cinder/Channel.h"
@@ -34,6 +35,9 @@
 #include <freetype/freetype.h>
 #include <freetype/ftoutln.h>
 #include <freetype/ftsizes.h>
+
+#include <hb.h>
+#include <hb-ft.h>
 
 using namespace std;
 using namespace cinder;
@@ -48,6 +52,10 @@ Font::Font( Face *face, float size )
 	face->lock();
 	FT_Activate_Size( mFtSize );
 	FT_Set_Char_Size( face->getFtFace(), (FT_F26Dot6)(0), (FT_F26Dot6)(size * 64), 72, 72 );	
+	
+	mHbFont = hb_font_create( face->getHbFace() );
+	hb_ft_font_set_funcs( mHbFont );
+	
 	face->unlock();
 }
 
@@ -75,8 +83,10 @@ cinder::Channel8u Font::getGlyphBitmap( uint32_t glyphIndex ) const
 {
 	mFace->lock();
 	FT_Activate_Size( mFtSize );
-	FT_Error err1 = FT_Load_Glyph( mFace->getFtFace(), glyphIndex, FT_LOAD_COLOR | FT_LOAD_DEFAULT | FT_LOAD_RENDER );
-	FT_Error err2 = FT_Render_Glyph( mFace->getFtFace()->glyph, FT_RENDER_MODE_NORMAL );
+	if( FT_Error err = FT_Load_Glyph( mFace->getFtFace(), glyphIndex, FT_LOAD_NO_SCALE | FT_LOAD_COLOR | FT_LOAD_DEFAULT | FT_LOAD_RENDER ) )
+		throw text::FreeTypeExc( err );
+	if( FT_Error err = FT_Render_Glyph( mFace->getFtFace()->glyph, FT_RENDER_MODE_NORMAL ) )
+		throw text::FreeTypeExc( err );
 
     const FT_Bitmap &ftBitmap = mFace->getFtFace()->glyph->bitmap; 
 	//Channel8u result( ftBitmap.width - mFace->getFtFace()->glyph->bitmap_left, ftBitmap.rows - mFace->getFtFace()->glyph->bitmap_top );  
@@ -133,7 +143,8 @@ cinder::Shape2d	Font::getGlyphShape( uint32_t glyphIndex ) const
 
 	Shape2d result;
 	FT_Outline_Decompose( &outline, &funcs, &result );
-	result.close();
+	if( result.getNumContours() )
+		result.close();
 	result.scale(vec2(1, -1));
 
 	mFace->unlock();
@@ -141,8 +152,80 @@ cinder::Shape2d	Font::getGlyphShape( uint32_t glyphIndex ) const
 	return result;
 }
 
+float Font::calcStringWidth( const char *utf8String ) const
+{
+	hb_buffer_t *buf = hb_buffer_create();
+
+	// Set buffer to LTR direction, common script and default language
+	hb_buffer_set_direction(buf, HB_DIRECTION_LTR);
+	hb_buffer_set_script(buf, HB_SCRIPT_COMMON);
+	hb_buffer_set_language(buf, hb_language_get_default());
+
+	// Add text and layout it
+	hb_buffer_add_utf8( buf, utf8String, -1, 0, -1 );
+
+	mFace->lock();
+	FT_Activate_Size( mFtSize );
+	hb_shape( mHbFont, buf, nullptr, 0 );
+	mFace->unlock();
+
+	// Get buffer data
+	unsigned int        glyph_count = hb_buffer_get_length( buf );
+	hb_glyph_position_t *glyph_pos    = hb_buffer_get_glyph_positions(buf, NULL);
+
+	unsigned int string_width_in_pixels = 0;
+	for (int i = 0; i < glyph_count; ++i) {
+		string_width_in_pixels += glyph_pos[i].x_advance / 64.0;
+	}
+	
+	hb_buffer_destroy( buf );
+	
+	return string_width_in_pixels;
+}
+
+void Font::shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions ) const
+{
+	hb_buffer_t *buf = hb_buffer_create();
+
+	// Set buffer to LTR direction, common script and default language
+	hb_buffer_set_direction( buf, HB_DIRECTION_LTR );
+	hb_buffer_set_script( buf, HB_SCRIPT_COMMON );
+	hb_buffer_set_language( buf, hb_language_get_default() );
+
+	// Add text and layout it
+	hb_buffer_add_utf8( buf, utf8String, -1, 0, -1 );
+
+	mFace->lock();
+	FT_Activate_Size( mFtSize );
+	hb_shape( mHbFont, buf, nullptr, 0 );
+	mFace->unlock();
+
+	// Get buffer data
+	unsigned int        glyphCount = hb_buffer_get_length( buf );
+	
+	if( outGlyphIndices ) {
+		const hb_glyph_info_t *glyph_infos = hb_buffer_get_glyph_infos( buf, nullptr );
+		outGlyphIndices->resize( glyphCount );
+		for( auto g = 0; g < glyphCount; ++g )
+			(*outGlyphIndices)[g] = glyph_infos[g].codepoint;
+	} 
+
+	if( outGlyphIndices ) {
+		const hb_glyph_position_t *glyph_positions = hb_buffer_get_glyph_positions( buf, nullptr );
+		outGlyphPositions->resize( glyphCount );
+		double offset = 0;
+		for( auto g = 0; g < glyphCount; ++g ) {
+			(*outGlyphPositions)[g] = (float)offset;
+			offset += glyph_positions[g].x_advance / 64.0;
+		}
+	} 
+	
+	hb_buffer_destroy( buf );
+}  
+
 Font::~Font()
 {
+	hb_font_destroy( mHbFont );
 	FT_Done_Size( mFtSize );
 }
 

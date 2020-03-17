@@ -32,7 +32,12 @@ void printFontNames()
 
 void printFaceInfo( const text::Face *face )
 {
-	console() << "Family: '" << face->getFamilyName() << "'  Style: '" << face->getStyleName() << "'  Total Glyphs: " << face->getNumGlyphs() << "  Color: " << (face->hasColor()  ? "true" : "false") << std::endl;
+	console() << "Family: '" << face->getFamilyName() << "'  Style: '" << face->getStyleName() << "'  Total Glyphs: " << face->getNumGlyphs()
+				<< "  Color: " << (face->hasColor()  ? "true" : "false");
+	console() << "  Fixed sizes: { ";
+	for( auto sz : face->getFixedSizes() )
+		console() << sz << " ";
+	console() << "}" << std::endl;
 //	console() << "  Ascender: " << face->getAscender() << "  Descender: " << face->getDescender() << "  Height: " << face->getHeight() << std::endl;
 }
 
@@ -40,21 +45,33 @@ void TextTestApp::setup()
 {
 	printFontNames();
 
-	mEmojiFace = text::loadFace( getAssetPath( "Twemoji.ttf" ) );
+	//mEmojiFace = text::loadFace( getAssetPath( "Twemoji.ttf" ) );
+	mEmojiFace = text::loadFace( "/System/Library/Fonts/Apple Color Emoji.ttc" );
 	mFace = text::loadFace( getResourcePath( "Saint-Andrews Queen.ttf" ) );
 	printFaceInfo( mEmojiFace );
 	printFaceInfo( mFace );
 	
 	mFont17 = text::loadFont( mFace, 96 );
 
-	mEmojiFont = text::loadFont( mEmojiFace, 72 );
+	mEmojiFont = text::loadFont( mEmojiFace, 84 );
 	console() << "  Ascender: " << mEmojiFont->getAscender() << "  Descender: " << mEmojiFont->getDescender() << "  Height: " << mEmojiFont->getHeight() << "  'A' index: " << mEmojiFont->getCharIndex( 65 ) << std::endl;
 
 	//mATex = gl::Texture::create( mFont17->getGlyphBitmap( mFont17->getCharIndex( 'A' ) ) );
-	writeImage( getHomeDirectory() / "out.png", mEmojiFont->getGlyphBitmap( mEmojiFont->getCharIndex( U"😀"[0] ) ) );
-	mATex = gl::Texture::create( mEmojiFont->getGlyphBitmap( mEmojiFont->getCharIndex( U"😀"[0] ) ) );
+//	writeImage( getHomeDirectory() / "out.png", mEmojiFont->getGlyphBitmap( mEmojiFont->getCharIndex( U"😀"[0] ) ) );
+//	mATex = gl::Texture::create( mEmojiFont->getGlyphBitmap( mEmojiFont->getCharIndex( U"😀"[0] ) ) );
 	
 	mGlyphShape = mFont17->getGlyphShape( mFont17->getCharIndex( 'A' ) );
+	
+	console() << "Width: " << mFont17->calcStringWidth( "Hello World" ) << std::endl;
+	vector<uint32_t> indices;
+	vector<float> positions;
+	mFont17->shapeString( "Hello World", &indices, &positions );
+	
+	for( auto &i : indices ) {
+		Shape2d temp = mFont17->getGlyphShape( i );
+		mGlyphShape.append( temp );
+	}
+		
 }
 
 void TextTestApp::draw()

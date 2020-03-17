@@ -23,12 +23,15 @@
 */
 
 #include "cinder/Cinder.h"
+#include "cinder/text/Text.h"
 #include "cinder/text/Face.h"
 
 #include <string>
 
 #include <freetype/ft2build.h>
 #include <freetype/freetype.h>
+#include <hb.h>
+#include <hb-ft.h>
 
 using namespace std;
 
@@ -37,10 +40,14 @@ namespace cinder { namespace text {
 Face::Face( FT_Face face )
 	: mFtFace( face )
 {
+	mHbFace = hb_ft_face_create_referenced( face );
+	if( ! mHbFace )
+		throw HarfBuzzExc(); 
 }
 
 Face::~Face()
 {
+	hb_face_destroy( mHbFace );
 	FT_Done_Face( mFtFace );
 }
 
@@ -67,6 +74,17 @@ std::string	Face::getStyleName() const
 bool Face::hasColor() const
 {
 	return (mFtFace->face_flags & FT_FACE_FLAG_COLOR) != 0;
+}
+
+vector<int32_t> Face::getFixedSizes() const
+{
+	vector<int32_t> result;
+	for( FT_Int i = 0; i < mFtFace->num_fixed_sizes; ++i ) {
+		FT_Bitmap_Size *f = &mFtFace->available_sizes[i]; 
+		result.push_back( f->height );
+	}
+	
+	return result;
 }
 
 } } // namespace cinder::text

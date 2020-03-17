@@ -58,7 +58,7 @@ Face* Manager::loadFace( const ci::fs::path &path, int faceIndex )
 	FT_Face ftFace;
 	FT_Error error = FT_New_Face( *mLibraryPtr, path.c_str(), faceIndex, &ftFace );
 	if( error )
-	 	throw FreetypeExc();
+	 	throw FreeTypeExc( error );
 	
 	Face *result;
 	{

@@ -26,7 +26,10 @@
 
 #include "cinder/Cinder.h"
 
+#include <vector>
+
 typedef struct FT_FaceRec_		*FT_Face;
+typedef struct hb_face_t 		hb_face_t;
 
 namespace cinder { namespace text {
 
@@ -46,6 +49,10 @@ class Face {
 	uint32_t		getCharIndex( uint32_t utf32Char ) const;
 	
 	FT_Face			getFtFace() { return mFtFace; }
+	hb_face_t*		getHbFace() { return mHbFace; }
+
+	//! Returns the available fixed pixel sizes. Only relevant in bitmap fonts.
+	std::vector<int32_t>	getFixedSizes() const;
 	
 	void			lock() {}
 	void			unlock() {}
@@ -54,6 +61,7 @@ class Face {
   	Face( FT_Face face );
 	
 	FT_Face		mFtFace;
+	hb_face_t	*mHbFace;
 	
 	friend Manager;
 };

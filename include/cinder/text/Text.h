@@ -32,8 +32,9 @@
 
 #include <vector>
 
+// FreeType forward declarations
 typedef struct FT_LibraryRec_  	*FT_Library;
-
+typedef int  					FT_Error;
 
 namespace cinder { namespace text {
 
@@ -60,7 +61,15 @@ class Manager {
 inline Face*		loadFace( const ci::fs::path &path, int faceIndex = 0 ) { return Manager::get()->loadFace( path, faceIndex ); }
 inline Font*		loadFont( Face *face, float size ) { return Manager::get()->loadFont( face, size ); } 
 
-class FreetypeExc : public Exception {
+class FreeTypeExc : public Exception {
+  public:
+	FreeTypeExc() {}
+	FreeTypeExc( FT_Error err ) {} 
+};
+
+class HarfBuzzExc : public Exception {
+  public:
+  	HarfBuzzExc() {}
 };
 
 } } // namespace cinder::text

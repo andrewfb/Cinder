@@ -29,6 +29,7 @@
 
 typedef struct FT_FaceRec_		*FT_Face;
 typedef struct FT_SizeRec_		*FT_Size;
+typedef struct hb_font_t 		hb_font_t;
 
 namespace cinder {
 	template<typename T> 		class ChannelT;
@@ -62,6 +63,13 @@ class Font {
 	//! Returns a Shape2d containing the outline for glyph \a glyphIndex. Note that this index is not a Unicode codepoint, and can be obtained with \a getCharIndex().
 	cinder::Shape2d			getGlyphShape( uint32_t glyphIndex ) const;
   	
+  	hb_font_t*		getHbFont() { return mHbFont; }
+
+	//! Returns string width in pixels of UTF-8 string \a utf8String
+	float 			calcStringWidth( const char *utf8String ) const;
+	
+	void 			shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr ) const;
+
   private:
 	Font( Face *face, float size );
 
@@ -71,6 +79,8 @@ class Font {
 	Face		*mFace;
 	FT_Size		mFtSize;
 	float		mSize;
+	
+	hb_font_t	*mHbFont;
 	
 	friend Manager;
 };
