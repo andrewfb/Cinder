@@ -25,6 +25,7 @@
 #include "cinder/Cinder.h"
 #include "cinder/Filesystem.h"
 #include "cinder/text/Text.h"
+#include "cinder/Channel.h"
 #include <memory>
 
 #include <freetype/ft2build.h>
@@ -91,6 +92,11 @@ Font* Manager::loadFont( Face *face, float size )
 	}	
 	
 	return result;
+}
+
+Channel8u renderString( const Font *font, const char *utf8String )
+{ 
+	return font->renderString( utf8String );
 }
 
 } } // namespace cinder::text

@@ -28,6 +28,7 @@
 #include "cinder/text/Face.h"
 #include "cinder/Channel.h"
 #include "cinder/Shape2d.h"
+#include "cinder/ip/Fill.h"
 
 #include <string>
 
@@ -35,6 +36,7 @@
 #include <freetype/freetype.h>
 #include <freetype/ftoutln.h>
 #include <freetype/ftsizes.h>
+#include <freetype/ftglyph.h>
 
 #include <hb.h>
 #include <hb-ft.h>
@@ -62,6 +64,12 @@ Font::Font( Face *face, float size )
 	face->unlock();
 }
 
+Font::~Font()
+{
+	hb_font_destroy( mHbFont );
+	FT_Done_Size( mFtSize );
+}
+
 float Font::getAscender() const
 {
 	return mFtSize->metrics.ascender / 64.0f;
@@ -86,7 +94,7 @@ cinder::Channel8u Font::getGlyphBitmap( uint32_t glyphIndex ) const
 {
 	mFace->lock();
 	FT_Activate_Size( mFtSize );
-	if( FT_Error err = FT_Load_Glyph( mFace->getFtFace(), glyphIndex, FT_LOAD_NO_SCALE | FT_LOAD_COLOR | FT_LOAD_DEFAULT | FT_LOAD_RENDER ) )
+	if( FT_Error err = FT_Load_Glyph( mFace->getFtFace(), glyphIndex, FT_LOAD_DEFAULT ) )
 		throw text::FreeTypeExc( err );
 	if( FT_Error err = FT_Render_Glyph( mFace->getFtFace()->glyph, FT_RENDER_MODE_NORMAL ) )
 		throw text::FreeTypeExc( err );
@@ -186,7 +194,7 @@ float Font::calcStringWidth( const char *utf8String ) const
 	return string_width_in_pixels;
 }
 
-void Font::shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions ) const
+void Font::shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
 {
 	hb_buffer_t *buf = hb_buffer_create();
 
@@ -198,12 +206,12 @@ void Font::shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphI
 	// Add text and layout it
 	hb_buffer_add_utf8( buf, utf8String, -1, 0, -1 );
 	
-	shapeBuffer( buf, outGlyphIndices, outGlyphPositions );
+	shapeBuffer( buf, outGlyphIndices, outGlyphPositions, outPixelWidth );
 	
 	hb_buffer_destroy( buf );
 }  
 
-void Font::shapeString( const uint32_t *utf32String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions ) const
+void Font::shapeString( const uint32_t *utf32String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
 {
 	hb_buffer_t *buf = hb_buffer_create();
 
@@ -215,12 +223,12 @@ void Font::shapeString( const uint32_t *utf32String, std::vector<uint32_t> *outG
 	// Add text and layout it
 	hb_buffer_add_utf32( buf, utf32String, -1, 0, -1 );
 	
-	shapeBuffer( buf, outGlyphIndices, outGlyphPositions );
+	shapeBuffer( buf, outGlyphIndices, outGlyphPositions, outPixelWidth );
 	
 	hb_buffer_destroy( buf );
 }  
 
-void Font::shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions ) const
+void Font::shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
 {
 	mFace->lock();
 	FT_Activate_Size( mFtSize );
@@ -228,7 +236,7 @@ void Font::shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices
 	mFace->unlock();
 
 	// Get buffer data
-	unsigned int        glyphCount = hb_buffer_get_length( buf );
+	unsigned int glyphCount = hb_buffer_get_length( buf );
 	
 	if( outGlyphIndices ) {
 		const hb_glyph_info_t *glyph_infos = hb_buffer_get_glyph_infos( buf, nullptr );
@@ -237,21 +245,58 @@ void Font::shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices
 			(*outGlyphIndices)[g] = glyph_infos[g].codepoint;
 	} 
 
-	if( outGlyphIndices ) {
+	if( outGlyphPositions || outPixelWidth ) {
 		const hb_glyph_position_t *glyph_positions = hb_buffer_get_glyph_positions( buf, nullptr );
-		outGlyphPositions->resize( glyphCount );
+		if( outGlyphPositions )
+			outGlyphPositions->resize( glyphCount );
 		double offset = 0;
 		for( auto g = 0; g < glyphCount; ++g ) {
-			(*outGlyphPositions)[g] = (float)offset;
+			if( outGlyphPositions )
+				(*outGlyphPositions)[g] = (float)offset;
 			offset += glyph_positions[g].x_advance / 64.0;
 		}
+		
+		if( outPixelWidth )
+			*outPixelWidth = (float)offset;
 	}
 }
 
-Font::~Font()
+Channel8u Font::renderString( const char *utf8String ) const
 {
-	hb_font_destroy( mHbFont );
-	FT_Done_Size( mFtSize );
+	std::vector<uint32_t> glyphIndices;
+	std::vector<float> glyphPositions;
+	float glyphsWidth;
+	shapeString( utf8String, &glyphIndices, &glyphPositions, &glyphsWidth );
+	
+	Channel8u result( (int32_t)ceilf( glyphsWidth ), getHeight() );
+	ip::fill( &result, (uint8_t)0 );
+
+	float ascender = getAscender();
+
+	mFace->lock();
+	FT_Activate_Size( mFtSize );
+	for( size_t i = 0; i < glyphIndices.size(); ++i ) {
+		if( FT_Error err = FT_Load_Glyph( mFace->getFtFace(), glyphIndices[i], FT_LOAD_DEFAULT ) )
+			throw text::FreeTypeExc( err );
+		if( FT_Error err = FT_Render_Glyph( mFace->getFtFace()->glyph, FT_RENDER_MODE_NORMAL ) )
+			throw text::FreeTypeExc( err );
+
+		const FT_Bitmap &ftBitmap = mFace->getFtFace()->glyph->bitmap;
+		if( mFace->getFtFace()->glyph->format == FT_GLYPH_FORMAT_BITMAP ) {
+			const FT_BitmapGlyph bitmapGlyph = reinterpret_cast<FT_BitmapGlyph>( &mFace->getFtFace()->glyph );
+			//Channel8u result( ftBitmap.width - mFace->getFtFace()->glyph->bitmap_left, ftBitmap.rows - mFace->getFtFace()->glyph->bitmap_top );  
+			//result.copyFrom( wrapBitmap( ftBitmap ), result.getBounds(), ivec2( mFace->getFtFace()->glyph->bitmap_left, mFace->getFtFace()->glyph->bitmap_top ) );
+			Channel8u glyph( ftBitmap.width, ftBitmap.rows );
+			//				ci::ip::blend( mSurface.get(), s, channel.getBounds(), vec2( glyph.penX + glyph.offset.x + bg->left, line.y - glyph.offset.y - bg->top ) );
+			glyph.copyFrom( ci::Channel8u( ftBitmap.width, ftBitmap.rows, ftBitmap.pitch, 1, ftBitmap.buffer ), glyph.getBounds() );
+			auto offsetLeft = mFace->getFtFace()->glyph->bitmap_left;
+			auto offsetTop = mFace->getFtFace()->glyph->bitmap_top;
+			result.copyFrom( glyph, glyph.getBounds(), ivec2( (int32_t)glyphPositions[i], ascender - offsetTop ) - ivec2( -offsetLeft, 0 ) );
+		}
+	}
+	mFace->unlock();
+	
+	return result;
 }
 
 } } // namespace cinder::text

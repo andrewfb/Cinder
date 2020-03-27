@@ -47,7 +47,7 @@ class Manager {
 	
 	//! returns \c nullptr if Font has not been loaded
 	Font*				findFont( const Face *face, float size ) const;
-	
+
   private:
   	Manager();
   	~Manager();
@@ -60,6 +60,8 @@ class Manager {
 
 inline Face*		loadFace( const ci::fs::path &path, int faceIndex = 0 ) { return Manager::get()->loadFace( path, faceIndex ); }
 inline Font*		loadFont( Face *face, float size ) { return Manager::get()->loadFont( face, size ); } 
+
+Channel8u	renderString( const Font *font, const char *utf8String );
 
 class FreeTypeExc : public Exception {
   public:

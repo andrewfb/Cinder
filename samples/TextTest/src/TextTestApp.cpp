@@ -16,11 +16,14 @@ class TextTestApp : public App {
  public:
 	void setup();
 	void draw();
+	void keyDown( KeyEvent event );
 
 	text::Face		*mFace, *mEmojiFace;
 	text::Font		*mFont17, *mEmojiFont;
 	
-	gl::TextureRef 	mATex;
+	
+	gl::TextureRef 	mTex;
+	Channel8u		mChannel;
 	Shape2d			mGlyphShape;
 };
 
@@ -41,6 +44,11 @@ void printFaceInfo( const text::Face *face )
 //	console() << "  Ascender: " << face->getAscender() << "  Descender: " << face->getDescender() << "  Height: " << face->getHeight() << std::endl;
 }
 
+void printFontInfo( const text::Font *font )
+{
+	console() << "  Ascender: " << font->getAscender() << "  Descender: " << font->getDescender() << "  Height: " << font->getHeight() << "  'A' index: " << font->getCharIndex( 65 ) << std::endl;
+}
+
 void TextTestApp::setup()
 {
 	printFontNames();
@@ -48,14 +56,15 @@ void TextTestApp::setup()
 	//mEmojiFace = text::loadFace( getAssetPath( "Twemoji.ttf" ) );
 	mEmojiFace = text::loadFace( "/System/Library/Fonts/Apple Color Emoji.ttc" );
 	//mFace = text::loadFace( getResourcePath( "Saint-Andrews Queen.ttf" ) );
-	mFace = text::loadFace( "/System/Library/Fonts/Avenir Next Condensed.ttc" );
+	//mFace = text::loadFace( "/System/Library/Fonts/Avenir Next Condensed.ttc" );
+	mFace = text::loadFace( "/System/Library/Fonts/Noteworthy.ttc" );
 	printFaceInfo( mEmojiFace );
 	printFaceInfo( mFace );
 	
 	mFont17 = text::loadFont( mFace, 96 );
+	printFontInfo( mFont17 );
 
 	mEmojiFont = text::loadFont( mEmojiFace, 84 );
-	console() << "  Ascender: " << mEmojiFont->getAscender() << "  Descender: " << mEmojiFont->getDescender() << "  Height: " << mEmojiFont->getHeight() << "  'A' index: " << mEmojiFont->getCharIndex( 65 ) << std::endl;
 
 	//mATex = gl::Texture::create( mFont17->getGlyphBitmap( mFont17->getCharIndex( 'A' ) ) );
 //	writeImage( getHomeDirectory() / "out.png", mEmojiFont->getGlyphBitmap( mEmojiFont->getCharIndex( U"😀"[0] ) ) );
@@ -73,7 +82,16 @@ void TextTestApp::setup()
 		temp.translate( vec2( positions[i], 0 ) );
 		mGlyphShape.append( temp );
 	}
-		
+
+	mChannel = mFont17->renderString( "Hello World" );
+	mTex = gl::Texture::create( mChannel );
+}
+
+void TextTestApp::keyDown( KeyEvent event )
+{
+	if( event.getChar() == 's' ) {
+		writeImage( getHomeDirectory() / "textTestOut.png", mChannel );
+	}
 }
 
 void TextTestApp::draw()
@@ -83,12 +101,12 @@ void TextTestApp::draw()
 	gl::enableAlphaBlending();
 	
 	gl::color( Color::white() );
-	gl::draw( mATex, getWindowCenter() );
+	gl::draw( mTex, getWindowCenter() );
 	gl::color( Color8u( 255, 128, 64 ) );
 	{
 		gl::ScopedMatrices s_;
 		gl::translate( vec2( 20, 240 ) );
-		gl::draw( mGlyphShape );
+	//	gl::draw( mGlyphShape );
 	}
 }
 

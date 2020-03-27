@@ -69,12 +69,14 @@ class Font {
 	//! Returns string width in pixels of UTF-8 string \a utf8String
 	float 			calcStringWidth( const char *utf8String ) const;
 	
-	void 			shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr ) const;
-	void 			shapeString( const uint32_t *utf32String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr ) const;
+	//! Returns string width in pixels
+	void 			shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr, float *outPixelWidth = nullptr ) const;
+	void 			shapeString( const uint32_t *utf32String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr, float *outPixelWidth = nullptr ) const;
+	Channel8u		renderString( const char *utf8String ) const;
 
   private:
 	Font( Face *face, float size );
-	void 		shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions ) const;
+	void 		shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const;
 
 	//! Returns size as 26.6 fixed point
   	int32_t		getDiscreteSize() const { return static_cast<int32_t>( mSize * 64 ); }
