@@ -26,6 +26,7 @@
 
 #include "cinder/Cinder.h"
 #include "cinder/text/Face.h"
+#include <iosfwd>
 
 typedef struct FT_FaceRec_		*FT_Face;
 typedef struct FT_SizeRec_		*FT_Size;
@@ -40,6 +41,7 @@ namespace cinder {
 
 namespace cinder { namespace text {
 
+class AttrString;
 class Manager;
 
 class Font {
@@ -47,6 +49,7 @@ class Font {
 	~Font();
 
 	Face*		getFace() { return mFace; }
+	const Face*	getFace() const { return mFace; }
 
 	//! Text ascender in pixels
 	float		getAscender() const;
@@ -54,6 +57,11 @@ class Font {
 	float		getDescender() const;
 	//! Text height in pixels
 	float		getHeight() const;
+  	
+  	float		getSize() const { return mSize; }
+
+	void		lock() const;
+	void		unlock() const;
   	
 	//! Returns a font-relative index for UTF-32 codepoint \a utf32Char. Returns \c 0 if the font cannot represent \a utf32Char. Passes through to Face::getCharIndex()
 	uint32_t		getCharIndex( uint32_t utf32Char ) const { return mFace->getCharIndex( utf32Char ); }
@@ -71,7 +79,7 @@ class Font {
 	
 	//! Returns string width in pixels
 	void 			shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr, float *outPixelWidth = nullptr ) const;
-	void 			shapeString( const uint32_t *utf32String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr, float *outPixelWidth = nullptr ) const;
+	void 			shapeString( const char32_t *utf32String, size_t length, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr, float *outPixelWidth = nullptr ) const;
 	Channel8u		renderString( const char *utf8String ) const;
 
   private:
@@ -89,5 +97,7 @@ class Font {
 	
 	friend Manager;
 };
+
+std::ostream& operator<<( std::ostream& os, const Font& f );
 
 } } // namespace cinder::text

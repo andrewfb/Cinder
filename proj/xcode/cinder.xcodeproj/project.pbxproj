@@ -116,6 +116,9 @@
 		003ADB9B1038974A00ACF6F2 /* TwColors.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 003ADB8D1038974A00ACF6F2 /* TwColors.cpp */; };
 		003ADB9D1038974A00ACF6F2 /* TwBar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 003ADB8F1038974A00ACF6F2 /* TwBar.cpp */; };
 		003ADBA01038996800ACF6F2 /* AntTweakBar.h in Headers */ = {isa = PBXBuildFile; fileRef = 003ADB9E1038996800ACF6F2 /* AntTweakBar.h */; };
+		003CE488243274F3007BE072 /* AttrString.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 003CE487243274F3007BE072 /* AttrString.cpp */; };
+		003CE489243274F3007BE072 /* AttrString.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 003CE487243274F3007BE072 /* AttrString.cpp */; };
+		003CE48A243274F3007BE072 /* AttrString.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 003CE487243274F3007BE072 /* AttrString.cpp */; };
 		003FAA9F1290CC90002D6860 /* Clipboard.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 003FAA9E1290CC90002D6860 /* Clipboard.cpp */; };
 		003FAAA31290CCB1002D6860 /* Clipboard.h in Headers */ = {isa = PBXBuildFile; fileRef = 003FAAA21290CCB1002D6860 /* Clipboard.h */; };
 		004172FA14C9BE520070C0D1 /* Frustum.h in Headers */ = {isa = PBXBuildFile; fileRef = 004172F914C9BE520070C0D1 /* Frustum.h */; };
@@ -2561,6 +2564,8 @@
 		003CE47A241C56F5007BE072 /* hb-ot-shape-complex-arabic-fallback.hh */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = "hb-ot-shape-complex-arabic-fallback.hh"; path = "../../src/harfbuzz/hb-ot-shape-complex-arabic-fallback.hh"; sourceTree = "<group>"; };
 		003CE47B241C56F5007BE072 /* hb-ot-tag-table.hh */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = "hb-ot-tag-table.hh"; path = "../../src/harfbuzz/hb-ot-tag-table.hh"; sourceTree = "<group>"; };
 		003CE47C241C56F5007BE072 /* hb-unicode-emoji-table.hh */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = "hb-unicode-emoji-table.hh"; path = "../../src/harfbuzz/hb-unicode-emoji-table.hh"; sourceTree = "<group>"; };
+		003CE483243274D8007BE072 /* AttrString.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AttrString.h; path = text/AttrString.h; sourceTree = "<group>"; };
+		003CE487243274F3007BE072 /* AttrString.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = AttrString.cpp; path = text/AttrString.cpp; sourceTree = "<group>"; };
 		003FAA9E1290CC90002D6860 /* Clipboard.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; path = Clipboard.cpp; sourceTree = "<group>"; };
 		003FAAA21290CCB1002D6860 /* Clipboard.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Clipboard.h; sourceTree = "<group>"; };
 		004172F914C9BE520070C0D1 /* Frustum.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Frustum.h; sourceTree = "<group>"; };
@@ -4745,6 +4750,7 @@
 		00C7BBC124172D3F001D5238 /* text */ = {
 			isa = PBXGroup;
 			children = (
+				003CE483243274D8007BE072 /* AttrString.h */,
 				00C7BBC324172D8E001D5238 /* Face.h */,
 				00C7BBEA241878B3001D5238 /* Font.h */,
 				00C7BBC224172D4E001D5238 /* Text.h */,
@@ -4755,6 +4761,7 @@
 		00C7BBC424172E77001D5238 /* text */ = {
 			isa = PBXGroup;
 			children = (
+				003CE487243274F3007BE072 /* AttrString.cpp */,
 				00C7BBC624172E85001D5238 /* Face.cpp */,
 				00C7BBE624187895001D5238 /* Font.cpp */,
 				00C7BBC524172E85001D5238 /* Text.cpp */,
@@ -6632,6 +6639,7 @@
 				00C7B8562410B004001D5238 /* pshrec.c in Sources */,
 				00C7BB4A2410B004001D5238 /* afhints.c in Sources */,
 				00C7B9312410B004001D5238 /* ttsbit.c in Sources */,
+				003CE48A243274F3007BE072 /* AttrString.cpp in Sources */,
 				00C7BB412410B004001D5238 /* afloader.c in Sources */,
 				00C7BC98241C0DA6001D5238 /* hb-ot-face.cc in Sources */,
 				27C1001A1BD16D4800AF387F /* Log.cpp in Sources */,
@@ -7065,6 +7073,7 @@
 				00C7B8552410B004001D5238 /* pshrec.c in Sources */,
 				00C7BB492410B004001D5238 /* afhints.c in Sources */,
 				00C7B9302410B004001D5238 /* ttsbit.c in Sources */,
+				003CE489243274F3007BE072 /* AttrString.cpp in Sources */,
 				00C7BB402410B004001D5238 /* afloader.c in Sources */,
 				00C7BC97241C0DA6001D5238 /* hb-ot-face.cc in Sources */,
 				27C1FEC41BD0AE3400AF387F /* Log.cpp in Sources */,
@@ -7522,6 +7531,7 @@
 				00C7B9F22410B004001D5238 /* gxvmort.c in Sources */,
 				009EEF1A0EB79C89003AB86B /* Rect.cpp in Sources */,
 				00C7BC81241C0DA6001D5238 /* hb-static.cc in Sources */,
+				003CE488243274F3007BE072 /* AttrString.cpp in Sources */,
 				00C7BBEF241B2BB8001D5238 /* infblock.c in Sources */,
 				00C7BCD8241C0DA6001D5238 /* hb-face.cc in Sources */,
 				00C7B8C92410B004001D5238 /* fttype1.c in Sources */,

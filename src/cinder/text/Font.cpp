@@ -26,6 +26,7 @@
 #include "cinder/text/Text.h"
 #include "cinder/text/Font.h"
 #include "cinder/text/Face.h"
+#include "cinder/text/AttrString.h"
 #include "cinder/Channel.h"
 #include "cinder/Shape2d.h"
 #include "cinder/ip/Fill.h"
@@ -68,6 +69,17 @@ Font::~Font()
 {
 	hb_font_destroy( mHbFont );
 	FT_Done_Size( mFtSize );
+}
+
+void Font::lock() const
+{
+	mFace->lock();
+	FT_Activate_Size( mFtSize );
+}
+
+void Font::unlock() const
+{
+	mFace->unlock();
 }
 
 float Font::getAscender() const
@@ -211,7 +223,7 @@ void Font::shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphI
 	hb_buffer_destroy( buf );
 }  
 
-void Font::shapeString( const uint32_t *utf32String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
+void Font::shapeString( const char32_t *utf32String, size_t length, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
 {
 	hb_buffer_t *buf = hb_buffer_create();
 
@@ -221,7 +233,7 @@ void Font::shapeString( const uint32_t *utf32String, std::vector<uint32_t> *outG
 	hb_buffer_set_language( buf, hb_language_get_default() );
 
 	// Add text and layout it
-	hb_buffer_add_utf32( buf, utf32String, -1, 0, -1 );
+	hb_buffer_add_utf32( buf, (const uint32_t*)utf32String, (int)length, 0, -1 );
 	
 	shapeBuffer( buf, outGlyphIndices, outGlyphPositions, outPixelWidth );
 	
@@ -273,8 +285,7 @@ Channel8u Font::renderString( const char *utf8String ) const
 
 	float ascender = getAscender();
 
-	mFace->lock();
-	FT_Activate_Size( mFtSize );
+	lock();
 	for( size_t i = 0; i < glyphIndices.size(); ++i ) {
 		if( FT_Error err = FT_Load_Glyph( mFace->getFtFace(), glyphIndices[i], FT_LOAD_DEFAULT ) )
 			throw text::FreeTypeExc( err );
@@ -294,9 +305,15 @@ Channel8u Font::renderString( const char *utf8String ) const
 			result.copyFrom( glyph, glyph.getBounds(), ivec2( (int32_t)glyphPositions[i], ascender - offsetTop ) - ivec2( -offsetLeft, 0 ) );
 		}
 	}
-	mFace->unlock();
+	unlock();
 	
 	return result;
+}
+
+std::ostream& operator<<( std::ostream& os, const Font& f )
+{
+	os << f.getFace()->getFamilyName() << " @ " << f.getSize();
+	return os;
 }
 
 } } // namespace cinder::text

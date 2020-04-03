@@ -48,7 +48,7 @@ class Face {
 	//! Returns a font-relative index for UTF-32 codepoint \a utf32Char. Returns \c 0 if the font cannot represent \a utf32Char
 	uint32_t		getCharIndex( uint32_t utf32Char ) const;
 	
-	FT_Face			getFtFace() { return mFtFace; }
+	FT_Face			getFtFace() const { return mFtFace; }
 	hb_face_t*		getHbFace() { return mHbFace; }
 
 	//! Returns the available fixed pixel sizes. Only relevant in bitmap fonts.

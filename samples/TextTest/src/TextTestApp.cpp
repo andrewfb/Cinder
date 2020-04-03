@@ -2,6 +2,7 @@
 #include "cinder/app/RendererGl.h"
 #include "cinder/gl/gl.h"
 #include "cinder/text/Text.h"
+#include "cinder/text/AttrString.h"
 #include "cinder/Utilities.h"
 #include "cinder/ImageIo.h"
 #include "cinder/Font.h"
@@ -17,9 +18,10 @@ class TextTestApp : public App {
 	void setup();
 	void draw();
 	void keyDown( KeyEvent event );
+	void testAttrString();
 
 	text::Face		*mFace, *mEmojiFace;
-	text::Font		*mFont17, *mEmojiFont;
+	text::Font		*mFont17, *mEmojiFont, *mFont36;
 	
 	
 	gl::TextureRef 	mTex;
@@ -49,6 +51,21 @@ void printFontInfo( const text::Font *font )
 	console() << "  Ascender: " << font->getAscender() << "  Descender: " << font->getDescender() << "  Height: " << font->getHeight() << "  'A' index: " << font->getCharIndex( 65 ) << std::endl;
 }
 
+void TextTestApp::testAttrString()
+{
+	text::AttrString as;
+	as.append( mFont17 );
+	as.append( "Hello" );
+	as.append( mFont36 );
+	as.append( "Big" );
+	as.append( mFont17 );
+	as.append( "World" );
+	auto it = as.iterate();
+	while( it.nextRun() ) {
+		console() << "Run: '" << it.getRunUtf8() << "' {" << *(it.getRunFont()) << "}" << std::endl;
+	}
+}
+
 void TextTestApp::setup()
 {
 	printFontNames();
@@ -61,8 +78,9 @@ void TextTestApp::setup()
 	printFaceInfo( mEmojiFace );
 	printFaceInfo( mFace );
 	
-	mFont17 = text::loadFont( mFace, 96 );
+	mFont17 = text::loadFont( mFace, 24 );
 	printFontInfo( mFont17 );
+	mFont36 = text::loadFont( mFace, 36 );
 
 	mEmojiFont = text::loadFont( mEmojiFace, 84 );
 
@@ -71,6 +89,8 @@ void TextTestApp::setup()
 //	mATex = gl::Texture::create( mEmojiFont->getGlyphBitmap( mEmojiFont->getCharIndex( U"😀"[0] ) ) );
 	
 	//mGlyphShape = mFont17->getGlyphShape( mFont17->getCharIndex( 'A' ) );
+
+	testAttrString();
 	
 	console() << "Width: " << mFont17->calcStringWidth( "Hello World" ) << std::endl;
 	vector<uint32_t> indices;
@@ -83,7 +103,17 @@ void TextTestApp::setup()
 		mGlyphShape.append( temp );
 	}
 
-	mChannel = mFont17->renderString( "Hello World" );
+//	mChannel = mFont17->renderString( "Hello World" );
+//	mTex = gl::Texture::create( mChannel );
+
+	text::AttrString as;
+	as.append( mFont17 );
+	as.append( "Hello" );
+	as.append( mFont36 );
+	as.append( " Big " );
+	as.append( mFont17 );
+	as.append( "World" );
+	mChannel = renderString( as );
 	mTex = gl::Texture::create( mChannel );
 }
 
