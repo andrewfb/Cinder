@@ -44,7 +44,12 @@ class AttrString
 	AttrString();
 	AttrString( const std::string &utf8Str );
 
+	AttrString& operator<<( const std::string &utf8Str );
+	AttrString& operator<<( const char *utf8Str );
+	AttrString& operator<<( Font *font );
+
 	void	append( const std::string &utf8Str );
+	void	append( const char *utf8Str );
 	void	append( Font *font );
 
 	size_t	size() const { return mString.size(); }

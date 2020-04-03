@@ -106,14 +106,7 @@ void TextTestApp::setup()
 //	mChannel = mFont17->renderString( "Hello World" );
 //	mTex = gl::Texture::create( mChannel );
 
-	text::AttrString as;
-	as.append( mFont17 );
-	as.append( "Hello" );
-	as.append( mFont36 );
-	as.append( " Big " );
-	as.append( mFont17 );
-	as.append( "World" );
-	mChannel = renderString( as );
+	mChannel = renderString( text::AttrString() << mFont17 << "Hello" << mFont36 << " BIG " << mFont17 << "boi" );
 	mTex = gl::Texture::create( mChannel );
 }
 

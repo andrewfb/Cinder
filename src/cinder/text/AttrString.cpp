@@ -44,12 +44,35 @@ ostream& operator<<( ostream& os, const AttrString& a )
 	return os;
 }
 
+AttrString& AttrString::operator<<( const std::string &utf8Str )
+{
+	append( utf8Str );
+	return *this;
+}
+
+AttrString& AttrString::operator<<( const char *utf8Str )
+{
+	append( utf8Str );
+	return *this;
+}
+
+AttrString& AttrString::operator<<( Font *font )
+{
+	append( font );
+	return *this;
+}
+
 AttrStringIter AttrString::iterate() const
 {
 	return AttrStringIter( this );
 }
 
 void AttrString::append( const string &utf8Str )
+{
+	mString.append( ci::toUtf32( utf8Str ) );
+}
+
+void AttrString::append( const char *utf8Str )
 {
 	mString.append( ci::toUtf32( utf8Str ) );
 }
