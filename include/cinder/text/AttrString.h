@@ -41,6 +41,12 @@ class AttrString
   public:
 	friend AttrStringIter;
 
+	struct Tracking {
+		Tracking( float tracking ) : mTracking( tracking ) {}
+		
+		float	mTracking;
+	};
+
 	AttrString();
 	AttrString( const std::string &utf8Str );
 
@@ -51,6 +57,9 @@ class AttrString
 	void	append( const std::string &utf8Str );
 	void	append( const char *utf8Str );
 	void	append( Font *font );
+	void	append( Tracking tracking ) { appendTracking( tracking.mTracking ); }
+	void	appendTracking( float tracking );
+//	void	append( const ColorA8u &color );
 
 	size_t	size() const { return mString.size(); }
 	bool	empty() const { return mString.empty(); }
@@ -83,7 +92,11 @@ class AttrString
 	//std::vector<FloatSpan> mSdfWeights;*/
 	
 	// pair<end of span, span value>
-	std::vector<std::pair<size_t,Font*>>	mFonts;
+  protected:
+  
+	std::vector<std::pair<std::pair<size_t,size_t>,Font*>>	mFonts;
+	std::vector<std::pair<size_t,float>>	mTracking;
+//	std::vector<std::pair<size_t,ColorA8u>>	mColors;
 	
 	std::u32string 		mString;
 };
@@ -101,14 +114,22 @@ class AttrStringIter {
 	std::string		getRunUtf8() const;
 	Font*			getRunFont() { return mFont; }
   	
+//  	bool			getRunTrackingIsConstant() const { return mRunTrackingIsConstant; }
+//  	void			getRunTrackingValue() const { return mRunTrackingValue; }
+  	
   private:
   	AttrStringIter( const AttrString *attrStr );
+
+  	void 	updateOffset();
   	  	
 	const AttrString	*mAttrStr;
 	bool				mFirstRun;
 	ssize_t				mStrStartOffset, mStrEndOffset;
-	size_t				mStrLength;
+	const size_t		mStrLength;
+	bool				mRunTrackingIsConstant;
+	float				mRunTrackingValue;
 	Font 				*mFont;
+	ColorA				mColors;
 };
 
 /*class AttrStringIter {

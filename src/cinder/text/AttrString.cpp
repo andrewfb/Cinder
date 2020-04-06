@@ -40,7 +40,7 @@ AttrString::AttrString( const string &utf8Str )
 	
 ostream& operator<<( ostream& os, const AttrString& a )
 {
-	os << ci::toUtf8( a.mString );
+	os << ci::toUtf8( a.getStringUtf32 );
 	return os;
 }
 
@@ -80,20 +80,45 @@ void AttrString::append( const char *utf8Str )
 void AttrString::append( Font *font )
 {
 	if( ! mFonts.empty() ) {
-		CI_ASSERT( mFonts.back().first == -1 );
-		mFonts.back().first = mString.size();    
+		CI_ASSERT( mFonts.back().first.second == -1 );
+		mFonts.back().first.second = mString.size();
+		mFonts.emplace_back( make_pair( mString.size(), -1 ), font );    
 	}
-	mFonts.emplace_back( -1, font );
+	else { // first font needs to start at index 0 regardless
+		mFonts.emplace_back( make_pair( 0, -1 ), font );
+	}
 }
+
+void AttrString::appendTracking( float tracking )
+{
+	if( ! mTracking.empty() ) {
+		CI_ASSERT( mTracking.back().first == -1 );
+		mTracking.back().first = mString.size();    
+	}
+	mTracking.emplace_back( -1, tracking );	
+}
+
+/*void AttrString::append( const ColorA8u &color )
+{
+	if( ! mColors.empty() ) {
+		CI_ASSERT( mColors.back().first == -1 );
+		mColors.back().first = mString.size();    
+	}
+	mColors.emplace_back( -1, color );	
+}*/
 
 AttrStringIter::AttrStringIter( const AttrString *attrStr )
 	: mAttrStr( attrStr ), mStrStartOffset( 0 ), mStrLength( attrStr->size() ), mFirstRun( true )
 {
 	mFont = mAttrStr->mFonts.empty() ? nullptr : mAttrStr->mFonts.front().second;
-	
+
 	mStrEndOffset = mStrLength;
 	if( mAttrStr->mFonts.size() > 1 )
-		mStrEndOffset = std::min<size_t>( mAttrStr->mFonts.front().first, mStrEndOffset ); 
+		mStrEndOffset = std::min<size_t>( mAttrStr->mFonts.front().first.second, mStrEndOffset );
+}
+
+void AttrStringIter::updateOffset()
+{
 }
 
 std::string AttrStringIter::getRunUtf8() const
@@ -115,8 +140,8 @@ bool AttrStringIter::nextRun()
 	// find new end based on fonts
 	// find start that is > current end
 	size_t newEndOffset = mStrLength;
-	for( size_t i = 0, sum = 0; i < mAttrStr->mFonts.size(); ++i ) {
-		if( mAttrStr->mFonts[i].first == -1 ) { // unterminated, should be last font span
+	for( size_t i = 0; i < mAttrStr->mFonts.size(); ++i ) {
+		if( mAttrStr->mFonts[i].first.second == -1 ) { // unterminated, last font span 
 			mFont = mAttrStr->mFonts[i].second; 
 			newEndOffset = std::min<size_t>( newEndOffset, mStrLength );
 			break;
@@ -126,8 +151,6 @@ bool AttrStringIter::nextRun()
 			newEndOffset = std::min<size_t>( newEndOffset, mAttrStr->mFonts[i].first );
 			break;
 		} 
-		
-		sum += mAttrStr->mFonts[i].first;
 	}
 
 	mStrEndOffset = newEndOffset;
