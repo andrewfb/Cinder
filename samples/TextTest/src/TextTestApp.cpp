@@ -54,12 +54,17 @@ void printFontInfo( const text::Font *font )
 void TextTestApp::testAttrString()
 {
 	text::AttrString as;
-	as.append( mFont17 );
-	as.append( "Hello" );
-	as.append( mFont36 );
-	as.append( "Big" );
-	as.append( mFont17 );
-	as.append( "World" );
+/*	as << mFont17;
+	as << "Hello";
+	as << mFont36;
+	as << "Big";
+	as << mFont17;
+	as << "World";*/
+	
+	as << mFont17;
+	as << "Hello BIG World";
+	as.setFont( 10, 15, mFont36 );
+	
 	auto it = as.iterate();
 	while( it.nextRun() ) {
 		console() << "Run: '" << it.getRunUtf8() << "' {" << *(it.getRunFont()) << "}" << std::endl;

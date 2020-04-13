@@ -101,7 +101,7 @@ Channel8u renderString( const Font *font, const char *utf8String )
 	return font->renderString( utf8String );
 }
 
-void measureString( const AttrString attrString, float *resultWidth, float *resultHeight, float *resultBaseline )
+void measureString( const AttrString& attrString, float *resultWidth, float *resultHeight, float *resultBaseline )
 {
 	float measuredWidth = 0, measuredHeight = 0, measuredBaseline = 0;
 	auto runIt = attrString.iterate();

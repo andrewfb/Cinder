@@ -61,7 +61,7 @@ class Manager {
 inline Face*		loadFace( const ci::fs::path &path, int faceIndex = 0 ) { return Manager::get()->loadFace( path, faceIndex ); }
 inline Font*		loadFont( Face *face, float size ) { return Manager::get()->loadFont( face, size ); } 
 
-void measureString( const AttrString attrString, float *resultWidth, float *resultHeight = nullptr, float *resultBaseline = nullptr );
+void measureString( const AttrString& attrString, float *resultWidth, float *resultHeight = nullptr, float *resultBaseline = nullptr );
 
 Channel8u	renderString( const Font *font, const char *utf8String );
 Channel8u	renderString( const AttrString &attrString );

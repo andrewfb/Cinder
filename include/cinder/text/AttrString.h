@@ -39,6 +39,24 @@ class AttrStringIter;
 class AttrString
 {
   public:
+  	template<typename T>
+	struct Span {
+		Span() {}
+		Span( size_t start, size_t end, T value )
+			: start( start ), end( end ), value( value ) {}
+		Span( size_t start )
+			: start( start ), end( start ) {}
+
+		bool	isOpen() const { return start == end; }
+
+		size_t start, end;  // [start,end) range
+		
+		T value;
+		
+		bool operator<(const Span &span) const { return start < span.start; }
+	};
+
+
 	friend AttrStringIter;
 
 	struct Tracking {
@@ -54,9 +72,12 @@ class AttrString
 	AttrString& operator<<( const char *utf8Str );
 	AttrString& operator<<( Font *font );
 
+	void 	setFont( size_t start, size_t end, const Font *font );
+	void 	setFont( const Font *font );
+	void 	setColorA( size_t start, size_t end, ColorA s );
+
 	void	append( const std::string &utf8Str );
 	void	append( const char *utf8Str );
-	void	append( Font *font );
 	void	append( Tracking tracking ) { appendTracking( tracking.mTracking ); }
 	void	appendTracking( float tracking );
 //	void	append( const ColorA8u &color );
@@ -67,35 +88,12 @@ class AttrString
 	AttrStringIter		iterate() const;
 
 	const std::u32string&		getStringUtf32() const { return mString; }
-
-	//  inclusive of the end index.
-/*	void addFont( size_t start, size_t end, Font s );
-	void removeFont( size_t start, size_t end );
-	void addColorA( size_t start, size_t end, ColorA s );
-	void removeColorA( size_t start, size_t end );
-	size_t size() const { return mString.size(); }                                    // Returns the size of the string in codepoints of 4 bytes each.
-	bool   empty() const { return mString.empty(); }
-
-	// a pair of <startIndex, endIndex, value> describing intervals where an attribute holds.
-	// not necessarily contiguous - blank indicates default.
-	// can be empty (the default).
-	// Invariants:
-	// intervals do not overlap.
-	// intervals in ascending order.
-	std::vector<FontSpan> mFonts;
-	std::vector<ColorASpan> mColorAs;
-	//std::vector<FloatSpan> mLineHeights;
-	// Tracking should be treated as a special case.
-	// Because tracking is a between-glyphs setting, we should subtract one from the given range.
-	// extra tracking from index 1 to 3 should be a b  c  d e and not a b  c  d  e.
-	//std::vector<FloatSpan> mTrackings;
-	//std::vector<FloatSpan> mSdfWeights;*/
-	
-	// pair<end of span, span value>
   protected:
-  
-	std::vector<std::pair<std::pair<size_t,size_t>,Font*>>	mFonts;
-	std::vector<std::pair<size_t,float>>	mTracking;
+  	template<typename T>	void insertSpan( std::vector<Span<T>> *spans, const Span<T> &newSpan, size_t strLength );
+
+
+	std::vector<Span<const Font*>> 	mFonts;
+	std::vector<Span<ColorA>> 		mColorAs;
 //	std::vector<std::pair<size_t,ColorA8u>>	mColors;
 	
 	std::u32string 		mString;
@@ -112,7 +110,7 @@ class AttrStringIter {
 	ssize_t			getRunLength() const { return mStrEndOffset - mStrStartOffset; }
 	const char32_t*	getRunStrPtr() { return &mAttrStr->mString[mStrStartOffset]; }
 	std::string		getRunUtf8() const;
-	Font*			getRunFont() { return mFont; }
+	const Font*		getRunFont() { return mFont; }
   	
 //  	bool			getRunTrackingIsConstant() const { return mRunTrackingIsConstant; }
 //  	void			getRunTrackingValue() const { return mRunTrackingValue; }
@@ -124,15 +122,25 @@ class AttrStringIter {
   	  	
 	const AttrString	*mAttrStr;
 	bool				mFirstRun;
+
+	size_t 				fontIndex = 0; // the current index into fontspans. we might be before the beginning of this index.
+	size_t 				colorAIndex = 0;
+
+
 	ssize_t				mStrStartOffset, mStrEndOffset;
 	const size_t		mStrLength;
 	bool				mRunTrackingIsConstant;
 	float				mRunTrackingValue;
-	Font 				*mFont;
-	ColorA				mColors;
+	const Font 			*mFont;
+	ColorA 				mColorA;
 };
+	
+} } // namespace cinder::text
 
-/*class AttrStringIter {
+
+
+#if 0
+class AttrStringIter {
 public:
 	AttrStringIter(const AttrString& s) : mStr(s) {}
 
@@ -149,9 +157,11 @@ private:
 	
 	size_t fontIndex = 0; // the current index into fontspans. we might be before the beginning of this index.
 	size_t colorAIndex = 0;
-};*/
+};
 	
 } } // namespace cinder::text
 
 
 
+
+#endif
