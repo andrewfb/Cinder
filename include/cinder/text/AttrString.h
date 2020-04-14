@@ -41,11 +41,11 @@ class AttrString
   public:
   	template<typename T>
 	struct Span {
-		Span() {}
 		Span( size_t start, size_t end, T value )
 			: start( start ), end( end ), value( value ) {}
 		Span( size_t start )
 			: start( start ), end( start ) {}
+		Span() {}
 
 		bool	isOpen() const { return start == end; }
 
@@ -54,6 +54,8 @@ class AttrString
 		T value;
 		
 		bool operator<(const Span &span) const { return start < span.start; }
+		bool operator==(const Span &span) const { return start == span.start && end == span.end && value == span.value; }
+		bool operator!=(const Span &span) const { return start != span.start || end != span.end || value != span.value; }
 	};
 
 
@@ -65,12 +67,14 @@ class AttrString
 		float	mTracking;
 	};
 
+	typedef Span<const Font*> FontSpan;
+
 	AttrString();
 	AttrString( const std::string &utf8Str );
 
 	AttrString& operator<<( const std::string &utf8Str );
 	AttrString& operator<<( const char *utf8Str );
-	AttrString& operator<<( Font *font );
+	AttrString& operator<<( const Font *font );
 
 	void 	setFont( size_t start, size_t end, const Font *font );
 	void 	setFont( const Font *font );
@@ -88,11 +92,16 @@ class AttrString
 	AttrStringIter		iterate() const;
 
 	const std::u32string&		getStringUtf32() const { return mString; }
+	
+	//! Advanced use to directly replace the Font span vector
+	void									setFontSpans( const std::vector<Span<const Font*>> &fonts ) { mFonts = fonts; }
+	const std::vector<Span<const Font*>>&	getFontSpans() const { return mFonts; }
+	
   protected:
   	template<typename T>	void insertSpan( std::vector<Span<T>> *spans, const Span<T> &newSpan, size_t strLength );
 
 
-	std::vector<Span<const Font*>> 	mFonts;
+	std::vector<FontSpan> 	mFonts;
 	std::vector<Span<ColorA>> 		mColorAs;
 //	std::vector<std::pair<size_t,ColorA8u>>	mColors;
 	

@@ -32,42 +32,64 @@ namespace cinder { namespace text {
 
 namespace {
 // handle the span a newSpan intersects with on its "left" - its predecessor
+// returns 'true' if 
 template<typename T>
-void insertSpanHandlePred( vector<typename AttrString::Span<T>> *spans, typename std::vector<AttrString::Span<T>>::iterator pred, const AttrString::Span<T> &newSpan, size_t strLength )
+bool insertSpanHandlePred( vector<typename AttrString::Span<T>> *spans, typename std::vector<AttrString::Span<T>>::iterator pred, const AttrString::Span<T> &newSpan, size_t strLength )
 {
+	CI_ASSERT( newSpan.start >= pred->start );
+	
 	size_t predEnd = pred->isOpen() ? strLength : pred->end; // implicitly terminate an open span
-	if( newSpan.end <= pred->start ) { // entirely before pred
-		spans->insert( pred, newSpan );
+	if( newSpan.end <= pred->start || newSpan.start >= predEnd ) { // entirely before or after pred
+		return true; // case 0
 	}
-	else { // intersecting first span; could be exact match, could be new entirely inside old, could be
+	else { // intersecting pred in some way
 		CI_ASSERT( newSpan.end > pred->start );
+		// +----pred----+
+		// +----new-----+
 		if( newSpan.start == pred->start && newSpan.end == predEnd ) { // exactly matches pred; replace value
 			pred->value = newSpan.value;
+			return false; // case 1
 		}
-		else if( newSpan.start == pred->start && newSpan.end < predEnd ) { // start matches pred, end is within
+		// +----pred----+
+		// +--new--+
+		else if( newSpan.start == pred->start && newSpan.end < predEnd ) { // new start matches pred, new end is within pred
 			if( pred->isOpen() )
-				pred->start = pred->end = newSpan.start;
+				pred->start = pred->end = newSpan.end;
 			else
-				pred->start = newSpan.start;
+				pred->start = newSpan.end;
 			spans->insert( pred, newSpan );
+			return false; // case 2
 		}
 		else if( newSpan.start > pred->start ) { // new contained within pred
+			// +----pred----+
+			//   +-new-+
 			if( newSpan.end < predEnd ) {
 				// divide pred around new
+				size_t rightEnd = pred->isOpen() ? newSpan.end : pred->end;
 				pred->end = newSpan.start;
-				auto right = spans->insert( spans->end(), AttrString::Span<T>( newSpan.end, predEnd, pred->value ) );
+				auto right = spans->insert( pred + 1, AttrString::Span<T>( newSpan.end, rightEnd, pred->value ) );
 				spans->insert( right, newSpan );
+				return false; // case 3
 			}
+			// +---pred---+
+			//    +--new--+
 			else { // new start is within pred, and ends match
 				size_t prevPredStart = pred->start;
-				if( pred->isOpen() )
-					pred->start = pred->end = newSpan.end;
-				else
-					pred->start = newSpan.end;
-				auto rep = spans->insert( pred, newSpan );
-				spans->insert( rep, AttrString::Span<T>( prevPredStart, newSpan.start, pred->value ) );
+				if( pred->isOpen() ) {
+					// if pred is open then we need to insert an open but empty span after new
+					pred->start = pred->end = newSpan.end;					
+					auto rep = spans->insert( pred, newSpan );
+					spans->insert( rep, AttrString::Span<T>( prevPredStart, newSpan.start, pred->value ) );
+					return false; // case 4, open
+				}
+				else {
+					pred->end = newSpan.start;
+					return true; // case 4, closed
+				}
 			}
 		}
+		else
+			CI_ASSERT( 0 );
 	}
 }
 
@@ -83,10 +105,16 @@ void AttrString::insertSpan( vector<Span<T>> *spans, const Span<T> &newSpan, siz
 		return;
 	}
 
-	typename vector<Span<T>>::iterator succ = std::lower_bound( spans->begin(), spans->end(), newSpan ); // span whose start > newSpan.start
-	if( succ != spans->begin() ) // we have a predecessor; handle it
-		insertSpanHandlePred( spans, succ - 1, newSpan, strLength );
-		
+	typename vector<Span<T>>::iterator succ = std::upper_bound( spans->begin(), spans->end(), newSpan ); // span whose start > newSpan.start
+	typename vector<Span<T>>::iterator insertIt;
+	if( succ != spans->begin() ) { // we have a predecessor; handle it
+		if( insertSpanHandlePred( spans, succ - 1, newSpan, strLength ) )
+			spans->insert( succ, newSpan );
+	}
+	else {
+		spans->insert( spans->begin(), newSpan );
+	}
+	
 /*	else if( successor == spans->begin() ) { // we are <= the first item, so no predecessor
 	 	// +-new-+        intersects with successor
 	 	//    +-suc-+
@@ -162,7 +190,7 @@ AttrString& AttrString::operator<<( const char *utf8Str )
 	return *this;
 }
 
-AttrString& AttrString::operator<<( Font *font )
+AttrString& AttrString::operator<<( const Font *font )
 {
 	setFont( font );
 	return *this;

@@ -21,7 +21,7 @@ class TextTestApp : public App {
 	void testAttrString();
 
 	text::Face		*mFace, *mEmojiFace;
-	text::Font		*mFont17, *mEmojiFont, *mFont36;
+	const text::Font		*mFont17, *mEmojiFont, *mFont36;
 	
 	
 	gl::TextureRef 	mTex;
@@ -51,24 +51,79 @@ void printFontInfo( const text::Font *font )
 	console() << "  Ascender: " << font->getAscender() << "  Descender: " << font->getDescender() << "  Height: " << font->getHeight() << "  'A' index: " << font->getCharIndex( 65 ) << std::endl;
 }
 
+bool fontSpansEqual( const vector<text::AttrString::FontSpan> &a, const vector<text::AttrString::FontSpan> &b )
+{
+	if( a.size() != b.size() )
+		return false;
+		
+	for( size_t i = 0; i < a.size(); ++i ) {
+		if( a[i] != b[i] )
+			return false;
+	}
+	
+	return true;
+}
+
 void TextTestApp::testAttrString()
 {
-	text::AttrString as;
-/*	as << mFont17;
-	as << "Hello";
-	as << mFont36;
-	as << "Big";
-	as << mFont17;
-	as << "World";*/
+	// before first
+	{
+		text::AttrString as( "0123456789" );
+		as.setFontSpans( { { 2, 4, mFont17 }, { 4, 5, mFont36 } } );
+		as.setFont( 0, 1, mFont17 );
+		CI_ASSERT( fontSpansEqual( as.getFontSpans(), { { 0, 1, mFont17 }, { 2, 4, mFont17 }, { 4, 5, mFont36 } } ) );
+	}
+
+
+	// insertSpanHandlePred case 0a
+	{
+		text::AttrString as( "0123456789" );
+		as.setFontSpans( { { 0, 1, mFont17 }, { 8, 9, mFont36 } } );
+		as.setFont( 2, 4, mFont17 );
+		CI_ASSERT( fontSpansEqual( as.getFontSpans(), { { 0, 1, mFont17 }, { 2, 4, mFont17 }, { 8, 9, mFont36 } } ) );
+	}
+
+	// insertSpanHandlePred case 1
+	{
+		text::AttrString as( "0123456789" );
+		as.setFontSpans( { { 0, 1, mFont36 }, { 8, 9, mFont36 } } );
+		as.setFont( 0, 1, mFont17 );
+		CI_ASSERT( fontSpansEqual( as.getFontSpans(), { { 0, 1, mFont17 }, { 8, 9, mFont36 } } ) );
+	}
+
+	// TODO: insertSpanHandlePred case 2, open 
+
+	// insertSpanHandlePred case 2, closed
+	{
+		text::AttrString as( "0123456789" );
+		as.setFontSpans( { { 0, 3, mFont17 }, { 8, 9, mFont36 } } );
+		as.setFont( 0, 2, mFont36 );
+		CI_ASSERT( fontSpansEqual( as.getFontSpans(), { { 0, 2, mFont36 }, { 2, 3, mFont17 }, { 8, 9, mFont36 } } ) );
+	}
+
+	// insertSpanHandlePred case 3, closed
+	{
+		text::AttrString as( "0123456789" );
+		as.setFontSpans( { { 0, 3, mFont17 }, { 8, 9, mFont36 } } );
+		as.setFont( 1, 2, mFont36 );
+		CI_ASSERT( fontSpansEqual( as.getFontSpans(), { { 0, 1, mFont17 }, { 1, 2, mFont36 }, { 2, 3, mFont17 }, { 8, 9, mFont36 } } ) );
+	}
+
+	// TODO: insertSpanHandlePred case 4, open
 	
-	as << mFont17;
-	as << "Hello BIG World";
-	as.setFont( 10, 15, mFont36 );
+	// insertSpanHandlePred case 4, closed
+	{
+		text::AttrString as( "0123456789" );
+		as.setFontSpans( { { 0, 3, mFont17 }, { 8, 9, mFont17 } } );
+		as.setFont( 1, 3, mFont36 );
+		CI_ASSERT( fontSpansEqual( as.getFontSpans(), { { 0, 1, mFont17 }, { 1, 3, mFont36 }, { 8, 9, mFont17 } } ) );
+	}
+
 	
-	auto it = as.iterate();
+/*	auto it = as.iterate();
 	while( it.nextRun() ) {
 		console() << "Run: '" << it.getRunUtf8() << "' {" << *(it.getRunFont()) << "}" << std::endl;
-	}
+	}*/
 }
 
 void TextTestApp::setup()
