@@ -93,6 +93,28 @@ bool insertSpanHandlePred( vector<typename AttrString::Span<T>> *spans, typename
 	}
 }
 
+template<typename T>
+typename std::vector<AttrString::Span<T>>::iterator insertSpanHandleSucc( vector<typename AttrString::Span<T>> *spans, typename std::vector<AttrString::Span<T>>::iterator succ, const AttrString::Span<T> &newSpan, size_t strLength )
+{
+	// new does not intersect with any successors
+	if( newSpan.end <= succ->start )
+		return succ;
+		
+	CI_ASSERT( newSpan.end > succ->start );
+	
+	// it's possible new intersects with many successors; erase all which are completely intersected
+	// todo open interval
+	if( newSpan.end >= succ->end ) {
+		auto eraseIt = succ;
+		bool shouldErase = false;
+		while( eraseIt != spans->end() && newSpan.end >= eraseIt->end ) {
+			++eraseIt;
+			shouldErase = true;
+		}
+		if( shouldErase )
+			std::erase( succ, eraseIt );
+}
+
 } // anonymous namespace
 
 template<typename T>
@@ -106,12 +128,16 @@ void AttrString::insertSpan( vector<Span<T>> *spans, const Span<T> &newSpan, siz
 	}
 
 	typename vector<Span<T>>::iterator succ = std::upper_bound( spans->begin(), spans->end(), newSpan ); // span whose start > newSpan.start
-	typename vector<Span<T>>::iterator insertIt;
+	
+	if( succ != spans->end() ) { // we have a successor, handle it
+		succ = insertSpanHandleSucc( spans, succ, newSpan, strLength );
+	}
+	
 	if( succ != spans->begin() ) { // we have a predecessor; handle it
-		if( insertSpanHandlePred( spans, succ - 1, newSpan, strLength ) )
+		if( insertSpanHandlePred( spans, succ - 1, newSpan, strLength ) ) // return true if we still need to insert newSpan
 			spans->insert( succ, newSpan );
 	}
-	else {
+	else { // no predecessor means we insert at the beggining
 		spans->insert( spans->begin(), newSpan );
 	}
 	
