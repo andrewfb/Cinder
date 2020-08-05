@@ -25,171 +25,13 @@
 #include "cinder/text/AttrString.h"
 #include "cinder/Unicode.h"
 #include "cinder/CinderAssert.h"
+#include "cinder/Log.h"
 
 using namespace std;
 
 namespace cinder { namespace text {
 
-namespace {
-// handle the span a newSpan intersects with on its "left" - its predecessor
-// returns 'true' if 
-template<typename T>
-bool insertSpanHandlePred( vector<typename AttrString::Span<T>> *spans, typename std::vector<AttrString::Span<T>>::iterator pred, const AttrString::Span<T> &newSpan, size_t strLength )
-{
-	CI_ASSERT( newSpan.start >= pred->start );
-	
-	size_t predEnd = pred->isOpen() ? strLength : pred->end; // implicitly terminate an open span
-	if( newSpan.end <= pred->start || newSpan.start >= predEnd ) { // entirely before or after pred
-		return true; // case 0
-	}
-	else { // intersecting pred in some way
-		CI_ASSERT( newSpan.end > pred->start );
-		// +----pred----+
-		// +----new-----+
-		if( newSpan.start == pred->start && newSpan.end == predEnd ) { // exactly matches pred; replace value
-			pred->value = newSpan.value;
-			return false; // case 1
-		}
-		// +----pred----+
-		// +--new--+
-		else if( newSpan.start == pred->start && newSpan.end < predEnd ) { // new start matches pred, new end is within pred
-			if( pred->isOpen() )
-				pred->start = pred->end = newSpan.end;
-			else
-				pred->start = newSpan.end;
-			spans->insert( pred, newSpan );
-			return false; // case 2
-		}
-		else if( newSpan.start > pred->start ) { // new contained within pred
-			// +----pred----+
-			//   +-new-+
-			if( newSpan.end < predEnd ) {
-				// divide pred around new
-				size_t rightEnd = pred->isOpen() ? newSpan.end : pred->end;
-				pred->end = newSpan.start;
-				auto right = spans->insert( pred + 1, AttrString::Span<T>( newSpan.end, rightEnd, pred->value ) );
-				spans->insert( right, newSpan );
-				return false; // case 3
-			}
-			// +---pred---+
-			//    +--new--+
-			else { // new start is within pred, and ends match
-				size_t prevPredStart = pred->start;
-				if( pred->isOpen() ) {
-					// if pred is open then we need to insert an open but empty span after new
-					pred->start = pred->end = newSpan.end;					
-					auto rep = spans->insert( pred, newSpan );
-					spans->insert( rep, AttrString::Span<T>( prevPredStart, newSpan.start, pred->value ) );
-					return false; // case 4, open
-				}
-				else {
-					pred->end = newSpan.start;
-					return true; // case 4, closed
-				}
-			}
-		}
-		else
-			CI_ASSERT( 0 );
-	}
-}
 
-template<typename T>
-typename std::vector<AttrString::Span<T>>::iterator insertSpanHandleSucc( vector<typename AttrString::Span<T>> *spans, typename std::vector<AttrString::Span<T>>::iterator succ, const AttrString::Span<T> &newSpan, size_t strLength )
-{
-	// new does not intersect with any successors
-	if( newSpan.end <= succ->start )
-		return succ;
-		
-	CI_ASSERT( newSpan.end > succ->start );
-	
-	// it's possible new intersects with many successors; erase all which are completely intersected
-	// todo open interval
-	if( newSpan.end >= succ->end ) {
-		auto eraseIt = succ;
-		bool shouldErase = false;
-		while( eraseIt != spans->end() && newSpan.end >= eraseIt->end ) {
-			++eraseIt;
-			shouldErase = true;
-		}
-		if( shouldErase )
-			std::erase( succ, eraseIt );
-}
-
-} // anonymous namespace
-
-template<typename T>
-void AttrString::insertSpan( vector<Span<T>> *spans, const Span<T> &newSpan, size_t strLength )
-{
-	CI_ASSERT( newSpan.start <= newSpan.end ); 
-	
-	if( spans->empty() ) {
-		spans->push_back( newSpan );
-		return;
-	}
-
-	typename vector<Span<T>>::iterator succ = std::upper_bound( spans->begin(), spans->end(), newSpan ); // span whose start > newSpan.start
-	
-	if( succ != spans->end() ) { // we have a successor, handle it
-		succ = insertSpanHandleSucc( spans, succ, newSpan, strLength );
-	}
-	
-	if( succ != spans->begin() ) { // we have a predecessor; handle it
-		if( insertSpanHandlePred( spans, succ - 1, newSpan, strLength ) ) // return true if we still need to insert newSpan
-			spans->insert( succ, newSpan );
-	}
-	else { // no predecessor means we insert at the beggining
-		spans->insert( spans->begin(), newSpan );
-	}
-	
-/*	else if( successor == spans->begin() ) { // we are <= the first item, so no predecessor
-	 	// +-new-+        intersects with successor
-	 	//    +-suc-+
-		if( newSpan.end > successor->start && newSpan.end < successor->end )
-			successor->start = newSpan.end;
-		// +---new---+      supersedes successor
-		//   +-suc-+
-		else if( newSpan.start < successor->start && newSpan.end > successor->end )
-		 	*successor = newSpan;
-		else // no overlap with successor
-			spans->insert( spans->begin(), newSpan );
-	}
-	else {
-		auto predecessor = successor - 1; // span whose start preceds newSpan.start
-		//  +-new-+    newSpan trims off the end of predecessor
-		// +-pre-+
-		if( predecessor->start < newSpan.start && predecessor->end <= newSpan.end )
-			predecessor->end = newSpan.start;
-		// ( +-new-+ )   newSpan contained within predecessor; needs to generate 0, 1, or 2 spans
-		// +---pre---+
-		else if( predecessor->start <= newSpan.start && predecessor->end >= newSpan.end ) {
-	//		if( 
-		}
-	}*/
-}
-	
-template<typename S> vector<S>
-removeSpan(vector<S>&input, size_t start, size_t end) {
-/*	vector<S> newVec;
-	for (auto const &span : input) {
-		if (start > span.end || end < span.start) {
-			newVec.push_back(span);
-		} else if (start <= span.start && end >= span.end) {
-			// do nothing
-		} else if (start > span.start && end < span.end) {
-			newVec.push_back({span.start,start-1,span.value});
-			newVec.push_back({end+1,span.end,span.value});
-		} else if (end < span.end) {
-			newVec.push_back({end+1,span.end,span.value});
-		} else if (start > span.start) {
-			newVec.push_back({span.start,start-1,span.value});
-		} else {
-			assert(false); // keep this in here for debugging purposes
-		}
-	}
-	return newVec;*/
-}
-
-	
 AttrString::AttrString() {
 }
 	
@@ -224,6 +66,11 @@ AttrString& AttrString::operator<<( const Font *font )
 
 AttrStringIter AttrString::iterate() const
 {
+	// terminate current Font span
+	if( mCurrentFontStart >= 0 )
+		mFonts.set( mCurrentFontStart, mString.size(), mCurrentFont ); 	
+	mCurrentFontStart = -1;
+	
 	return AttrStringIter( this );
 }
 
@@ -239,16 +86,34 @@ void AttrString::append( const char *utf8Str )
 
 void AttrString::setFont( const Font *font )
 {
-	// terminate last Font span assuming it's open
-	if( ! mFonts.empty() && mFonts.back().isOpen() )
-		mFonts.back().end = mString.size();
+	// terminate current Font span
+	if( mCurrentFontStart >= 0 )
+		mFonts.set( mCurrentFontStart, mString.size(), mCurrentFont ); 
 	
-	mFonts.push_back( Span<const Font*>( mString.size(), mString.size(), font ) );
+	mCurrentFont = font;
+	mCurrentFontStart = mString.size();
 }
 
 void AttrString::setFont( size_t start, size_t end, const Font* f )
 {
-	insertSpan( &mFonts, Span<const Font*>( start, end, f ), mString.size() );
+	mFonts.set( start, end, f );
+}
+
+std::vector<AttrString::FontSpan> AttrString::getFontSpans() const
+{
+	std::vector<AttrString::FontSpan> result;
+	
+	for( auto &spanIt : mFonts.getIntervals() )
+		result.push_back( FontSpan( spanIt.first, spanIt.second.limit, spanIt.second.value ) );
+	
+	return result;
+}
+
+void AttrString::setFontSpans( const std::vector<FontSpan> &spans )
+{
+	mFonts.clear();
+	for( auto &s : spans )
+	 	mFonts.set( s.start, s.end, s.value );
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -257,18 +122,6 @@ void AttrString::setFont( size_t start, size_t end, const Font* f )
 AttrStringIter::AttrStringIter( const AttrString *attrStr )
 	: mAttrStr( attrStr ), mStrStartOffset( 0 ), mStrLength( attrStr->size() ), mFirstRun( true )
 {
-	if( mAttrStr->mFonts.empty() || mAttrStr->mFonts.front().start > 0 ) {
-		mFont = nullptr;
-		mStrEndOffset = mStrLength;
-	}
-	else {
-		mFont = mAttrStr->mFonts.front().value;
-		mStrEndOffset = mAttrStr->mFonts.front().end;
-	}
-}
-
-void AttrStringIter::updateOffset()
-{
 }
 
 std::string AttrStringIter::getRunUtf8() const
@@ -276,95 +129,80 @@ std::string AttrStringIter::getRunUtf8() const
 	return ci::toUtf8( &mAttrStr->mString[mStrStartOffset], ( mStrEndOffset - mStrStartOffset ) * 4 );
 }
 
+void AttrStringIter::firstRun()
+{
+	size_t fontEnd;
+	if( mAttrStr->mFonts.empty() ) {
+		mFontDefault = true;
+		fontEnd = mStrLength;
+		mFont = nullptr;
+	}
+	else {
+		mFontIter = mAttrStr->mFonts.begin();
+		if( mFontIter->first > 0 ) {
+			mFontDefault = true;
+			fontEnd = mFontIter->first;
+		}
+		else {
+			mFontDefault = false;
+			fontEnd = mFontIter->second.limit;
+		}
+		mFont = mFontIter->second.value;
+	}
+	
+	mStrEndOffset = fontEnd;
+}
+
+// move all iterators forward so that their starts >= mStrStartOffset
+void AttrStringIter::advance()
+{
+	size_t newStrEnd = mStrLength;
+	mStrStartOffset = mStrEndOffset;
+	if( ! mAttrStr->mFonts.empty() && mFontIter != mAttrStr->mFonts.end() ) {
+		if( mStrStartOffset < mFontIter->first ) { // still before this span
+			CI_ASSERT( mFontDefault );
+		}
+		else if( mStrStartOffset < mFontIter->second.limit ) { // inside this span
+//			s = mFontIter->second.limit; 
+//			CI_ASSERT( ! mFontDefault );
+		}
+		else {
+			++mFontIter;
+			if( mFontIter == mAttrStr->mFonts.end() ) { // hit the end of the fonts
+				mFontDefault = true;
+				mFont = nullptr;
+			}
+			if( mStrStartOffset < mFontIter->first ) {
+				mFontDefault = true;
+				newStrEnd = std::min( newStrEnd, mFontIter->first );
+				mFont = nullptr; 
+			}
+			else {
+				mFontDefault = false;
+				mFont = mFontIter->second.value;
+				newStrEnd = std::min( newStrEnd, mFontIter->second.limit );
+			}
+		}
+	}
+	
+	mStrEndOffset = newStrEnd;
+	mFont = mFontIter->second.value;
+}
+
 bool AttrStringIter::nextRun()
 {
 	if( mFirstRun ) {
+		firstRun();
 		mFirstRun = false;
-		return ! mAttrStr->empty();
-	}
-	else if( mStrEndOffset == mStrLength )
-		return false;
-	
-	mStrStartOffset	= mStrEndOffset;
-	if( mStrStartOffset == mStrLength )
-		return false;
-	
-	// find new end based on fonts
-	// find start that is > current end
-	size_t newEndOffset;
-	auto fontIt = std::lower_bound( mAttrStr->mFonts.begin(), mAttrStr->mFonts.end(), AttrString::Span<const Font*>( mStrStartOffset ) );
-	if( fontIt == mAttrStr->mFonts.end() ) { // we're past the last font - just use the last font
-		mFont = ( mAttrStr->mFonts.empty() ) ? nullptr : mAttrStr->mFonts.back().value;
-		newEndOffset = mStrLength;
-	}
-	else if( fontIt->start == mStrStartOffset ) { // this run starts exactly at the font span
-		mFont = fontIt->value;
-		if( fontIt->isOpen() )
-			newEndOffset = mStrLength;
-		else
-			newEndOffset = fontIt->end;
-	}
-	else if( fontIt == mAttrStr->mFonts.begin() ) { // first font starts after this
-		mFont = nullptr;
-		newEndOffset = fontIt->start;
-	}
-	else { // normal case; fontIt points to span just after this
-		fontIt = fontIt - 1;
-		mFont = fontIt->value;
-		if( fontIt->isOpen() )
-			newEndOffset = mStrLength;
-		else
-			newEndOffset = fontIt->end;
+		return mStrEndOffset > 0;
 	}
 
-	mStrEndOffset = newEndOffset;
+	if( mStrEndOffset == mStrLength )
+		return false;
+	
+	advance();
 	
 	return true;
 }
-
-/*
-AttrString& operator << (AttrString &a, const std::string& s) {
-	return a;
-}
-
-template <typename S, typename V>
-V findSpan( size_t &nextIndex, const vector<S> &spans, size_t charIndex, size_t &spanIndex, V defaultVal )
-{
-	if( spans.size() > 0 && spanIndex < spans.size() ) {
-		if( charIndex > spans[spanIndex].end )
-			spanIndex++;
-		if( spanIndex < spans.size() ) {
-			auto const &span = spans[spanIndex];
-			if( charIndex < span.start && span.start - 1 < nextIndex )
-				nextIndex = span.start - 1;
-			else if( span.end < nextIndex && span.end < nextIndex ) // TODO: the 2nd check is redundant. Did you mean something else?
-				nextIndex = span.end;
-			if( charIndex >= span.start )
-				return span.value;
-		}
-	}
-	return defaultVal;
-}
-
-bool AttrStringIter::next() {
-	// at initial state, length is zero: first iteration doesn't need to move charIndex
-	if (mStarted) {
-		charIndex = charIndex + length;
-	} else {
-		mStarted = true;
-	}
-	
-	if (mStr.mString.size() == 0 || charIndex > mStr.mString.size() - 1) return false;
-	
-	// the candidate for the next interval. start at the end.
-	size_t nextIndex = mStr.mString.size()-1;
-	
-	colorA = findSpan(nextIndex,mStr.mColorAs,charIndex,colorAIndex,ColorA(1.,1.,1.,1.));
-	font = findSpan(nextIndex,mStr.mFonts,charIndex,fontIndex,static_cast<const Font>(DefaultFont()));
-	
-	length = nextIndex - charIndex + 1;
-	return true;
-}
-*/
 
 } } // namespace cinder::text

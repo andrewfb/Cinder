@@ -30,6 +30,7 @@
 
 #include "cinder/Color.h"
 #include "cinder/text/Font.h"
+#include "cinder/IntervalMap.h"
 
 
 namespace cinder { namespace text {
@@ -39,25 +40,25 @@ class AttrStringIter;
 class AttrString
 {
   public:
-  	template<typename T>
+	template<typename T>
 	struct Span {
-		Span( size_t start, size_t end, T value )
-			: start( start ), end( end ), value( value ) {}
-		Span( size_t start )
-			: start( start ), end( start ) {}
-		Span() {}
-
-		bool	isOpen() const { return start == end; }
-
-		size_t start, end;  // [start,end) range
-		
-		T value;
-		
-		bool operator<(const Span &span) const { return start < span.start; }
-		bool operator==(const Span &span) const { return start == span.start && end == span.end && value == span.value; }
-		bool operator!=(const Span &span) const { return start != span.start || end != span.end || value != span.value; }
+	   	Span( size_t start, size_t end, T value )
+			   	: start( start ), end( end ), value( value ) {}
+	   	Span( size_t start )
+			   	: start( start ), end( start ) {}
+	   	Span() {}
+	
+	   	bool    isOpen() const { return start == end; }
+	
+	   	size_t start, end;  // [start,end) range
+	   	
+	   	T value;
+	   	
+	   	bool operator<(const Span &span) const { return start < span.start; }
+	   	bool operator==(const Span &span) const { return start == span.start && end == span.end && value == span.value; }
+	   	bool operator!=(const Span &span) const { return start != span.start || end != span.end || value != span.value; }
 	};
-
+	typedef Span<const Font*>		FontSpan;
 
 	friend AttrStringIter;
 
@@ -66,8 +67,6 @@ class AttrString
 		
 		float	mTracking;
 	};
-
-	typedef Span<const Font*> FontSpan;
 
 	AttrString();
 	AttrString( const std::string &utf8Str );
@@ -92,18 +91,18 @@ class AttrString
 	AttrStringIter		iterate() const;
 
 	const std::u32string&		getStringUtf32() const { return mString; }
-	
-	//! Advanced use to directly replace the Font span vector
-	void									setFontSpans( const std::vector<Span<const Font*>> &fonts ) { mFonts = fonts; }
-	const std::vector<Span<const Font*>>&	getFontSpans() const { return mFonts; }
-	
+
+	std::vector<FontSpan>		getFontSpans() const;
+	void						setFontSpans( const std::vector<FontSpan> &spans );
   protected:
-  	template<typename T>	void insertSpan( std::vector<Span<T>> *spans, const Span<T> &newSpan, size_t strLength );
-
-
-	std::vector<FontSpan> 	mFonts;
-	std::vector<Span<ColorA>> 		mColorAs;
+	mutable IntervalMap<const Font*> 		mFonts;
+	mutable IntervalMap<ColorA> 			mColorAs;
 //	std::vector<std::pair<size_t,ColorA8u>>	mColors;
+	
+	const Font*			mCurrentFont;
+	mutable ssize_t		mCurrentFontStart = -1;
+	ColorA				mCurrentColor;
+	mutable ssize_t				mCurrentColorStart = -1;
 	
 	std::u32string 		mString;
 };
@@ -120,57 +119,23 @@ class AttrStringIter {
 	const char32_t*	getRunStrPtr() { return &mAttrStr->mString[mStrStartOffset]; }
 	std::string		getRunUtf8() const;
 	const Font*		getRunFont() { return mFont; }
-  	
 //  	bool			getRunTrackingIsConstant() const { return mRunTrackingIsConstant; }
 //  	void			getRunTrackingValue() const { return mRunTrackingValue; }
   	
   private:
   	AttrStringIter( const AttrString *attrStr );
+	void			firstRun();
+	void			advance();
 
-  	void 	updateOffset();
-  	  	
 	const AttrString	*mAttrStr;
+
 	bool				mFirstRun;
-
-	size_t 				fontIndex = 0; // the current index into fontspans. we might be before the beginning of this index.
-	size_t 				colorAIndex = 0;
-
-
 	ssize_t				mStrStartOffset, mStrEndOffset;
 	const size_t		mStrLength;
-	bool				mRunTrackingIsConstant;
-	float				mRunTrackingValue;
-	const Font 			*mFont;
-	ColorA 				mColorA;
+
+	IntervalMap<const Font*>::ConstMapIter		mFontIter;
+	bool										mFontDefault;
+	const Font*									mFont;
 };
 	
 } } // namespace cinder::text
-
-
-
-#if 0
-class AttrStringIter {
-public:
-	AttrStringIter(const AttrString& s) : mStr(s) {}
-
-	bool next();
-	
-	Font font = DefaultFont();
-	ColorA colorA = ColorA();
-	size_t charIndex = 0;
-	size_t length = 0;
-	
-private:
-	const AttrString &mStr;
-	bool mStarted = false;
-	
-	size_t fontIndex = 0; // the current index into fontspans. we might be before the beginning of this index.
-	size_t colorAIndex = 0;
-};
-	
-} } // namespace cinder::text
-
-
-
-
-#endif

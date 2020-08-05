@@ -2365,6 +2365,7 @@
 		002DFD530FA5602900E45AE0 /* ObjLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; lineEnding = 0; path = ObjLoader.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
 		002F8F71103AFD9A0077CB91 /* System.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = System.h; sourceTree = "<group>"; };
 		002F8F74103AFEBF0077CB91 /* System.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; path = System.cpp; sourceTree = "<group>"; };
+		0030723324D74BC300F3FB3B /* IntervalMap.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IntervalMap.h; sourceTree = "<group>"; };
 		003133A3129EB85D009DC098 /* Blend.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Blend.h; path = ip/Blend.h; sourceTree = "<group>"; };
 		0031D7B81E9FCF5400668F15 /* Sampler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Sampler.h; path = gl/Sampler.h; sourceTree = "<group>"; };
 		0031D7B91E9FE45100668F15 /* Sampler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Sampler.cpp; path = gl/Sampler.cpp; sourceTree = "<group>"; };
@@ -4018,6 +4019,7 @@
 				27BE4DC41DA9E4B900DE84C8 /* ImageSourceFileStbImage.h */,
 				00BC89F110D2EA2200D6DC59 /* ImageTargetFileQuartz.h */,
 				27BE4DC51DA9E4B900DE84C8 /* ImageTargetFileStbImage.h */,
+				0030723324D74BC300F3FB3B /* IntervalMap.h */,
 				43F78EF51516DAE200EB63B5 /* Json.h */,
 				0003F47A1992DA7C00647C8B /* Log.h */,
 				00241AB00E830DBA004D34EB /* Matrix.h */,
