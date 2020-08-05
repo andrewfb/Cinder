@@ -102,7 +102,7 @@ class AttrString
 	const Font*			mCurrentFont;
 	mutable ssize_t		mCurrentFontStart = -1;
 	ColorA				mCurrentColor;
-	mutable ssize_t				mCurrentColorStart = -1;
+	mutable ssize_t		mCurrentColorStart = -1;
 	
 	std::u32string 		mString;
 };
@@ -134,7 +134,6 @@ class AttrStringIter {
 	const size_t		mStrLength;
 
 	IntervalMap<const Font*>::ConstMapIter		mFontIter;
-	bool										mFontDefault;
 	const Font*									mFont;
 };
 	

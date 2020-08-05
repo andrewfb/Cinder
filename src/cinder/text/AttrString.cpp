@@ -132,22 +132,20 @@ std::string AttrStringIter::getRunUtf8() const
 void AttrStringIter::firstRun()
 {
 	size_t fontEnd;
-	if( mAttrStr->mFonts.empty() ) {
-		mFontDefault = true;
-		fontEnd = mStrLength;
+	if( mAttrStr->mFonts.empty() ) { // no fonts means default
 		mFont = nullptr;
+		fontEnd = mStrLength;
 	}
 	else {
 		mFontIter = mAttrStr->mFonts.begin();
-		if( mFontIter->first > 0 ) {
-			mFontDefault = true;
+		if( mFontIter->first > 0 ) { // first font span starts after start of string
+			mFont = nullptr;
 			fontEnd = mFontIter->first;
 		}
 		else {
-			mFontDefault = false;
+			mFont = mFontIter->second.value;
 			fontEnd = mFontIter->second.limit;
 		}
-		mFont = mFontIter->second.value;
 	}
 	
 	mStrEndOffset = fontEnd;
@@ -160,25 +158,18 @@ void AttrStringIter::advance()
 	mStrStartOffset = mStrEndOffset;
 	if( ! mAttrStr->mFonts.empty() && mFontIter != mAttrStr->mFonts.end() ) {
 		if( mStrStartOffset < mFontIter->first ) { // still before this span
-			CI_ASSERT( mFontDefault );
+			mFont = nullptr;
 		}
-		else if( mStrStartOffset < mFontIter->second.limit ) { // inside this span
-//			s = mFontIter->second.limit; 
-//			CI_ASSERT( ! mFontDefault );
-		}
-		else {
+		else if( mStrStartOffset >= mFontIter->second.limit ) { // need to increment iterator
 			++mFontIter;
 			if( mFontIter == mAttrStr->mFonts.end() ) { // hit the end of the fonts
-				mFontDefault = true;
 				mFont = nullptr;
 			}
-			if( mStrStartOffset < mFontIter->first ) {
-				mFontDefault = true;
-				newStrEnd = std::min( newStrEnd, mFontIter->first );
+			if( mStrStartOffset < mFontIter->first ) { // before this span
 				mFont = nullptr; 
+				newStrEnd = std::min( newStrEnd, mFontIter->first );
 			}
 			else {
-				mFontDefault = false;
 				mFont = mFontIter->second.value;
 				newStrEnd = std::min( newStrEnd, mFontIter->second.limit );
 			}
@@ -186,7 +177,6 @@ void AttrStringIter::advance()
 	}
 	
 	mStrEndOffset = newStrEnd;
-	mFont = mFontIter->second.value;
 }
 
 bool AttrStringIter::nextRun()
