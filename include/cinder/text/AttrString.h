@@ -99,10 +99,10 @@ class AttrString
 	mutable IntervalMap<ColorA> 			mColorAs;
 //	std::vector<std::pair<size_t,ColorA8u>>	mColors;
 	
-	const Font*			mCurrentFont;
-	mutable ssize_t		mCurrentFontStart = -1;
-	ColorA				mCurrentColor;
-	mutable ssize_t		mCurrentColorStart = -1;
+	const Font*		mCurrentFont;
+	ssize_t			mCurrentFontStart = -1;
+	ColorA			mCurrentColor;
+	ssize_t			mCurrentColorStart = -1;
 	
 	std::u32string 		mString;
 };
@@ -135,6 +135,7 @@ class AttrStringIter {
 
 	IntervalMap<const Font*>::ConstMapIter		mFontIter;
 	const Font*									mFont;
+	bool										mFontsDone;
 };
 	
 } } // namespace cinder::text

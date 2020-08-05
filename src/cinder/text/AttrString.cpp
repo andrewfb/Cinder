@@ -66,11 +66,6 @@ AttrString& AttrString::operator<<( const Font *font )
 
 AttrStringIter AttrString::iterate() const
 {
-	// terminate current Font span
-	if( mCurrentFontStart >= 0 )
-		mFonts.set( mCurrentFontStart, mString.size(), mCurrentFont ); 	
-	mCurrentFontStart = -1;
-	
 	return AttrStringIter( this );
 }
 
@@ -120,7 +115,7 @@ void AttrString::setFontSpans( const std::vector<FontSpan> &spans )
 //
 
 AttrStringIter::AttrStringIter( const AttrString *attrStr )
-	: mAttrStr( attrStr ), mStrStartOffset( 0 ), mStrLength( attrStr->size() ), mFirstRun( true )
+	: mAttrStr( attrStr ), mStrStartOffset( 0 ), mStrLength( attrStr->size() ), mFirstRun( true ), mFontsDone( false )
 {
 }
 
@@ -135,6 +130,7 @@ void AttrStringIter::firstRun()
 	if( mAttrStr->mFonts.empty() ) { // no fonts means default
 		mFont = nullptr;
 		fontEnd = mStrLength;
+		mFontsDone = true;
 	}
 	else {
 		mFontIter = mAttrStr->mFonts.begin();
@@ -156,23 +152,38 @@ void AttrStringIter::advance()
 {
 	size_t newStrEnd = mStrLength;
 	mStrStartOffset = mStrEndOffset;
-	if( ! mAttrStr->mFonts.empty() && mFontIter != mAttrStr->mFonts.end() ) {
-		if( mStrStartOffset < mFontIter->first ) { // still before this span
-			mFont = nullptr;
-		}
-		else if( mStrStartOffset >= mFontIter->second.limit ) { // need to increment iterator
+	
+	if( ! mFontsDone ) {
+		size_t fontSpanStart, fontSpanEnd;
+		const Font *fontSpanFont = nullptr;
+		
+		if( mStrStartOffset >= mFontIter->second.limit ) // time to increment
 			++mFontIter;
-			if( mFontIter == mAttrStr->mFonts.end() ) { // hit the end of the fonts
-				mFont = nullptr;
-			}
-			if( mStrStartOffset < mFontIter->first ) { // before this span
-				mFont = nullptr; 
-				newStrEnd = std::min( newStrEnd, mFontIter->first );
+
+		if( mFontIter == mAttrStr->mFonts.end() ) { // hit the end of the fonts interval map; see if we have an active font on the AttrString
+			if( mAttrStr->mCurrentFontStart >= 0 ) {
+				fontSpanStart = mAttrStr->mCurrentFontStart;
+				fontSpanEnd = mStrLength;
+				fontSpanFont = mAttrStr->mCurrentFont;
 			}
 			else {
-				mFont = mFontIter->second.value;
-				newStrEnd = std::min( newStrEnd, mFontIter->second.limit );
+				mFontsDone = true;
+				fontSpanStart = mStrLength; // will fail range test
 			}
+		}
+		else {
+			fontSpanStart = mFontIter->first;
+			fontSpanEnd = mFontIter->second.limit;
+			fontSpanFont = mFontIter->second.value;
+		}
+
+		if( mStrStartOffset < fontSpanStart ) { // still before this span
+			mFont = nullptr;
+		}
+		else {
+			CI_ASSERT( mStrStartOffset <= fontSpanEnd );
+			mFont = fontSpanFont;
+			newStrEnd = std::min( newStrEnd, fontSpanEnd );
 		}
 	}
 	
