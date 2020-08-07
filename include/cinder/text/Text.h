@@ -63,7 +63,7 @@ inline Font*		loadFont( Face *face, float size ) { return Manager::get()->loadFo
 
 void measureString( const AttrString& attrString, float *resultWidth, float *resultHeight = nullptr, float *resultBaseline = nullptr );
 
-Channel8u	renderString( const Font *font, const char *utf8String );
+Channel8u	renderString( const Font *font, const char *utf8String, float tracking = 0 );
 Channel8u	renderString( const AttrString &attrString );
 
 

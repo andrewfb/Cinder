@@ -96,9 +96,9 @@ Font* Manager::loadFont( Face *face, float size )
 	return result;
 }
 
-Channel8u renderString( const Font *font, const char *utf8String )
+Channel8u renderString( const Font *font, const char *utf8String, float tracking )
 { 
-	return font->renderString( utf8String );
+	return font->renderString( utf8String, tracking );
 }
 
 void measureString( const AttrString& attrString, float *resultWidth, float *resultHeight, float *resultBaseline )
@@ -107,7 +107,8 @@ void measureString( const AttrString& attrString, float *resultWidth, float *res
 	auto runIt = attrString.iterate();
 	while( runIt.nextRun() ) {
 		float glyphsWidth;
-		runIt.getRunFont()->shapeString( runIt.getRunStrPtr(), runIt.getRunLength(), nullptr, nullptr, &glyphsWidth );
+		float tracking = runIt.getRunTracking();
+		runIt.getRunFont()->shapeString( runIt.getRunStrPtr(), runIt.getRunLength(), tracking, nullptr, nullptr, &glyphsWidth );
 		measuredWidth += glyphsWidth;
 		measuredHeight = std::max<float>( measuredHeight, runIt.getRunFont()->getHeight() );
 		measuredBaseline = std::max<float>( measuredBaseline, runIt.getRunFont()->getAscender() );
@@ -137,9 +138,10 @@ Channel8u renderString( const AttrString &attrString )
 	auto runIt = attrString.iterate();
 	float penX = 0, runWidth;
 	while( runIt.nextRun() ) {
-		const Font *font = runIt.getRunFont(); 
+		const Font *font = runIt.getRunFont();
+		float tracking = runIt.getRunTracking();
 		font->lock();
-		font->shapeString( runIt.getRunStrPtr(), runIt.getRunLength(), &glyphIndices, &glyphPositions, &runWidth );
+		font->shapeString( runIt.getRunStrPtr(), runIt.getRunLength(), tracking, &glyphIndices, &glyphPositions, &runWidth );
 		for( size_t i = 0; i < glyphIndices.size(); ++i ) {
 			if( FT_Error err = FT_Load_Glyph( font->getFace()->getFtFace(), glyphIndices[i], FT_LOAD_DEFAULT ) )
 				throw text::FreeTypeExc( err );

@@ -155,7 +155,7 @@ void TextTestApp::setup()
 	console() << "Width: " << mFont17->calcStringWidth( "Hello World" ) << std::endl;
 	vector<uint32_t> indices;
 	vector<float> positions;
-	mFont17->shapeString( "Héllo World", &indices, &positions );
+	mFont17->shapeString( "Héllo World", 0, &indices, &positions );
 	
 	for( size_t i = 0; i < indices.size(); ++i ) {
 		Shape2d temp = mFont17->getGlyphShape( indices[i] );
@@ -166,7 +166,9 @@ void TextTestApp::setup()
 //	mChannel = mFont17->renderString( "Hello World" );
 //	mTex = gl::Texture::create( mChannel );
 
-	mChannel = renderString( text::AttrString() << mFont17 << "Hello" << mFont36 << " BIG " << mFont17 << "boi" );
+	auto str = text::AttrString() << mFont17 << "Hello" << mFont36 << text::AttrString::Tracking( 33 ) << " BIG " << mFont17 << "boi";
+	//str.setTracking( 7, 9, text::AttrString::Tracking( 5 ) );
+	mChannel = renderString( str );
 	mTex = gl::Texture::create( mChannel );
 }
 

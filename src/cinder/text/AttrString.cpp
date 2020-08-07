@@ -64,6 +64,12 @@ AttrString& AttrString::operator<<( const Font *font )
 	return *this;
 }
 
+AttrString& AttrString::operator<<( Tracking tracking )
+{
+	setTracking( tracking );
+	return *this;
+}
+
 AttrStringIter AttrString::iterate() const
 {
 	return AttrStringIter( this );
@@ -92,6 +98,21 @@ void AttrString::setFont( const Font *font )
 void AttrString::setFont( size_t start, size_t end, const Font* f )
 {
 	mFonts.set( start, end, f );
+}
+
+void AttrString::setTracking( Tracking tracking )
+{
+	// terminate current Tracking span
+	if( mCurrentTrackingStart >= 0 )
+		mTrackings.set( mCurrentTrackingStart, mString.size(), mCurrentTracking ); 
+	
+	mCurrentTracking = tracking;
+	mCurrentTrackingStart = mString.size();
+}
+
+void AttrString::setTracking( size_t start, size_t end, Tracking tracking )
+{
+	mTrackings.set( start, end, tracking ); 
 }
 
 std::vector<AttrString::FontSpan> AttrString::getFontSpans() const
@@ -126,6 +147,9 @@ std::string AttrStringIter::getRunUtf8() const
 
 void AttrStringIter::firstRun()
 {
+	mStrEndOffset = mStrLength;
+
+	// font
 	size_t fontEnd;
 	if( mAttrStr->mFonts.empty() ) { // no fonts means default
 		mFont = nullptr;
@@ -142,9 +166,28 @@ void AttrStringIter::firstRun()
 			mFont = mFontIter->second.value;
 			fontEnd = mFontIter->second.limit;
 		}
-	}
+	}	
+	mStrEndOffset = std::min( mStrEndOffset, fontEnd );
 	
-	mStrEndOffset = fontEnd;
+	// tracking
+	size_t trackingEnd;
+	if( mAttrStr->mTrackings.empty() ) { // no trackings means default
+		mTracking = AttrString::Tracking();
+		trackingEnd = mStrLength;
+		mTrackingsDone = true;
+	}
+	else {
+		mTrackingIter = mAttrStr->mTrackings.begin();
+		if( mTrackingIter->first > 0 ) { // first tracking span starts after start of string
+			mTracking = AttrString::Tracking();
+			trackingEnd = mTrackingIter->first;
+		}
+		else {
+			mTracking = mTrackingIter->second.value;
+			trackingEnd = mTrackingIter->second.limit;
+		}
+	}	
+	mStrEndOffset = std::min( mStrEndOffset, trackingEnd );
 }
 
 // move all iterators forward so that their starts >= mStrStartOffset
@@ -152,7 +195,8 @@ void AttrStringIter::advance()
 {
 	size_t newStrEnd = mStrLength;
 	mStrStartOffset = mStrEndOffset;
-	
+
+	// font
 	if( ! mFontsDone ) {
 		size_t fontSpanStart, fontSpanEnd;
 		const Font *fontSpanFont = nullptr;
@@ -184,6 +228,40 @@ void AttrStringIter::advance()
 			CI_ASSERT( mStrStartOffset <= fontSpanEnd );
 			mFont = fontSpanFont;
 			newStrEnd = std::min( newStrEnd, fontSpanEnd );
+		}
+	}
+
+	if( ! mTrackingsDone ) {
+		size_t trackingSpanStart, trackingSpanEnd;
+		AttrString::Tracking trackingSpanTracking;
+		
+		if( mStrStartOffset >= mTrackingIter->second.limit ) // time to increment
+			++mTrackingIter;
+
+		if( mTrackingIter == mAttrStr->mTrackings.end() ) { // hit the end of the tracking interval map; see if we have an active tracking on the AttrString
+			if( mAttrStr->mCurrentTrackingStart >= 0 ) {
+				trackingSpanStart = mAttrStr->mCurrentTrackingStart;
+				trackingSpanEnd = mStrLength;
+				trackingSpanTracking = mAttrStr->mCurrentTracking;
+			}
+			else {
+				mTrackingsDone = true;
+				trackingSpanStart = mStrLength; // will fail range test
+			}
+		}
+		else {
+			trackingSpanStart = mTrackingIter->first;
+			trackingSpanEnd = mTrackingIter->second.limit;
+			trackingSpanTracking = mTrackingIter->second.value;
+		}
+
+		if( mStrStartOffset < trackingSpanStart ) { // still before this span
+			mTracking = AttrString::Tracking();
+		}
+		else {
+			CI_ASSERT( mStrStartOffset <= trackingSpanEnd );
+			mTracking = trackingSpanTracking;
+			newStrEnd = std::min( newStrEnd, trackingSpanEnd );
 		}
 	}
 	

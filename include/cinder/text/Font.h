@@ -75,16 +75,16 @@ class Font {
   	hb_font_t*		getHbFont() { return mHbFont; }
 
 	//! Returns string width in pixels of UTF-8 string \a utf8String
-	float 			calcStringWidth( const char *utf8String ) const;
+	float 			calcStringWidth( const char *utf8String, float tracking = 0 ) const;
 	
 	//! Returns string width in pixels
-	void 			shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr, float *outPixelWidth = nullptr ) const;
-	void 			shapeString( const char32_t *utf32String, size_t length, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr, float *outPixelWidth = nullptr ) const;
-	Channel8u		renderString( const char *utf8String ) const;
+	void 			shapeString( const char *utf8String, float tracking, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr, float *outPixelWidth = nullptr ) const;
+	void 			shapeString( const char32_t *utf32String, size_t length, float tracking, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions = nullptr, float *outPixelWidth = nullptr ) const;
+	Channel8u		renderString( const char *utf8String, float tracking = 0 ) const;
 
   private:
 	Font( Face *face, float size );
-	void 		shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const;
+	void 		shapeBuffer( hb_buffer_t *buf, float tracking, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const;
 
 	//! Returns size as 26.6 fixed point
   	int32_t		getDiscreteSize() const { return static_cast<int32_t>( mSize * 64 ); }

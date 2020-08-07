@@ -175,7 +175,7 @@ cinder::Shape2d	Font::getGlyphShape( uint32_t glyphIndex ) const
 	return result;
 }
 
-float Font::calcStringWidth( const char *utf8String ) const
+float Font::calcStringWidth( const char *utf8String, float tracking ) const
 {
 	hb_buffer_t *buf = hb_buffer_create();
 
@@ -199,14 +199,17 @@ float Font::calcStringWidth( const char *utf8String ) const
 	unsigned int string_width_in_pixels = 0;
 	for (int i = 0; i < glyph_count; ++i) {
 		string_width_in_pixels += glyph_pos[i].x_advance / 64.0;
+		string_width_in_pixels += tracking;
 	}
+	if( glyph_count > 1 )
+		string_width_in_pixels -= tracking;
 	
 	hb_buffer_destroy( buf );
 	
 	return string_width_in_pixels;
 }
 
-void Font::shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
+void Font::shapeString( const char *utf8String, float tracking, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
 {
 	hb_buffer_t *buf = hb_buffer_create();
 
@@ -218,12 +221,12 @@ void Font::shapeString( const char *utf8String, std::vector<uint32_t> *outGlyphI
 	// Add text and layout it
 	hb_buffer_add_utf8( buf, utf8String, -1, 0, -1 );
 	
-	shapeBuffer( buf, outGlyphIndices, outGlyphPositions, outPixelWidth );
+	shapeBuffer( buf, tracking, outGlyphIndices, outGlyphPositions, outPixelWidth );
 	
 	hb_buffer_destroy( buf );
 }  
 
-void Font::shapeString( const char32_t *utf32String, size_t length, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
+void Font::shapeString( const char32_t *utf32String, size_t length, float tracking, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
 {
 	hb_buffer_t *buf = hb_buffer_create();
 
@@ -235,12 +238,12 @@ void Font::shapeString( const char32_t *utf32String, size_t length, std::vector<
 	// Add text and layout it
 	hb_buffer_add_utf32( buf, (const uint32_t*)utf32String, (int)length, 0, -1 );
 	
-	shapeBuffer( buf, outGlyphIndices, outGlyphPositions, outPixelWidth );
+	shapeBuffer( buf, tracking, outGlyphIndices, outGlyphPositions, outPixelWidth );
 	
 	hb_buffer_destroy( buf );
 }  
 
-void Font::shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
+void Font::shapeBuffer( hb_buffer_t *buf, float tracking, std::vector<uint32_t> *outGlyphIndices, std::vector<float> *outGlyphPositions, float *outPixelWidth ) const
 {
 	mFace->lock();
 	FT_Activate_Size( mFtSize );
@@ -266,19 +269,21 @@ void Font::shapeBuffer( hb_buffer_t *buf, std::vector<uint32_t> *outGlyphIndices
 			if( outGlyphPositions )
 				(*outGlyphPositions)[g] = (float)offset;
 			offset += glyph_positions[g].x_advance / 64.0;
+			offset += (double)tracking;
 		}
+		offset -= ( glyphCount > 1 ) ? tracking : 0;
 		
 		if( outPixelWidth )
 			*outPixelWidth = (float)offset;
 	}
 }
 
-Channel8u Font::renderString( const char *utf8String ) const
+Channel8u Font::renderString( const char *utf8String, float tracking ) const
 {
 	std::vector<uint32_t> glyphIndices;
 	std::vector<float> glyphPositions;
 	float glyphsWidth;
-	shapeString( utf8String, &glyphIndices, &glyphPositions, &glyphsWidth );
+	shapeString( utf8String, tracking, &glyphIndices, &glyphPositions, &glyphsWidth );
 	
 	Channel8u result( (int32_t)ceilf( glyphsWidth ), getHeight() );
 	ip::fill( &result, (uint8_t)0 );

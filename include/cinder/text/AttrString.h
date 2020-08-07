@@ -63,6 +63,7 @@ class AttrString
 	friend AttrStringIter;
 
 	struct Tracking {
+		Tracking() : mTracking( 0 ) {}
 		Tracking( float tracking ) : mTracking( tracking ) {}
 		
 		float	mTracking;
@@ -74,15 +75,16 @@ class AttrString
 	AttrString& operator<<( const std::string &utf8Str );
 	AttrString& operator<<( const char *utf8Str );
 	AttrString& operator<<( const Font *font );
+	AttrString& operator<<( Tracking tracking );
 
 	void 	setFont( size_t start, size_t end, const Font *font );
 	void 	setFont( const Font *font );
 	void 	setColorA( size_t start, size_t end, ColorA s );
+	void	setTracking( Tracking tracking );
+	void	setTracking( size_t start, size_t end, Tracking tracking );
 
 	void	append( const std::string &utf8Str );
 	void	append( const char *utf8Str );
-	void	append( Tracking tracking ) { appendTracking( tracking.mTracking ); }
-	void	appendTracking( float tracking );
 //	void	append( const ColorA8u &color );
 
 	size_t	size() const { return mString.size(); }
@@ -95,14 +97,17 @@ class AttrString
 	std::vector<FontSpan>		getFontSpans() const;
 	void						setFontSpans( const std::vector<FontSpan> &spans );
   protected:
-	mutable IntervalMap<const Font*> 		mFonts;
-	mutable IntervalMap<ColorA> 			mColorAs;
+	IntervalMap<const Font*> 		mFonts;
+	IntervalMap<ColorA> 			mColorAs;
+	IntervalMap<Tracking>			mTrackings; 
 //	std::vector<std::pair<size_t,ColorA8u>>	mColors;
 	
 	const Font*		mCurrentFont;
 	ssize_t			mCurrentFontStart = -1;
 	ColorA			mCurrentColor;
 	ssize_t			mCurrentColorStart = -1;
+	Tracking		mCurrentTracking;
+	ssize_t			mCurrentTrackingStart = -1;
 	
 	std::u32string 		mString;
 };
@@ -115,10 +120,11 @@ class AttrStringIter {
   public:
 	bool	nextRun();
 	
-	ssize_t			getRunLength() const { return mStrEndOffset - mStrStartOffset; }
-	const char32_t*	getRunStrPtr() { return &mAttrStr->mString[mStrStartOffset]; }
-	std::string		getRunUtf8() const;
-	const Font*		getRunFont() { return mFont; }
+	ssize_t					getRunLength() const { return mStrEndOffset - mStrStartOffset; }
+	const char32_t*			getRunStrPtr() { return &mAttrStr->mString[mStrStartOffset]; }
+	std::string				getRunUtf8() const;
+	const Font*				getRunFont() { return mFont; }
+	float					getRunTracking() const { return mTracking.mTracking; }
 //  	bool			getRunTrackingIsConstant() const { return mRunTrackingIsConstant; }
 //  	void			getRunTrackingValue() const { return mRunTrackingValue; }
   	
@@ -130,12 +136,16 @@ class AttrStringIter {
 	const AttrString	*mAttrStr;
 
 	bool				mFirstRun;
-	ssize_t				mStrStartOffset, mStrEndOffset;
+	size_t				mStrStartOffset, mStrEndOffset;
 	const size_t		mStrLength;
 
 	IntervalMap<const Font*>::ConstMapIter		mFontIter;
 	const Font*									mFont;
 	bool										mFontsDone;
+
+	IntervalMap<AttrString::Tracking>::ConstMapIter	mTrackingIter;
+	AttrString::Tracking							mTracking;
+	bool											mTrackingsDone;
 };
 	
 } } // namespace cinder::text
