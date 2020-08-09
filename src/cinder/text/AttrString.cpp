@@ -60,7 +60,7 @@ AttrString& AttrString::operator<<( const char *utf8Str )
 
 AttrString& AttrString::operator<<( const Font *font )
 {
-	setFont( font );
+	setCurrentFont( font );
 	return *this;
 }
 
@@ -78,30 +78,31 @@ AttrStringIter AttrString::iterate() const
 void AttrString::append( const string &utf8Str )
 {
 	mString.append( ci::toUtf32( utf8Str ) );
-	if( mCurrentTrackingActive )
-		mTrackings.setEndLimit( mString.size() );
+	extendCurrentLimits();
 }
 
 void AttrString::append( const char *utf8Str )
 {
 	mString.append( ci::toUtf32( utf8Str ) );
+	extendCurrentLimits();
+}
+
+void AttrString::extendCurrentLimits()
+{
+	if( mCurrentFontActive )
+		mFonts.setEndLimit( mString.size() );
 	if( mCurrentTrackingActive )
 		mTrackings.setEndLimit( mString.size() );
 }
 
-void AttrString::setFont( const Font *font )
+void AttrString::setCurrentFont( const Font *font )
 {
-	// terminate current Font span
-	if( mCurrentFontStart >= 0 )
-		mFonts.set( mCurrentFontStart, mString.size(), mCurrentFont ); 
-	
-	mCurrentFont = font;
-	mCurrentFontStart = mString.size();
-}
-
-void AttrString::setFont( size_t start, size_t end, const Font* f )
-{
-	mFonts.set( start, end, f );
+	if( font ) {
+		mFonts.set( mString.size(), mString.size(), font );
+		mCurrentFontActive = true;
+	}
+	else
+		mCurrentFontActive = false;
 }
 
 void AttrString::setCurrentTracking( Tracking tracking )
@@ -112,6 +113,14 @@ void AttrString::setCurrentTracking( Tracking tracking )
 	}
 	else
 		mCurrentTrackingActive = false;
+}
+
+void AttrString::setFont( size_t start, size_t end, const Font* font )
+{
+	if( ! font )
+		mFonts.clearInterval( start, end );
+	else
+		mFonts.set( start, end, font );
 }
 
 void AttrString::setTracking( size_t start, size_t end, Tracking tracking )
@@ -222,15 +231,8 @@ void AttrStringIter::advance()
 			++mFontIter;
 
 		if( mFontIter == mAttrStr->mFonts.end() ) { // hit the end of the fonts interval map; see if we have an active font on the AttrString
-			if( mAttrStr->mCurrentFontStart >= 0 ) {
-				fontSpanStart = mAttrStr->mCurrentFontStart;
-				fontSpanEnd = mStrLength;
-				fontSpanFont = mAttrStr->mCurrentFont;
-			}
-			else {
-				mFontsDone = true;
-				fontSpanStart = mStrLength; // will fail range test
-			}
+			mFontsDone = true;
+			fontSpanStart = mStrLength; // will fail range test
 		}
 		else {
 			fontSpanStart = mFontIter->first;

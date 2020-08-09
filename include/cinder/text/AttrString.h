@@ -81,10 +81,10 @@ class AttrString
 	AttrString& operator<<( const Font *font );
 	AttrString& operator<<( Tracking tracking );
 
-	void 	setFont( size_t start, size_t end, const Font *font );
-	void 	setFont( const Font *font );
-	void 	setColorA( size_t start, size_t end, ColorA s );
+	void 	setCurrentFont( const Font *font );
 	void	setCurrentTracking( Tracking tracking );
+	void 	setColorA( size_t start, size_t end, ColorA s );
+	void 	setFont( size_t start, size_t end, const Font *font );
 	void	setTracking( size_t start, size_t end, Tracking tracking );
 
 	void	append( const std::string &utf8Str );
@@ -103,15 +103,16 @@ class AttrString
 	
 	void						printDebug();
   protected:
+	void						extendCurrentLimits();
+
 	IntervalMap<const Font*> 		mFonts;
 	IntervalMap<ColorA> 			mColorAs;
 	IntervalMap<Tracking>			mTrackings; 
 //	std::vector<std::pair<size_t,ColorA8u>>	mColors;
 	
-	const Font*		mCurrentFont;
-	ssize_t			mCurrentFontStart = -1;
 	ColorA			mCurrentColor;
 	ssize_t			mCurrentColorStart = -1;
+	bool			mCurrentFontActive = false;
 	bool			mCurrentTrackingActive = false;
 	
 	std::u32string 		mString;
