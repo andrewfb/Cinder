@@ -166,9 +166,12 @@ void TextTestApp::setup()
 //	mChannel = mFont17->renderString( "Hello World" );
 //	mTex = gl::Texture::create( mChannel );
 
-	auto str = text::AttrString() << mFont17 << "Hello" << mFont36 << text::AttrString::Tracking( 33 ) << " BIG " << mFont17 << "boi";
+	//auto str = text::AttrString() << mFont17 << "Herro" << mFont36 << text::AttrString::Tracking( 40 ) << " BIG " << text::AttrString::Tracking(2) << text::AttrString::Tracking(3) << text::AttrString::Tracking() << mFont17 << "boi";
+	auto str = text::AttrString() << mFont17 << "Herro" << mFont36 << text::AttrString::Tracking( 40 ) << text::AttrString::Tracking( 36 ) << " BIG ";
+	str.printDebug();
 	//str.setTracking( 7, 9, text::AttrString::Tracking( 5 ) );
 	mChannel = renderString( str );
+	std::cout << "Texture width: " << mChannel.getWidth() << std::endl;
 	mTex = gl::Texture::create( mChannel );
 }
 

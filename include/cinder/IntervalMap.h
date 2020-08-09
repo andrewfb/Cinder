@@ -64,6 +64,8 @@ class IntervalMap {
   
   const std::map<size_t, Value>& getIntervals() const { return interval_start_; }
 
+  void  setEndLimit( size_t limit ) { interval_start_.rbegin()->second.limit = limit; }
+
  private:
   // For an interval to be valid, start must be strictly less than limit.
   void AssertValidInterval(size_t start, size_t limit) const;
@@ -217,8 +219,8 @@ void IntervalMap<V>::Insert(size_t start, size_t limit, const V& value) {
 
 template <class V>
 void IntervalMap<V>::AssertValidInterval(size_t start, size_t limit) const {
-  if (start >= limit) {
-    std::cerr << "Invalid interval. Start may not be >= limit." << std::endl
+  if (start > limit) {
+    std::cerr << "Invalid interval. Start may not be > limit." << std::endl
               << "Start: " << start << std::endl
               << "Limit: " << limit << std::endl;
     abort();

@@ -66,7 +66,7 @@ AttrString& AttrString::operator<<( const Font *font )
 
 AttrString& AttrString::operator<<( Tracking tracking )
 {
-	setTracking( tracking );
+	setCurrentTracking( tracking );
 	return *this;
 }
 
@@ -78,11 +78,15 @@ AttrStringIter AttrString::iterate() const
 void AttrString::append( const string &utf8Str )
 {
 	mString.append( ci::toUtf32( utf8Str ) );
+	if( mCurrentTrackingActive )
+		mTrackings.setEndLimit( mString.size() );
 }
 
 void AttrString::append( const char *utf8Str )
 {
 	mString.append( ci::toUtf32( utf8Str ) );
+	if( mCurrentTrackingActive )
+		mTrackings.setEndLimit( mString.size() );
 }
 
 void AttrString::setFont( const Font *font )
@@ -100,19 +104,22 @@ void AttrString::setFont( size_t start, size_t end, const Font* f )
 	mFonts.set( start, end, f );
 }
 
-void AttrString::setTracking( Tracking tracking )
+void AttrString::setCurrentTracking( Tracking tracking )
 {
-	// terminate current Tracking span
-	if( mCurrentTrackingStart >= 0 )
-		mTrackings.set( mCurrentTrackingStart, mString.size(), mCurrentTracking ); 
-	
-	mCurrentTracking = tracking;
-	mCurrentTrackingStart = mString.size();
+	if( ! tracking.isDefault() ) {
+		mTrackings.set( mString.size(), mString.size(), tracking ); 
+		mCurrentTrackingActive = true;
+	}
+	else
+		mCurrentTrackingActive = false;
 }
 
 void AttrString::setTracking( size_t start, size_t end, Tracking tracking )
 {
-	mTrackings.set( start, end, tracking ); 
+	if( tracking.isDefault() )
+		mTrackings.clearInterval( start, end );
+	else
+		mTrackings.set( start, end, tracking ); 
 }
 
 std::vector<AttrString::FontSpan> AttrString::getFontSpans() const
@@ -130,6 +137,16 @@ void AttrString::setFontSpans( const std::vector<FontSpan> &spans )
 	mFonts.clear();
 	for( auto &s : spans )
 	 	mFonts.set( s.start, s.end, s.value );
+}
+
+void AttrString::printDebug()
+{
+	auto runIt = iterate();
+	while( runIt.nextRun() ) {
+		float tracking = runIt.getRunTracking();
+		std::cout << "{ '" << runIt.getRunUtf8() << "' Font:" << *runIt.getRunFont() << " Tracking: " << tracking << std::endl;
+	}
+	std::cout << std::endl; 
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -239,15 +256,8 @@ void AttrStringIter::advance()
 			++mTrackingIter;
 
 		if( mTrackingIter == mAttrStr->mTrackings.end() ) { // hit the end of the tracking interval map; see if we have an active tracking on the AttrString
-			if( mAttrStr->mCurrentTrackingStart >= 0 ) {
-				trackingSpanStart = mAttrStr->mCurrentTrackingStart;
-				trackingSpanEnd = mStrLength;
-				trackingSpanTracking = mAttrStr->mCurrentTracking;
-			}
-			else {
-				mTrackingsDone = true;
-				trackingSpanStart = mStrLength; // will fail range test
-			}
+			mTrackingsDone = true;
+			trackingSpanStart = mStrLength; // will fail range test
 		}
 		else {
 			trackingSpanStart = mTrackingIter->first;

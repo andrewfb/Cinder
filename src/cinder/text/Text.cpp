@@ -109,6 +109,7 @@ void measureString( const AttrString& attrString, float *resultWidth, float *res
 		float glyphsWidth;
 		float tracking = runIt.getRunTracking();
 		runIt.getRunFont()->shapeString( runIt.getRunStrPtr(), runIt.getRunLength(), tracking, nullptr, nullptr, &glyphsWidth );
+		std::cout << " gw: " << glyphsWidth << std::endl;
 		measuredWidth += glyphsWidth;
 		measuredHeight = std::max<float>( measuredHeight, runIt.getRunFont()->getHeight() );
 		measuredBaseline = std::max<float>( measuredBaseline, runIt.getRunFont()->getAscender() );

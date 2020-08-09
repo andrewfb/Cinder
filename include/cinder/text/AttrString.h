@@ -63,10 +63,14 @@ class AttrString
 	friend AttrStringIter;
 
 	struct Tracking {
-		Tracking() : mTracking( 0 ) {}
-		Tracking( float tracking ) : mTracking( tracking ) {}
+		Tracking() : mDefault( true ), mValue( 0 ) {}
+		Tracking( float tracking ) : mDefault( false ), mValue( tracking ) {}
 		
-		float	mTracking;
+		float		getValue() const { return mDefault ? 0 : mValue; }
+		bool		isDefault() const { return mDefault; }
+		
+		bool		mDefault;
+		float		mValue;
 	};
 
 	AttrString();
@@ -80,7 +84,7 @@ class AttrString
 	void 	setFont( size_t start, size_t end, const Font *font );
 	void 	setFont( const Font *font );
 	void 	setColorA( size_t start, size_t end, ColorA s );
-	void	setTracking( Tracking tracking );
+	void	setCurrentTracking( Tracking tracking );
 	void	setTracking( size_t start, size_t end, Tracking tracking );
 
 	void	append( const std::string &utf8Str );
@@ -96,6 +100,8 @@ class AttrString
 
 	std::vector<FontSpan>		getFontSpans() const;
 	void						setFontSpans( const std::vector<FontSpan> &spans );
+	
+	void						printDebug();
   protected:
 	IntervalMap<const Font*> 		mFonts;
 	IntervalMap<ColorA> 			mColorAs;
@@ -106,8 +112,7 @@ class AttrString
 	ssize_t			mCurrentFontStart = -1;
 	ColorA			mCurrentColor;
 	ssize_t			mCurrentColorStart = -1;
-	Tracking		mCurrentTracking;
-	ssize_t			mCurrentTrackingStart = -1;
+	bool			mCurrentTrackingActive = false;
 	
 	std::u32string 		mString;
 };
@@ -124,7 +129,7 @@ class AttrStringIter {
 	const char32_t*			getRunStrPtr() { return &mAttrStr->mString[mStrStartOffset]; }
 	std::string				getRunUtf8() const;
 	const Font*				getRunFont() { return mFont; }
-	float					getRunTracking() const { return mTracking.mTracking; }
+	float					getRunTracking() const { return mTracking.getValue(); }
 //  	bool			getRunTrackingIsConstant() const { return mRunTrackingIsConstant; }
 //  	void			getRunTrackingValue() const { return mRunTrackingValue; }
   	
