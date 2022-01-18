@@ -48,8 +48,28 @@ namespace cinder {
 
 //! Additional convenience initializaiont and overloads for cinder types
 namespace ImGui {
+	class CI_API CinderRenderImpl {
+	  public:
+		virtual ~CinderRenderImpl() {}
+		virtual CinderRenderImpl* clone() const = 0;
+		virtual void init() = 0;
+		virtual void newFrame() = 0;
+		virtual void renderDrawData( ImDrawData *drawData ) = 0;
+		virtual void shutdown() = 0;
+	};
+
+	class CI_API CinderRenderImplOpenGl3 : public CinderRenderImpl {
+	  public:
+		~CinderRenderImplOpenGl3() override {}
+		CinderRenderImpl* clone() const override { return new CinderRenderImplOpenGl3{}; }
+		void init() override;
+		void newFrame() override;
+		void renderDrawData( ImDrawData *drawData ) override;
+		void shutdown() override;
+	};
+
 	struct CI_API Options {
-		//! Defaults to using the current window, the basic ImGui font and the dark theme
+		//! Defaults to using the current window, OpenGL3 renderer, the basic ImGui font and the dark theme
 		Options();
 
 		//! Sets the window that will be used to connect the signals and render ImGui
@@ -61,6 +81,9 @@ namespace ImGui {
 		Options& autoRender( bool autoRender );
 		//! returns whether the block should call ImGui::NewFrame and ImGui::Render automatically
 		bool isAutoRenderEnabled() const { return mAutoRender; }
+
+		Options& renderImpl( const CinderRenderImpl &renderImpl ) { mRenderImpl = std::shared_ptr<CinderRenderImpl>( renderImpl.clone() ); return *this; }
+		CinderRenderImpl*		getRenderImpl() const { return mRenderImpl.get(); }
 
 		//! Sets imgui ini file path
 		Options& iniPath( const ci::fs::path& path );
@@ -87,13 +110,14 @@ namespace ImGui {
 		//! Returns the ImGuiStyle used during initialization.
 		const ImGuiStyle& getStyle() const { return mStyle; }
 	protected:
-		bool							mAutoRender;
-		bool							mKeyboardEnabled;
-		bool							mGamepadEnabled;
-		ImGuiStyle						mStyle;
-		ci::app::WindowRef				mWindow;
-		ci::fs::path					mIniPath;
-		int								mSignalPriority;
+		bool								mAutoRender;
+		bool								mKeyboardEnabled;
+		bool								mGamepadEnabled;
+		ImGuiStyle							mStyle;
+		ci::app::WindowRef					mWindow;
+		std::shared_ptr<CinderRenderImpl>	mRenderImpl;
+		ci::fs::path						mIniPath;
+		int									mSignalPriority;
 	};
 
 	//! Convenience ImGui initialization for cinder applications.

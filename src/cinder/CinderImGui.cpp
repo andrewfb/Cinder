@@ -13,14 +13,39 @@
 #include <unordered_map>
 
 static bool sInitialized = false;
+static std::shared_ptr<ImGui::Options> sOptions;
 static bool sTriggerNewFrame = false;
 static std::vector<int> sAccelKeys;
 static ci::signals::ConnectionList sAppConnections;
 static std::unordered_map<ci::app::WindowRef, ci::signals::ConnectionList> sWindowConnections;
 
 namespace ImGui {
+	void CinderRenderImplOpenGl3::init()
+	{
+#if ! defined( CINDER_GL_ES )
+		ImGui_ImplOpenGL3_Init( "#version 150" );
+#else
+		ImGui_ImplOpenGL3_Init();
+#endif
+	}
+
+	void CinderRenderImplOpenGl3::newFrame()
+	{
+		ImGui_ImplOpenGL3_NewFrame();
+	}
+
+	void CinderRenderImplOpenGl3::renderDrawData( ImDrawData *drawData )
+	{
+		ImGui_ImplOpenGL3_RenderDrawData( drawData );
+	}
+
+	void CinderRenderImplOpenGl3::shutdown()
+	{
+		ImGui_ImplOpenGL3_Shutdown();
+	}
+
 	Options::Options()
-		: mWindow( ci::app::getWindow() ), mAutoRender( true ), mIniPath(), mSignalPriority( 1 ), mKeyboardEnabled( true ), mGamepadEnabled( true )
+		: mWindow( ci::app::getWindow() ), mAutoRender( true ), mIniPath(), mSignalPriority( 1 ), mKeyboardEnabled( true ), mGamepadEnabled( true ), mRenderImpl( new CinderRenderImplOpenGl3{} )
 	{
 		//! Default Cinder styling
 		mStyle.Alpha = 1.0f;                            // Global alpha applies to everything in ImGui
@@ -451,7 +476,7 @@ static void ImGui_ImplCinder_NewFrameGuard( const ci::app::WindowRef& window ) {
 	if( ! sTriggerNewFrame )
 		return;
 
-	ImGui_ImplOpenGL3_NewFrame();
+	sOptions->getRenderImpl()->newFrame();
 	
 	ImGuiIO& io = ImGui::GetIO();
 	IM_ASSERT( io.Fonts->IsBuilt() ); // Font atlas needs to be built, call renderer _NewFrame() function e.g. ImGui_ImplOpenGL3_NewFrame() 
@@ -473,11 +498,11 @@ static void ImGui_ImplCinder_NewFrameGuard( const ci::app::WindowRef& window ) {
 static void ImGui_ImplCinder_PostDraw()
 {
 	ImGui::Render();
-	ImGui_ImplOpenGL3_RenderDrawData( ImGui::GetDrawData() );
+	sOptions->getRenderImpl()->renderDrawData( ImGui::GetDrawData() );
 	sTriggerNewFrame = true;
 }
 
-static bool ImGui_ImplCinder_Init( const ci::app::WindowRef& window, const ImGui::Options& options )
+static bool ImGui_ImplCinder_Init( const ci::app::WindowRef& window )
 {
 	// Setup back-end capabilities flags
 	ImGuiIO& io = ImGui::GetIO();
@@ -505,7 +530,7 @@ static bool ImGui_ImplCinder_Init( const ci::app::WindowRef& window, const ImGui
 	io.KeyMap[ImGuiKey_Space] = ci::app::KeyEvent::KEY_SPACE;
 
 	ImGuiStyle& imGuiStyle = ImGui::GetStyle();
-	imGuiStyle = options.getStyle();
+	imGuiStyle = sOptions->getStyle();
 
 #ifndef CINDER_LINUX
 	// clipboard callbacks
@@ -520,7 +545,7 @@ static bool ImGui_ImplCinder_Init( const ci::app::WindowRef& window, const ImGui
 		return (const char*)&strCopy[0];
 	};
 #endif
-	int signalPriority = options.getSignalPriority();
+	int signalPriority = sOptions->getSignalPriority();
 	sWindowConnections[window] += window->getSignalMouseDown().connect( signalPriority, ImGui_ImplCinder_MouseDown );
 	sWindowConnections[window] += window->getSignalMouseUp().connect( signalPriority, ImGui_ImplCinder_MouseUp );
 	sWindowConnections[window] += window->getSignalMouseMove().connect( signalPriority, ImGui_ImplCinder_MouseMove );
@@ -529,7 +554,7 @@ static bool ImGui_ImplCinder_Init( const ci::app::WindowRef& window, const ImGui
 	sWindowConnections[window] += window->getSignalKeyDown().connect( signalPriority, ImGui_ImplCinder_KeyDown );
 	sWindowConnections[window] += window->getSignalKeyUp().connect( signalPriority, ImGui_ImplCinder_KeyUp );
 	sWindowConnections[window] += window->getSignalResize().connect( signalPriority, std::bind( ImGui_ImplCinder_Resize, window ) );
-	if( options.isAutoRenderEnabled() ) {
+	if( sOptions->isAutoRenderEnabled() ) {
 		sWindowConnections[window] += ci::app::App::get()->getSignalUpdate().connect( std::bind( ImGui_ImplCinder_NewFrameGuard, window ) );
 		sWindowConnections[window] += window->getSignalPostDraw().connect( ImGui_ImplCinder_PostDraw );
 	}
@@ -551,41 +576,39 @@ bool ImGui::Initialize( const ImGui::Options& options )
 {
 	if( sInitialized )
 		return false;
+	sOptions = std::make_shared<ImGui::Options>( options );
 
 	IMGUI_CHECKVERSION();
 	auto context = ImGui::CreateContext();
 	
 	ImGuiIO& io = ImGui::GetIO();
-	if( options.isKeyboardEnabled() ) io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-	if( options.isGamepadEnabled() ) io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls	
-	ci::app::WindowRef window = options.getWindow();
+	if( sOptions->isKeyboardEnabled() ) io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+	if( sOptions->isGamepadEnabled() ) io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls	
+	ci::app::WindowRef window = sOptions->getWindow();
 	io.DisplaySize = ci::vec2( window->toPixels( window->getSize() ) );
 	io.DeltaTime = 1.0f / 60.0f;
 	io.WantCaptureMouse = true;
 
 	static std::string path;
-	if( options.getIniPath().empty() ) {
+	if( sOptions->getIniPath().empty() ) {
 		path = ( ci::app::getAssetPath( "" ) / "imgui.ini" ).string();
 	}
 	else {
-		path = options.getIniPath().string().c_str();
+		path = sOptions->getIniPath().string().c_str();
 	}
 	io.IniFilename = path.c_str();
 
-#if ! defined( CINDER_GL_ES )
-	ImGui_ImplOpenGL3_Init( "#version 150" );
-#else
-	ImGui_ImplOpenGL3_Init();
-#endif
-	
-	ImGui_ImplCinder_Init( window, options );
-	if( options.isAutoRenderEnabled() ) {
+	sOptions->getRenderImpl()->init();
+
+	ImGui_ImplCinder_Init( window );
+	if( sOptions->isAutoRenderEnabled() ) {
 		ImGui_ImplCinder_NewFrameGuard( window );
 		sTriggerNewFrame = true;
 	}
 	
-	sAppConnections += ci::app::App::get()->getSignalCleanup().connect( [context]() {
-		ImGui_ImplOpenGL3_Shutdown();
+	auto renderImpl = sOptions->getRenderImpl();
+	sAppConnections += ci::app::App::get()->getSignalCleanup().connect( [context, renderImpl]() {
+		renderImpl->shutdown();
 		ImGui_ImplCinder_Shutdown();
 		ImGui::DestroyContext( context );
 	} );
