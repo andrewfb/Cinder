@@ -79,13 +79,18 @@ make</code></pre>
 		<p>The required apt packages for such a build can be installed with:</p>
 		<pre><code>sudo apt install libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev libglu1-mesa-dev \
 zlib1g-dev libfontconfig1-dev libcurl4-gnutls-dev</code></pre>
-		<h3 id="audio-packages">Audio packages</h3>
-		<p>The apt packages required for Cinder audio support can be installed with:</p>
-		<pre><code>sudo apt install libmpg123-dev libsndfile1 libsndfile1-dev libpulse-dev libasound2-dev</code></pre>
-		
-		<h3 id="video-packages">Video packages</h3>
-		<p>The apt packages required for Cinder video support can be installed with:</p>
-		<pre><code>sudo apt install libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav \
+<h3 id="audio-packages">Audio packages</h3>
+<p>The apt packages required for Cinder audio support can be installed with:</p>
+<pre><code>sudo apt install libmpg123-dev libsndfile1 libsndfile1-dev libpulse-dev libasound2-dev</code></pre>
+
+<h3 id="wayland-packages">Wayland-enabled GLFW</h3>
+<p>Cinder’s GLFW backend builds against X11 by default. To enable the Wayland backend (alone or alongside X11) pass <code>-DCINDER_GLFW_ENABLE_WAYLAND=ON</code> when configuring CMake, and install the required development packages:</p>
+<pre><code>sudo apt install libwayland-dev libwayland-egl1-mesa-dev libxkbcommon-dev wayland-protocols</code></pre>
+<p>This ensures <code>pkg-config</code> can locate <code>wayland-client</code>, <code>wayland-cursor</code>, <code>wayland-egl</code>, and <code>xkbcommon</code>, and that <code>wayland-scanner</code> (provided by <code>wayland-protocols</code>) is available to generate the protocol headers.</p>
+
+<h3 id="video-packages">Video packages</h3>
+<p>The apt packages required for Cinder video support can be installed with:</p>
+<pre><code>sudo apt install libgstreamer1.0-dev libgstreamer-plugins-bad1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-libav \
 gstreamer1.0-alsa gstreamer1.0-pulseaudio gstreamer1.0-plugins-bad</code></pre>			
 
 		<h3 id="video-packages">Headless OpenGL</h3>
