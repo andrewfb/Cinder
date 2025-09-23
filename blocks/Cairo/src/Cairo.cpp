@@ -1832,7 +1832,7 @@ cairo::SurfaceGdi createWindowSurface()
 #elif defined( CINDER_MAC )
 cairo::SurfaceQuartz createWindowSurface()
 {
-	auto cgContext = cinder::app::App::get()->getRenderer()->getCgContext();
+	auto cgContext = cinder::cocoa::getWindowContext();
 	auto height = cinder::app::getWindowHeight();
 	CGContextTranslateCTM( cgContext, 0.0, height );
 	CGContextScaleCTM( cgContext, 1.0, -1.0 );

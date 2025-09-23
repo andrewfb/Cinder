@@ -44,12 +44,18 @@
 #include <vector>
 #include <iomanip>
 
+// Include Cairo headers
 #if defined( CINDER_LINUX )
 // On Linux with system Cairo, include the actual headers to get type definitions
 #include <cairo/cairo.h>
 #include <cairo/cairo-svg.h>
 #include <cairo/cairo-pdf.h>
 #include <cairo/cairo-ps.h>
+#elif defined( CINDER_MAC )
+	#include "macosx/cairo.h"
+	#include "macosx/cairo-quartz.h"
+#elif defined( CINDER_MSW )
+	#include "msw/cairo.h"
 #endif
 
 // Forward declarations used by our cairo wrappers
@@ -90,17 +96,15 @@ typedef struct _cairo_scaled_font cairo_scaled_font_t;
 /*struct _cairo_glyph;
 typedef struct _cairo_glyph cairo_glyph_t;*/
 #endif
-// On Linux with system Cairo, these are already defined in cairo.h
+// On Linux and macOS with system Cairo, these are already defined in cairo.h
 
-#if !defined(CINDER_LINUX)
-// On non-Linux platforms, use forward declarations
+#if !defined( CINDER_LINUX ) && !defined( CINDER_MAC )
 struct _cairo_text_extents;
 typedef struct _cairo_text_extents cairo_text_extents_t;
 
 struct _cairo_font_extents;
 typedef struct _cairo_font_extents cairo_font_extents_t;
 #endif
-// On Linux with system Cairo, these are defined in cairo.h
 
 namespace cinder { namespace cairo {
 /////////////////////////////////////////////////////////////////////////////
