@@ -22,15 +22,26 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
+#if defined( CINDER_LINUX )
+// On Linux with system Cairo, include system headers first
+#include <cairo/cairo.h>
+#include <cairo/cairo-svg.h>
+#include <cairo/cairo-pdf.h>
+#include <cairo/cairo-ps.h>
+#endif
+
 #include "cinder/cairo/Cairo.h"
 #include "cinder/svg/Svg.h"
 #include "cinder/ip/Premultiply.h"
 #include "cinder/Text.h"
 
+#if !defined( CINDER_LINUX )
+// On other platforms, include Cairo headers after Cinder's wrapper
 #include <cairo.h>
 #include <cairo-svg.h>
 #include <cairo-pdf.h>
 #include <cairo-ps.h>
+#endif
 #if defined( CINDER_COCOA )
 	#include "cinder/app/App.h"
 	#if defined( CINDER_MAC )
@@ -298,7 +309,7 @@ SurfaceSvg::SurfaceSvg( const SurfaceSvg &other )
 SurfacePdf::SurfacePdf( const fs::path &filePath, double widthInPoints, double heightInPoints )
 	: SurfaceBase( (int32_t)widthInPoints, (int32_t)heightInPoints )
 {
-	mCairoSurface = cairo_pdf_surface_create( filePath.string().c_str(), widthInPoints, heightInPoints ); 
+	mCairoSurface = cairo_pdf_surface_create( filePath.string().c_str(), widthInPoints, heightInPoints );
 }
 
 SurfacePdf::SurfacePdf( const SurfacePdf &other )
@@ -316,7 +327,7 @@ void SurfacePdf::setSize( double widthInPoints, double heightInPoints )
 SurfacePs::SurfacePs( const fs::path &filePath, double widthInPoints, double heightInPoints, bool enableLevel3 )
 	: SurfaceBase( (int32_t)widthInPoints, (int32_t)heightInPoints )
 {
-	mCairoSurface = cairo_ps_surface_create( filePath.string().c_str(), widthInPoints, heightInPoints ); 
+	mCairoSurface = cairo_ps_surface_create( filePath.string().c_str(), widthInPoints, heightInPoints );
 	cairo_ps_surface_restrict_to_level( mCairoSurface, ( enableLevel3 ) ? CAIRO_PS_LEVEL_3 : CAIRO_PS_LEVEL_2 );
 }
 
@@ -350,8 +361,8 @@ void SurfacePs::dscComment( const char *comment )
 SurfaceEps::SurfaceEps( const fs::path &filePath, double widthInPoints, double heightInPoints, bool enableLevel3 )
 	: SurfaceBase( (int32_t)widthInPoints, (int32_t)heightInPoints )
 {
-	mCairoSurface = cairo_ps_surface_create( filePath.string().c_str(), widthInPoints, heightInPoints ); 
-	cairo_ps_surface_set_eps( mCairoSurface, TRUE );
+	mCairoSurface = cairo_ps_surface_create( filePath.string().c_str(), widthInPoints, heightInPoints );
+	cairo_ps_surface_set_eps( mCairoSurface, 1 );
 	cairo_ps_surface_restrict_to_level( mCairoSurface, ( enableLevel3 ) ? CAIRO_PS_LEVEL_3 : CAIRO_PS_LEVEL_2 );
 }
 
@@ -1750,10 +1761,18 @@ void Context::setFont( const cinder::Font &font )
 	cairo_font_face_t *cairoFont = cairo_quartz_font_face_create_for_cgfont( font.getCgFontRef() );
 #elif defined( CINDER_MSW )
 	cairo_font_face_t *cairoFont = cairo_win32_font_face_create_for_logfontw( const_cast<LOGFONTW*>( (const LOGFONTW*)font.getLogfont() ) );
+#elif defined( CINDER_LINUX )
+	// On Linux, use FreeType font face or default font selection
+	cairo_select_font_face( mCairo, font.getName().c_str(),
+		CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL );
+	cairo_set_font_size( mCairo, font.getSize() );
+	return;
 #endif
+#if !defined( CINDER_LINUX )
 	cairo_set_font_face( mCairo, cairoFont );
 	cairo_set_font_size( mCairo, font.getSize() );
 	cairo_font_face_destroy( cairoFont );
+#endif
 }
 
 void Context::setFontFace( const FontFace &font_face )
@@ -2061,7 +2080,7 @@ class SvgRendererCairo : public svg::Renderer {
 			fontMatrix *= rotationMatrix;
 			mCtx.setFontMatrix( fontMatrix );
 			TextBox tbox = TextBox().font( *font ).text( span.getString() );
-			std::vector<std::pair<uint16_t,vec2> > glyphs = tbox.measureGlyphs();
+			auto glyphs = tbox.measureGlyphs();
 			vec2 curPoint = mCtx.getCurrentPoint();
 			for( size_t g = 0; g < glyphs.size(); ++g ) {
 				mCtx.save();
