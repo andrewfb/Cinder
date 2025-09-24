@@ -3,7 +3,7 @@
 #include "cinder/Rand.h"
 #include "cinder/ImageIo.h"
 #include "cinder/Utilities.h"
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 	#include "cinder/gl/gl.h"
 	#include "cinder/gl/Texture.h"
 	#include "cinder/app/RendererGl.h"
@@ -36,10 +36,13 @@ class WisteriaApp : public App {
 
 	cairo::SurfaceImage		mOffscreenBuffer;
 	cairo::Context			mOffscreenContext;
-	
+
 	vector<Branch>	mBlossoms;
 	bool			mIsIdle; // are the blossoms all done growing?
 	int				mIdleFrames;
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
+	gl::TextureRef	mTexture;
+#endif
 };
 
 void WisteriaApp::prepareSettings( Settings *settings )
@@ -122,8 +125,8 @@ void WisteriaApp::update()
 
 void WisteriaApp::draw()
 {
-#if defined( CINDER_LINUX )
-	// On Linux, render to an image surface and then draw to window
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
+	// On Linux and macOS, render to an image surface and then draw to window
 	cairo::SurfaceImage surface( getWindowWidth(), getWindowHeight(), true );
 	cairo::Context ctx( surface );
 #else
@@ -132,15 +135,17 @@ void WisteriaApp::draw()
 	renderScene( mOffscreenContext );
 	ctx.copySurface( mOffscreenBuffer, mOffscreenBuffer.getBounds() );
 
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 	// Convert to Cinder surface and draw to window
-	Surface8u cinderSurface = surface.getSurface();
-	auto tex = gl::Texture2d::create( cinderSurface );
-	gl::draw( tex );
+	if( ! mTexture || mTexture->getSize() != getWindowSize() )
+		mTexture = gl::Texture2d::create( surface.getSurface() );
+	else
+		mTexture->update( surface.getSurface() );
+	gl::draw( mTexture );
 #endif
 }
 
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 CINDER_APP( WisteriaApp, RendererGl, WisteriaApp::prepareSettings )
 #else
 CINDER_APP( WisteriaApp, Renderer2d, WisteriaApp::prepareSettings )

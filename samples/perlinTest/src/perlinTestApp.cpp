@@ -2,7 +2,7 @@
 #include "cinder/cairo/Cairo.h"
 #include "cinder/Perlin.h"
 #include "cinder/Rand.h"
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 	#include "cinder/gl/gl.h"
 	#include "cinder/gl/Texture.h"
 	#include "cinder/app/RendererGl.h"
@@ -29,13 +29,16 @@ class perlinTestApp : public App {
 	int						mOctaves;
 	float					mTime;
 	Perlin					mPerlin;
-	
+
 	float					mFrequency;
-	
+
 	vec2	mGradientPos;
 	bool	mDrawLines;
 	bool	mDrawNormalized;
 	bool	mPaused;
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
+	gl::TextureRef			mTexture;
+#endif
 };
 
 void perlinTestApp::renderNoise()
@@ -135,8 +138,8 @@ void perlinTestApp::update()
 
 void perlinTestApp::draw()
 {
-#if defined( CINDER_LINUX )
-	// On Linux, render to an image surface and then draw to window
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
+	// On Linux and macOS, render to an image surface and then draw to window
 	cairo::SurfaceImage surface( getWindowWidth(), getWindowHeight(), true );
 	cairo::Context ctx( surface );
 #else
@@ -149,7 +152,7 @@ void perlinTestApp::draw()
 	ctx.moveTo( mGradientPos );
 	vec3 norm = mPerlin.dfBm( vec3( mGradientPos.x, mGradientPos.y, mTime ) * mFrequency ) * 20.0f;
 	ctx.lineTo( mGradientPos.x + norm.x, mGradientPos.y + norm.y );
-	ctx.stroke();	
+	ctx.stroke();
 
 	// draw gradient vector field
 	if( mDrawLines ) {
@@ -175,16 +178,19 @@ void perlinTestApp::draw()
 		ctx.stroke();
 	}
 
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 	// Convert to Cinder surface and draw to window
 	Surface8u cinderSurface = surface.getSurface();
-	auto tex = gl::Texture2d::create( cinderSurface );
-	gl::draw( tex );
+	if( ! mTexture || mTexture->getSize() != getWindowSize() )
+		mTexture = gl::Texture2d::create( cinderSurface );
+	else
+		mTexture->update( cinderSurface );
+	gl::draw( mTexture );
 #endif
 }
 
 
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 CINDER_APP( perlinTestApp, RendererGl )
 #else
 CINDER_APP( perlinTestApp, Renderer2d )

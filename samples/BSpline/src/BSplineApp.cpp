@@ -4,7 +4,7 @@
 #include "cinder/cairo/Cairo.h"
 #include "cinder/ImageIo.h"
 #include "cinder/Utilities.h"
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 	#include "cinder/gl/gl.h"
 	#include "cinder/gl/Texture.h"
 #endif
@@ -34,6 +34,9 @@ class BSplineApp : public App {
 	int					mTrackedPoint;
 	int					mDegree;
 	bool				mOpen, mLoop;
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
+	gl::TextureRef		mTexture;
+#endif
 };
 
 void BSplineApp::mouseDown( MouseEvent event )
@@ -136,8 +139,8 @@ void BSplineApp::drawBSpline( cairo::Context &ctx )
 void BSplineApp::draw()
 {
 	// clear to the background color
-#if defined( CINDER_LINUX )
-	// On Linux, render to an image surface and then draw to window
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
+	// On Linux and macOS, render to an image surface and then draw to window
 	cairo::SurfaceImage surface( getWindowWidth(), getWindowHeight(), true );
 	cairo::Context ctx( surface );
 #else
@@ -145,7 +148,7 @@ void BSplineApp::draw()
 #endif
 	ctx.setSourceRgb( 0.0f, 0.1f, 0.2f );
 	ctx.paint();
-	
+
 	// draw the control points
 	ctx.setSourceRgb( 1.0f, 1.0f, 0.0f );
 	for( size_t p = 0; p < mPoints.size(); ++p ) {
@@ -162,32 +165,35 @@ void BSplineApp::draw()
 		ctx.moveTo( spline.getPosition( 0 ) );
 		for( float t = 0; t < 1.0f; t += 0.001f )
 			ctx.lineTo( spline.getPosition( t ) );
-		
+
 		ctx.stroke();
-		
+
 		// draw points 1/4, 1/2 and 3/4 along the length
 		ctx.setSourceRgb( 0.0f, 0.7f, 1.0f );
 		float totalLength = spline.getLength( 0, 1 );
 		for( float p = 0.25f; p < 0.99f; p += 0.25f ) {
 			ctx.newSubPath();
 			ctx.arc( spline.getPosition( spline.getTime( p * totalLength ) ), 2.5f, 0, 2 * 3.14159f );
-		}		
-		
+		}
+
 		ctx.stroke();
 	}
 
 	// draw the curve by bezier path
 	drawBSpline( ctx );
 
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 	// Convert to Cinder surface and draw to window
 	Surface8u cinderSurface = surface.getSurface();
-	auto tex = gl::Texture2d::create( cinderSurface );
-	gl::draw( tex );
+	if( ! mTexture || mTexture->getSize() != getWindowSize() )
+		mTexture = gl::Texture2d::create( cinderSurface );
+	else
+		mTexture->update( cinderSurface );
+	gl::draw( mTexture );
 #endif
 }
 
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 CINDER_APP( BSplineApp, RendererGl )
 #else
 CINDER_APP( BSplineApp, Renderer2d )

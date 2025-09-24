@@ -3,7 +3,7 @@
 #include "cinder/Font.h"
 #include "cinder/Utilities.h"
 #include "cinder/ImageIo.h"
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 	#include "cinder/gl/gl.h"
 	#include "cinder/gl/Texture.h"
 	#include "cinder/app/RendererGl.h"
@@ -28,6 +28,9 @@ class fontSampleApp : public App {
 	Font			mFont;
 	Shape2d			mShape;
 	vector<string>	mFontNames;
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
+	gl::TextureRef	mTexture;
+#endif
 };
 
 void fontSampleApp::setup()
@@ -146,22 +149,22 @@ void fontSampleApp::drawCharacterVerbose( cairo::Context &ctx, vec2 where )
 
 void fontSampleApp::draw()
 {
-#if defined( CINDER_LINUX )
-	// On Linux, render to an image surface and then draw to window
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
+	// On Linux and macOS, render to an image surface and then draw to window
 	cairo::SurfaceImage surface( getWindowWidth(), getWindowHeight(), true );
 	cairo::Context ctx( surface );
 #else
 	cairo::Context ctx( cairo::createWindowSurface() );
 #endif
-	
+
 	// clear the screen
 	ctx.setSourceRgb( 0.2f, 0.2f, 0.2f );
 	ctx.paint();
-	
+
 	// draw the current character including the control points as dots
 	ctx.setSourceRgb( 1.0f, 1.0, 0.5f );
 	drawCharacterVerbose( ctx, vec2( getWindowWidth() / 2.0f, getWindowHeight() / 2.0f ) );
-	
+
 	// Render the name of the font in the font itself
 	ctx.setFont( mFont );
 	ctx.setFontSize( 18 );
@@ -169,7 +172,7 @@ void fontSampleApp::draw()
 	ctx.setSourceRgb( 0.5f, 0.75f, 1.0f );
 	ctx.showText( mFont.getFullName() );
 	ctx.stroke();
-	
+
 	// draw a lower case 'a'
 #if 0
 	Shape2d aPath;
@@ -180,16 +183,19 @@ void fontSampleApp::draw()
 	ctx.fill();
 #endif
 
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 	// Convert to Cinder surface and draw to window
 	Surface8u cinderSurface = surface.getSurface();
-	auto tex = gl::Texture2d::create( cinderSurface );
-	gl::draw( tex );
+	if( ! mTexture || mTexture->getSize() != getWindowSize() )
+		mTexture = gl::Texture2d::create( cinderSurface );
+	else
+		mTexture->update( cinderSurface );
+	gl::draw( mTexture );
 #endif
 }
 
 
-#if defined( CINDER_LINUX )
+#if defined( CINDER_LINUX ) || defined( CINDER_MAC )
 CINDER_APP( fontSampleApp, RendererGl )
 #else
 CINDER_APP( fontSampleApp, Renderer2d )
