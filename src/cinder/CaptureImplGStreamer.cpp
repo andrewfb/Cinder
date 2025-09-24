@@ -316,11 +316,6 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			if( gstDevice && gstDevice->getGstDevice() ) {
 				GstStructure *props = gst_device_get_properties( gstDevice->getGstDevice() );
 				if( props ) {
-					// Debug: Print all available properties
-					gchar *props_str = gst_structure_to_string( props );
-					CI_LOG_I( "Device properties: " << props_str );
-					g_free( props_str );
-
 					// Try different property names for device path
 					const gchar *device_path = gst_structure_get_string( props, "api.v4l2.path" );
 					if( ! device_path ) {
