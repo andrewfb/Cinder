@@ -46,6 +46,10 @@
 	namespace cinder {
 		class CaptureImplDirectShow;
 	}
+#elif defined( CINDER_LINUX )
+	namespace cinder {
+		class CaptureImplGStreamer;
+	}
 #elif defined( CINDER_ANDROID )
 	namespace cinder {
 		class CaptureImplJni;
@@ -106,7 +110,7 @@ class CI_API Capture {
 	//! Finds the first device whose name contains the string \a nameFragment
 	static DeviceRef findDeviceByNameContains( const std::string &nameFragment );
 
-#if defined( CINDER_COCOA ) || defined( CINDER_ANDROID )
+#if defined( CINDER_COCOA ) || defined( CINDER_ANDROID ) || defined( CINDER_LINUX )
 	typedef std::string DeviceIdentifier;
 #else
 	typedef int DeviceIdentifier;
@@ -146,6 +150,8 @@ class CI_API Capture {
 	CaptureImplCocoaDummy			*mImpl;
 #elif defined( CINDER_MSW )
 	CaptureImplDirectShow			*mImpl;
+#elif defined( CINDER_LINUX )
+	CaptureImplGStreamer			*mImpl;
 #elif defined( CINDER_ANDROID )
 	CaptureImplJni					*mImpl;		
 #endif
