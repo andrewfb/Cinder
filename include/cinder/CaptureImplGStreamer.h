@@ -93,6 +93,8 @@ class CaptureImplGStreamer {
 	GstFlowReturn handleSample( GstSample *sample );
 	static void ensureGStreamerInitialized();
 
+	ivec2 findBestResolution( GstDevice *device, int32_t targetWidth, int32_t targetHeight );
+
 	mutable std::mutex		mMutex;
 	std::unique_ptr<SurfaceCache>	mSurfaceCache;
 	mutable Surface8uRef	mCurrentFrame;
@@ -112,6 +114,11 @@ class CaptureImplGStreamer {
 
 	int32_t					mRequestedWidth;
 	int32_t					mRequestedHeight;
+	int32_t					mBestWidth;
+	int32_t					mBestHeight;
+	int32_t					mNativeWidth;  // Actual camera resolution (before stereo cropping)
+	int32_t					mNativeHeight;
+	bool					mIsStereoCrop; // True if we're cropping stereo to single eye
 	std::atomic<int32_t>	mWidth;
 	std::atomic<int32_t>	mHeight;
 	std::atomic<bool>		mIsCapturing;
