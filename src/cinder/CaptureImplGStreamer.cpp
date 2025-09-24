@@ -209,7 +209,6 @@ CaptureImplGStreamer::CaptureImplGStreamer( int32_t width, int32_t height, const
 			ivec2 bestRes = findBestResolution( gstDevice->getGstDevice(), width, height );
 			mBestWidth = bestRes.x;
 			mBestHeight = bestRes.y;
-			CI_LOG_I( "Best resolution for " << width << "x" << height << " request: " << mBestWidth << "x" << mBestHeight );
 		}
 	}
 
@@ -228,7 +227,6 @@ void CaptureImplGStreamer::start()
 	if( mIsCapturing )
 		return;
 
-	CI_LOG_I( "Starting capture..." );
 
 	if( ! mPipeline && ! initializePipeline( mRequestedWidth, mRequestedHeight ) )
 		throw CaptureExcInitFail();
@@ -259,7 +257,6 @@ void CaptureImplGStreamer::start()
 		throw CaptureExcInitFail();
 	}
 
-	CI_LOG_I( "Pipeline state change result: " << result );
 	mIsCapturing = true;
 	{
 		lock_guard<mutex> lock( mMutex );
@@ -304,10 +301,8 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 	if( mPipeline )
 		return true;
 
-	CI_LOG_I( "Initializing GStreamer pipeline (" << width << "x" << height << ")" );
 
 	// For now, always use v4l2src directly to avoid pipewire issues
-	CI_LOG_I( "Creating v4l2src element" );
 	GstElement *source = gst_element_factory_make( "v4l2src", "camera-source" );
 	if( source ) {
 		// Try to set the correct device path using the selected device
@@ -322,19 +317,16 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 						device_path = gst_structure_get_string( props, "device.path" );
 					}
 					if( device_path ) {
-						CI_LOG_I( "Setting device path: " << device_path );
-						g_object_set( source, "device", device_path, nullptr );
+							g_object_set( source, "device", device_path, nullptr );
 					} else {
 						// Try default device
 						g_object_set( source, "device", "/dev/video0", nullptr );
-						CI_LOG_I( "Using default device: /dev/video0" );
 					}
 					gst_structure_free( props );
 				}
 			} else {
 				// Use default device
 				g_object_set( source, "device", "/dev/video0", nullptr );
-				CI_LOG_I( "Using default device: /dev/video0" );
 			}
 		}
 	}
@@ -366,8 +358,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 								sourceCaps = gst_caps_new_empty();
 								GstStructure *newStructure = gst_structure_copy( structure );
 								gst_caps_append_structure( sourceCaps, newStructure );
-								CI_LOG_I( "Found matching native format for " << width << "x" << height );
-								break;
+									break;
 							}
 						}
 					}
@@ -380,8 +371,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			g_object_set( sourceCapsFilter, "caps", sourceCaps, nullptr );
 			gst_caps_unref( sourceCaps );
 		} else {
-			CI_LOG_W( "Could not find native format for resolution, using any format" );
-			gst_object_unref( sourceCapsFilter );
+				gst_object_unref( sourceCapsFilter );
 			sourceCapsFilter = nullptr;
 		}
 	}
@@ -418,8 +408,6 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		nullptr );
 	g_object_set( capsFilter, "caps", caps, nullptr );
 	gst_caps_unref( caps );
-
-	CI_LOG_I( "Setting pipeline for RGB output, resolution will auto-negotiate" );
 
 	g_object_set( appSink,
 		"emit-signals", FALSE,
@@ -477,8 +465,6 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 
 	// Connect decodebin's dynamic pad
 	g_signal_connect( decoder, "pad-added", G_CALLBACK( onDecoderPadAdded ), videoConvert );
-
-	CI_LOG_I( "Pipeline successfully created and linked (waiting for decoder pads)" );
 
 	mPipeline = pipeline;
 	mSource = source;
@@ -541,7 +527,6 @@ void CaptureImplGStreamer::startBusWatch()
 					break;
 				}
 				case GST_MESSAGE_EOS:
-					CI_LOG_I( "Capture stream reached EOS" );
 					mRunBusWatch = false;
 					break;
 				default:
@@ -563,13 +548,11 @@ void CaptureImplGStreamer::stopBusWatch()
 // static
 void CaptureImplGStreamer::onDecoderPadAdded( GstElement *decoder, GstPad *pad, gpointer userData )
 {
-	CI_LOG_I( "Decoder pad added, attempting to link" );
 
 	GstElement *videoConvert = static_cast<GstElement*>( userData );
 	GstPad *sinkPad = gst_element_get_static_pad( videoConvert, "sink" );
 
 	if( gst_pad_is_linked( sinkPad ) ) {
-		CI_LOG_I( "Sink pad already linked" );
 		gst_object_unref( sinkPad );
 		return;
 	}
@@ -584,8 +567,7 @@ void CaptureImplGStreamer::onDecoderPadAdded( GstElement *decoder, GstPad *pad, 
 		if( GST_PAD_LINK_FAILED( ret ) ) {
 			CI_LOG_E( "Failed to link decoder to videoconvert" );
 		} else {
-			CI_LOG_I( "Successfully linked decoder to videoconvert" );
-		}
+			}
 	}
 
 	gst_caps_unref( caps );
@@ -738,8 +720,6 @@ ivec2 CaptureImplGStreamer::findBestResolution( GstDevice *device, int32_t targe
 				}
 
 				availableResolutions.push_back({width, height, score});
-				CI_LOG_V( "Found resolution: " << width << "x" << height << " (aspect: " << currentAspect
-					<< ", diff: " << aspectDiff << ", score: " << score << ")" );
 
 				// For stereo cameras (aspect ratio > 3:1), also consider single-eye crop
 				if( currentAspect > 3.0 ) {
@@ -767,8 +747,6 @@ ivec2 CaptureImplGStreamer::findBestResolution( GstDevice *device, int32_t targe
 					}
 
 					availableResolutions.push_back({singleEyeWidth, height, singleEyeScore});
-					CI_LOG_V( "Found stereo single-eye resolution: " << singleEyeWidth << "x" << height << " (aspect: " << singleEyeAspect
-						<< ", diff: " << singleEyeAspectDiff << ", score: " << singleEyeScore << ")" );
 				}
 			}
 		}
@@ -778,7 +756,6 @@ ivec2 CaptureImplGStreamer::findBestResolution( GstDevice *device, int32_t targe
 
 	// Find the resolution with the highest score
 	if( availableResolutions.empty() ) {
-		CI_LOG_W( "No resolutions found in device capabilities, using requested size" );
 		return ivec2( targetWidth, targetHeight );
 	}
 
@@ -814,8 +791,6 @@ const vector<Capture::DeviceRef>& CaptureImplGStreamer::getDevices( bool forceRe
 	gst_device_monitor_add_filter( monitor, "Video/Source", nullptr );
 	gst_device_monitor_start( monitor );
 
-	CI_LOG_I( "Enumerating video capture devices..." );
-
 	GList *devices = gst_device_monitor_get_devices( monitor );
 	for( GList *it = devices; it != nullptr; it = it->next ) {
 		GstDevice *gstDevice = GST_DEVICE( it->data );
@@ -824,12 +799,9 @@ const vector<Capture::DeviceRef>& CaptureImplGStreamer::getDevices( bool forceRe
 
 		string name = gst_device_get_display_name( gstDevice );
 		string uniqueId = deriveUniqueId( gstDevice );
-		CI_LOG_I( "Found device: " << name << " (ID: " << uniqueId << ")" );
 		auto device = make_shared<CaptureImplGStreamer::Device>( gstDevice, name, uniqueId );
 		sDevices.push_back( device );
 	}
-
-	CI_LOG_I( "Total devices found: " << sDevices.size() );
 
 	g_list_free_full( devices, g_object_unref );
 	gst_device_monitor_stop( monitor );
