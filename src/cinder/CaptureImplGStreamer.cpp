@@ -28,6 +28,7 @@
 #include "cinder/Log.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
@@ -190,11 +191,29 @@ bool CaptureImplGStreamer::Device::isConnected() const
 }
 
 CaptureImplGStreamer::CaptureImplGStreamer( int32_t width, int32_t height, const Capture::DeviceRef device )
-	: mSurfaceCache(), mCurrentFrame(), mHasNewFrame( false ), mPipeline( nullptr ), mSource( nullptr ), mVideoConvert( nullptr ), mCapsFilter( nullptr ), mAppSink( nullptr ), mBus( nullptr ), mRunBusWatch( false ), mRequestedWidth( width ), mRequestedHeight( height ), mWidth( width ), mHeight( height ), mIsCapturing( false ), mDevice( device )
+	: mSurfaceCache(), mCurrentFrame(), mHasNewFrame( false ), mPipeline( nullptr ), mSource( nullptr ), mVideoConvert( nullptr ), mCapsFilter( nullptr ), mAppSink( nullptr ), mBus( nullptr ), mRunBusWatch( false ), mRequestedWidth( width ), mRequestedHeight( height ), mBestWidth( width ), mBestHeight( height ), mNativeWidth( width ), mNativeHeight( height ), mIsStereoCrop( false ), mWidth( width ), mHeight( height ), mIsCapturing( false ), mDevice( device )
 {
 	ensureGStreamerInitialized();
 
-	if( ! initializePipeline( width, height ) )
+	// Find the best matching resolution for the requested size
+	Capture::DeviceRef selectedDevice = device;
+	if( ! selectedDevice ) {
+		const auto &devices = getDevices();
+		if( ! devices.empty() )
+			selectedDevice = devices.front();
+	}
+
+	if( selectedDevice ) {
+		auto gstDevice = std::dynamic_pointer_cast<CaptureImplGStreamer::Device>( selectedDevice );
+		if( gstDevice && gstDevice->getGstDevice() ) {
+			ivec2 bestRes = findBestResolution( gstDevice->getGstDevice(), width, height );
+			mBestWidth = bestRes.x;
+			mBestHeight = bestRes.y;
+			CI_LOG_I( "Best resolution for " << width << "x" << height << " request: " << mBestWidth << "x" << mBestHeight );
+		}
+	}
+
+	if( ! initializePipeline( mBestWidth, mBestHeight ) )
 		throw CaptureExcInitFail();
 }
 
@@ -291,15 +310,22 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 	CI_LOG_I( "Creating v4l2src element" );
 	GstElement *source = gst_element_factory_make( "v4l2src", "camera-source" );
 	if( source ) {
-		// Try to set the correct device path
-		const auto &devices = getDevices();
-		if( ! devices.empty() ) {
-			auto selectedDevice = devices.front();
-			auto gstDevice = std::dynamic_pointer_cast<CaptureImplGStreamer::Device>( selectedDevice );
+		// Try to set the correct device path using the selected device
+		if( mDevice ) {
+			auto gstDevice = std::dynamic_pointer_cast<CaptureImplGStreamer::Device>( mDevice );
 			if( gstDevice && gstDevice->getGstDevice() ) {
 				GstStructure *props = gst_device_get_properties( gstDevice->getGstDevice() );
 				if( props ) {
+					// Debug: Print all available properties
+					gchar *props_str = gst_structure_to_string( props );
+					CI_LOG_I( "Device properties: " << props_str );
+					g_free( props_str );
+
+					// Try different property names for device path
 					const gchar *device_path = gst_structure_get_string( props, "api.v4l2.path" );
+					if( ! device_path ) {
+						device_path = gst_structure_get_string( props, "device.path" );
+					}
 					if( device_path ) {
 						CI_LOG_I( "Setting device path: " << device_path );
 						g_object_set( source, "device", device_path, nullptr );
@@ -318,12 +344,59 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		}
 	}
 
+	// Add a caps filter right after source to constrain the input resolution
+	GstElement *sourceCapsFilter = gst_element_factory_make( "capsfilter", "source-capsfilter" );
+	if( sourceCapsFilter ) {
+		// Create caps that match the best resolution we found, but in the camera's native format
+		GstCaps *sourceCaps = nullptr;
+
+		// Try to find a format that matches our target resolution
+		const auto &devices = getDevices();
+		if( ! devices.empty() ) {
+			auto selectedDevice = devices.front();
+			auto gstDevice = std::dynamic_pointer_cast<CaptureImplGStreamer::Device>( selectedDevice );
+			if( gstDevice && gstDevice->getGstDevice() ) {
+				GstCaps *deviceCaps = gst_device_get_caps( gstDevice->getGstDevice() );
+				if( deviceCaps ) {
+					// Look for caps that match our target resolution
+					int numStructures = gst_caps_get_size( deviceCaps );
+					for( int i = 0; i < numStructures; ++i ) {
+						GstStructure *structure = gst_caps_get_structure( deviceCaps, i );
+						if( structure ) {
+							int capWidth, capHeight;
+							if( gst_structure_get_int( structure, "width", &capWidth ) &&
+								gst_structure_get_int( structure, "height", &capHeight ) &&
+								capWidth == width && capHeight == height ) {
+
+								sourceCaps = gst_caps_new_empty();
+								GstStructure *newStructure = gst_structure_copy( structure );
+								gst_caps_append_structure( sourceCaps, newStructure );
+								CI_LOG_I( "Found matching native format for " << width << "x" << height );
+								break;
+							}
+						}
+					}
+					gst_caps_unref( deviceCaps );
+				}
+			}
+		}
+
+		if( sourceCaps ) {
+			g_object_set( sourceCapsFilter, "caps", sourceCaps, nullptr );
+			gst_caps_unref( sourceCaps );
+		} else {
+			CI_LOG_W( "Could not find native format for resolution, using any format" );
+			gst_object_unref( sourceCapsFilter );
+			sourceCapsFilter = nullptr;
+		}
+	}
+
 	if( ! source ) {
 		CI_LOG_E( "Failed to create GStreamer source element" );
 		return false;
 	}
 
-	// Add decoder elements
+	// Add decoder and processing elements
 	GstElement *decoder = gst_element_factory_make( "decodebin", "decoder" );
 	GstElement *videoConvert = gst_element_factory_make( "videoconvert", "videoconvert" );
 	GstElement *capsFilter = gst_element_factory_make( "capsfilter", "capsfilter" );
@@ -344,10 +417,14 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		return false;
 	}
 
-	// Don't set specific dimensions - let the camera negotiate its native resolution
-	GstCaps *caps = gst_caps_new_simple( "video/x-raw", "format", G_TYPE_STRING, "RGB", nullptr );
+	// Set RGB format but let resolution negotiate automatically
+	GstCaps *caps = gst_caps_new_simple( "video/x-raw",
+		"format", G_TYPE_STRING, "RGB",
+		nullptr );
 	g_object_set( capsFilter, "caps", caps, nullptr );
 	gst_caps_unref( caps );
+
+	CI_LOG_I( "Setting pipeline for RGB output, resolution will auto-negotiate" );
 
 	g_object_set( appSink,
 		"emit-signals", FALSE,
@@ -370,14 +447,26 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 	}
 
 	// Add all elements to pipeline
-	gst_bin_add_many( GST_BIN( pipeline ), source, decoder, videoConvert, capsFilter, appSink, nullptr );
+	if( sourceCapsFilter ) {
+		gst_bin_add_many( GST_BIN( pipeline ), source, sourceCapsFilter, decoder, videoConvert, capsFilter, appSink, nullptr );
 
-	// Link source to decoder
-	if( ! gst_element_link( source, decoder ) ) {
-		CI_LOG_E( "Failed to link source to decoder" );
-		gst_object_unref( pipeline );
-		mPipeline = nullptr;
-		return false;
+		// Link source through caps filter to decoder
+		if( ! gst_element_link_many( source, sourceCapsFilter, decoder, nullptr ) ) {
+			CI_LOG_E( "Failed to link source through caps filter to decoder" );
+			gst_object_unref( pipeline );
+			mPipeline = nullptr;
+			return false;
+		}
+	} else {
+		gst_bin_add_many( GST_BIN( pipeline ), source, decoder, videoConvert, capsFilter, appSink, nullptr );
+
+		// Link source to decoder directly
+		if( ! gst_element_link( source, decoder ) ) {
+			CI_LOG_E( "Failed to link source to decoder" );
+			gst_object_unref( pipeline );
+			mPipeline = nullptr;
+			return false;
+		}
 	}
 
 	// Link videoconvert to capsfilter to appsink
@@ -570,6 +659,138 @@ GstFlowReturn CaptureImplGStreamer::handleSample( GstSample *sample )
 	gst_sample_unref( sample );
 
 	return GST_FLOW_OK;
+}
+
+ivec2 CaptureImplGStreamer::findBestResolution( GstDevice *device, int32_t targetWidth, int32_t targetHeight )
+{
+	if( ! device ) {
+		return ivec2( targetWidth, targetHeight );
+	}
+
+	GstCaps *deviceCaps = gst_device_get_caps( device );
+	if( ! deviceCaps ) {
+		return ivec2( targetWidth, targetHeight );
+	}
+
+	struct Resolution {
+		int32_t width, height;
+		int32_t score;
+	};
+
+	std::vector<Resolution> availableResolutions;
+	int numStructures = gst_caps_get_size( deviceCaps );
+
+	// Parse all available resolutions from device capabilities
+	for( int i = 0; i < numStructures; ++i ) {
+		GstStructure *structure = gst_caps_get_structure( deviceCaps, i );
+		if( ! structure )
+			continue;
+
+		// Check if this structure has width and height
+		if( gst_structure_has_field( structure, "width" ) && gst_structure_has_field( structure, "height" ) ) {
+			int width, height;
+			if( gst_structure_get_int( structure, "width", &width ) &&
+				gst_structure_get_int( structure, "height", &height ) ) {
+
+				// Improved scoring algorithm that handles stereo cameras better
+				double targetAspect = (double)targetWidth / targetHeight;
+				double currentAspect = (double)width / height;
+				double aspectDiff = abs(currentAspect - targetAspect);
+
+				// Calculate pixel area ratios to prioritize reasonable scaling
+				double targetArea = (double)targetWidth * targetHeight;
+				double currentArea = (double)width * height;
+				double areaRatio = currentArea / targetArea;
+				double areaScore = 0;
+
+				// Prefer areas close to target (0.5x-4x range is reasonable)
+				if( areaRatio >= 0.5 && areaRatio <= 4.0 ) {
+					// Best score when area is close to 1x
+					areaScore = 100000 - std::abs(std::log(areaRatio)) * 20000;
+				} else {
+					// Penalize very large or very small area ratios
+					areaScore = 50000 - std::abs(std::log(areaRatio)) * 30000;
+				}
+
+				// Calculate dimension matching scores
+				int32_t widthDiff = abs(width - targetWidth);
+				int32_t heightDiff = abs(height - targetHeight);
+				double dimensionScore = 50000 - (widthDiff + heightDiff) / 4.0;
+
+				int32_t score = 0;
+
+				// Exact resolution match gets highest priority
+				if( width == targetWidth && height == targetHeight ) {
+					score = 1000000;
+				}
+				// Good aspect ratio match (within 10% difference) - traditional scoring
+				else if( aspectDiff < 0.10 ) {
+					if( width >= targetWidth && height >= targetHeight ) {
+						score = 900000 - (widthDiff + heightDiff);
+					} else if( width <= targetWidth && height <= targetHeight ) {
+						score = 800000 + (width + height) / 100;
+					} else {
+						score = 700000 - abs((int32_t)widthDiff) - abs((int32_t)heightDiff);
+					}
+				}
+				// For very different aspect ratios (stereo cameras), prioritize area and reasonable dimensions
+				else {
+					score = (int32_t)(areaScore + dimensionScore);
+					// Bonus for reasonable dimensions even with bad aspect ratio
+					if( width <= targetWidth * 3 && height <= targetHeight * 3 ) {
+						score += 20000;
+					}
+				}
+
+				availableResolutions.push_back({width, height, score});
+				CI_LOG_V( "Found resolution: " << width << "x" << height << " (aspect: " << currentAspect
+					<< ", diff: " << aspectDiff << ", score: " << score << ")" );
+
+				// For stereo cameras (aspect ratio > 3:1), also consider single-eye crop
+				if( currentAspect > 3.0 ) {
+					int32_t singleEyeWidth = width / 2;
+					double singleEyeAspect = (double)singleEyeWidth / height;
+					double singleEyeAspectDiff = abs(singleEyeAspect - targetAspect);
+
+					// Calculate score for single-eye crop
+					int32_t singleEyeScore = 0;
+					if( singleEyeAspectDiff < 0.10 ) {
+						// Good aspect ratio match for single eye
+						singleEyeScore = 950000 - abs(singleEyeWidth - targetWidth) - abs(height - targetHeight);
+					} else {
+						// Calculate area-based score for single eye
+						double singleEyeArea = (double)singleEyeWidth * height;
+						double singleEyeAreaRatio = singleEyeArea / targetArea;
+						double singleEyeAreaScore = 0;
+						if( singleEyeAreaRatio >= 0.5 && singleEyeAreaRatio <= 4.0 ) {
+							singleEyeAreaScore = 100000 - std::abs(std::log(singleEyeAreaRatio)) * 20000;
+						} else {
+							singleEyeAreaScore = 50000 - std::abs(std::log(singleEyeAreaRatio)) * 30000;
+						}
+						double singleEyeDimensionScore = 50000 - (abs(singleEyeWidth - targetWidth) + abs(height - targetHeight)) / 4.0;
+						singleEyeScore = (int32_t)(singleEyeAreaScore + singleEyeDimensionScore) + 30000; // Bonus for stereo crop
+					}
+
+					availableResolutions.push_back({singleEyeWidth, height, singleEyeScore});
+					CI_LOG_V( "Found stereo single-eye resolution: " << singleEyeWidth << "x" << height << " (aspect: " << singleEyeAspect
+						<< ", diff: " << singleEyeAspectDiff << ", score: " << singleEyeScore << ")" );
+				}
+			}
+		}
+	}
+
+	gst_caps_unref( deviceCaps );
+
+	// Find the resolution with the highest score
+	if( availableResolutions.empty() ) {
+		CI_LOG_W( "No resolutions found in device capabilities, using requested size" );
+		return ivec2( targetWidth, targetHeight );
+	}
+
+	auto best = std::max_element( availableResolutions.begin(), availableResolutions.end(),
+		[]( const Resolution& a, const Resolution& b ) { return a.score < b.score; } );
+
+	return ivec2( best->width, best->height );
 }
 
 // static
