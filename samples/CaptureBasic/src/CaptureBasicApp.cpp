@@ -4,8 +4,6 @@
 #include "cinder/Capture.h"
 #include "cinder/Log.h"
 #include "cinder/CinderImGui.h"
-#include <chrono>
-#include <thread>
 
 using namespace ci;
 using namespace ci::app;
@@ -47,10 +45,7 @@ void CaptureBasicApp::setup()
 
 	// Start with first device if available
 	if( ! mDevices.empty() ) {
-		console() << "Found " << mDevices.size() << " devices, starting with device 0: " << mDevices[0]->getName() << endl;
 		setupCapture( mDevices[0] );
-	} else {
-		console() << "No devices found!" << endl;
 	}
 }
 
@@ -103,7 +98,6 @@ void CaptureBasicApp::draw()
 					bool isSelected = ( mSelectedDeviceIndex == i );
 					if( ImGui::Selectable( mDevices[i]->getName().c_str(), isSelected ) ) {
 						if( mSelectedDeviceIndex != i ) {
-							console() << "User selected device " << i << ": " << mDevices[i]->getName() << endl;
 							mSelectedDeviceIndex = i;
 							setupCapture( mDevices[i] );
 						}
@@ -138,7 +132,6 @@ void CaptureBasicApp::setupCapture( Capture::DeviceRef device )
 	try {
 		// Stop and fully release old capture
 		if( mCapture ) {
-			console() << "Stopping current capture..." << endl;
 			mCapture->stop();
 		}
 
@@ -146,12 +139,7 @@ void CaptureBasicApp::setupCapture( Capture::DeviceRef device )
 		mCapture = nullptr;
 		mTexture = nullptr;
 
-		console() << "Setting up capture with device: " << device->getName() << endl;
-		console() << "Requesting 640x480..." << endl;
-
 		mCapture = Capture::create( 640, 480, device );
-		console() << "Actual size: " << mCapture->getWidth() << "x" << mCapture->getHeight() << endl;
-
 		mCapture->start();
 	}
 	catch( ci::Exception &exc ) {
