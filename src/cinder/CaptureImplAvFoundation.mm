@@ -52,6 +52,23 @@ bool CaptureImplAvFoundationDevice::isConnected() const
 	return mNativeDevice.connected;
 }
 
+std::vector<Capture::Mode> CaptureImplAvFoundationDevice::getModes() const
+{
+	// TODO: Implement AVFoundation mode enumeration
+	std::vector<Capture::Mode> modes;
+
+	// For now, return basic modes as placeholders
+	MediaTime frameRate30( 1, 30 );
+	MediaTime frameRate60( 1, 60 );
+
+	modes.emplace_back( 640, 480, frameRate30, Capture::Mode::Codec::Uncompressed, Capture::Mode::PixelFormat::BGRA32, "AVFoundation VGA 30fps" );
+	modes.emplace_back( 1280, 720, frameRate30, Capture::Mode::Codec::Uncompressed, Capture::Mode::PixelFormat::BGRA32, "AVFoundation HD 30fps" );
+	modes.emplace_back( 1920, 1080, frameRate30, Capture::Mode::Codec::Uncompressed, Capture::Mode::PixelFormat::BGRA32, "AVFoundation FHD 30fps" );
+	modes.emplace_back( 1280, 720, frameRate60, Capture::Mode::Codec::Uncompressed, Capture::Mode::PixelFormat::BGRA32, "AVFoundation HD 60fps" );
+
+	return modes;
+}
+
 } //namespace
 
 void frameDeallocator( void *refcon )
@@ -106,6 +123,12 @@ static BOOL sDevicesEnumerated = false;
 		mExposedFrameHeight = 0;
 	}
 	return self;
+}
+
+- (id)initWithDevice:(const cinder::Capture::DeviceRef)device mode:(const cinder::Capture::Mode&)mode
+{
+	// Use existing constructor with mode's dimensions
+	return [self initWithDevice:device width:mode.getWidth() height:mode.getHeight()];
 }
 
 - (void)dealloc

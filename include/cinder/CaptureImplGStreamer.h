@@ -70,6 +70,20 @@ class CaptureImplGStreamer {
 	 * @throws CaptureExcInitFail if pipeline construction fails
 	 */
 	CaptureImplGStreamer( int32_t width, int32_t height, const Capture::DeviceRef device );
+
+	/**
+	 * @brief Create a GStreamer-based video capture with specific Mode
+	 * @param device Camera device to use (must not be nullptr)
+	 * @param mode Specific capture mode from device's getModes() list
+	 *
+	 * Creates a capture using the exact specifications from the Mode.
+	 * The mode must be one returned by the device's getModes() method.
+	 *
+	 * @throws CaptureExcInitFail if GStreamer initialization fails
+	 * @throws CaptureExcInitFail if pipeline construction fails
+	 * @throws CaptureExcInitFail if device is nullptr
+	 */
+	CaptureImplGStreamer( const Capture::DeviceRef& device, const Capture::Mode& mode );
 	~CaptureImplGStreamer();
 
 	/**
@@ -186,9 +200,23 @@ class CaptureImplGStreamer {
 		 */
 		GstDevice* getGstDevice() const { return mDevice; }
 
+		/**
+		 * @brief Get all supported capture modes for this device
+		 * @return Vector of supported Mode objects
+		 *
+		 * Analyzes the device's GStreamer capabilities and returns all
+		 * supported resolution/framerate/codec combinations as Mode objects.
+		 * Results are cached for performance.
+		 */
+		std::vector<Capture::Mode> getModes() const override;
+
 	  private:
 		std::string mUniqueId;
 		GstDevice*	mDevice;
+
+		// Mode enumeration caching
+		mutable std::vector<Capture::Mode> mCachedModes;
+		mutable bool mModesQueried;
 	};
 
   private:

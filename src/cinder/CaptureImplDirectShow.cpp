@@ -123,6 +123,22 @@ CaptureImplDirectShow::CaptureImplDirectShow( int32_t width, int32_t height, con
 	mSurfaceCache.reset( new SurfaceCache( mWidth, mHeight, SurfaceChannelOrder::BGR, 4 ) );
 }
 
+CaptureImplDirectShow::CaptureImplDirectShow( const Capture::DeviceRef& device, const Capture::Mode& mode )
+	: mWidth( mode.getWidth() ), mHeight( mode.getHeight() ), mCurrentFrame( Surface8u::create( mode.getWidth(), mode.getHeight(), false, SurfaceChannelOrder::BGR ) ), mDeviceID( 0 )
+{
+	mDevice = device;
+	if( mDevice ) {
+		mDeviceID = device->getUniqueId();
+	}
+	// TODO: Use mode-specific setup for DirectShow
+	if( ! getVideoInput().setupDevice( mDeviceID, mWidth, mHeight ) )
+		throw CaptureExcInitFail( "Failed to setup DirectShow video input device with specified mode" );
+	mWidth = getVideoInput().getWidth( mDeviceID );
+	mHeight = getVideoInput().getHeight( mDeviceID );
+	mIsCapturing = true;
+	mSurfaceCache.reset( new SurfaceCache( mWidth, mHeight, SurfaceChannelOrder::BGR, 4 ) );
+}
+
 CaptureImplDirectShow::~CaptureImplDirectShow()
 {
 	getVideoInput().stopDevice( mDeviceID );
@@ -167,6 +183,19 @@ Surface8uRef CaptureImplDirectShow::getSurface() const
 	}
 
 	return mCurrentFrame;
+}
+
+std::vector<Capture::Mode> CaptureImplDirectShow::Device::getModes() const
+{
+	// TODO: Implement DirectShow mode enumeration
+	std::vector<Capture::Mode> modes;
+
+	// For now, return a basic mode as placeholder
+	MediaTime frameRate( 1, 30 ); // 30 fps
+	Capture::Mode mode( 640, 480, frameRate, Capture::Mode::Codec::Uncompressed, Capture::Mode::PixelFormat::BGR24, "DirectShow Default" );
+	modes.push_back( mode );
+
+	return modes;
 }
 
 } //namespace

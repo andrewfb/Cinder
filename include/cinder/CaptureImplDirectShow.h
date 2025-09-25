@@ -34,6 +34,7 @@ class CaptureImplDirectShow {
 	class Device;
 
 	CaptureImplDirectShow( int32_t width, int32_t height, const Capture::DeviceRef device );
+	CaptureImplDirectShow( const Capture::DeviceRef& device, const Capture::Mode& mode );
 	~CaptureImplDirectShow();
 
 	void start();
@@ -56,6 +57,7 @@ class CaptureImplDirectShow {
 		bool						checkAvailable() const;
 		bool						isConnected() const;
 		Capture::DeviceIdentifier	getUniqueId() const { return mUniqueId; }
+		std::vector<Capture::Mode>	getModes() const override;
 
 		Device( const std::string &name, int uniqueId ) : Capture::Device(), mUniqueId( uniqueId ) { mName = name; }
 	 protected:
