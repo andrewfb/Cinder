@@ -42,6 +42,20 @@ namespace {
 
 static const SurfaceChannelOrder kCaptureChannelOrder = SurfaceChannelOrder::RGB;
 
+// Custom deleters as inline functions
+inline void gstElementDeleter( GstElement* elem ) { if( elem ) gst_object_unref( GST_OBJECT( elem ) ); }
+inline void gstCapsDeleter( GstCaps* caps ) { if( caps ) gst_caps_unref( caps ); }
+inline void gstSampleDeleter( GstSample* sample ) { if( sample ) gst_sample_unref( sample ); }
+inline void gstMessageDeleter( GstMessage* msg ) { if( msg ) gst_message_unref( msg ); }
+inline void gstBusDeleter( GstBus* bus ) { if( bus ) gst_object_unref( GST_OBJECT( bus ) ); }
+
+// Type aliases for smart pointers using function pointer deleters
+using GstElementPtr = std::unique_ptr<GstElement, decltype(&gstElementDeleter)>;
+using GstCapsPtr = std::unique_ptr<GstCaps, decltype(&gstCapsDeleter)>;
+using GstSamplePtr = std::unique_ptr<GstSample, decltype(&gstSampleDeleter)>;
+using GstMessagePtr = std::unique_ptr<GstMessage, decltype(&gstMessageDeleter)>;
+using GstBusPtr = std::unique_ptr<GstBus, decltype(&gstBusDeleter)>;
+
 static string deriveUniqueId( GstDevice* device )
 {
 	string identifier;
@@ -223,14 +237,8 @@ CaptureImplGStreamer::CaptureImplGStreamer( int32_t width, int32_t height, const
 			selectedDevice = devices.front();
 	}
 
-	if( selectedDevice ) {
-		auto gstDevice = std::dynamic_pointer_cast<CaptureImplGStreamer::Device>( selectedDevice );
-		if( gstDevice && gstDevice->getGstDevice() ) {
-			ivec2 bestRes = findBestResolution( gstDevice->getGstDevice(), width, height );
-			mBestWidth = bestRes.x;
-			mBestHeight = bestRes.y;
-		}
-	}
+	mBestWidth = width;
+	mBestHeight = height;
 
 	if( ! initializePipeline( mBestWidth, mBestHeight ) )
 		throw CaptureExcInitFail();
@@ -339,20 +347,20 @@ DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, in
 		return info;
 	}
 
-	GstCaps* deviceCaps = gst_device_get_caps( device );
+	GstCapsPtr deviceCaps( gst_device_get_caps( device ), gstCapsDeleter );
 	if( ! deviceCaps ) {
 		return info;
 	}
 
 	// Look for the best matching format, prioritizing efficiency
-	int numStructures = gst_caps_get_size( deviceCaps );
+	int numStructures = gst_caps_get_size( deviceCaps.get() );
 	int32_t bestScore = -1;
 	GstStructure* bestStructure = nullptr;
 	PipelineType bestPipelineType = PipelineType::DECODEBIN_FALLBACK;
 	std::string bestMediaType;
 
 	for( int i = 0; i < numStructures; ++i ) {
-		GstStructure* structure = gst_caps_get_structure( deviceCaps, i );
+		GstStructure* structure = gst_caps_get_structure( deviceCaps.get(), i );
 		if( ! structure ) continue;
 
 		const gchar* mediaTypeName = gst_structure_get_name( structure );
@@ -433,7 +441,7 @@ DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, in
 		info.bestFormat = gst_structure_copy( bestStructure );
 	}
 
-	gst_caps_unref( deviceCaps );
+	// deviceCaps automatically cleaned up by unique_ptr
 	return info;
 }
 
@@ -456,7 +464,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 	CI_LOG_I( "Using pipeline type: " << (int)formatInfo.pipelineType << " for media type: " << formatInfo.mediaType );
 
 	// Create v4l2src
-	GstElement* source = gst_element_factory_make( "v4l2src", "camera-source" );
+	GstElementPtr source( gst_element_factory_make( "v4l2src", "camera-source" ), gstElementDeleter );
 	if( ! source ) {
 		CI_LOG_E( "Failed to create GStreamer source element" );
 		throw CaptureExcInitFail();
@@ -474,10 +482,9 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 					device_path = gst_structure_get_string( props, "device.path" );
 				}
 				if( device_path ) {
-					g_object_set( source, "device", device_path, nullptr );
+					g_object_set( source.get(), "device", device_path, nullptr );
 				}
 				else {
-					gst_object_unref( source );
 					CI_LOG_E( "Cannot determine device path for selected camera" );
 					throw CaptureExcInitFail();
 				}
@@ -485,43 +492,36 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			}
 		}
 		else {
-			gst_object_unref( source );
 			CI_LOG_E( "No camera device available or selected" );
 			throw CaptureExcInitFail();
 		}
 	}
 
 	// Set source format if we found a specific one
-	GstElement* sourceCapsFilter = nullptr;
+	GstElementPtr sourceCapsFilter( nullptr, gstElementDeleter );
 	if( formatInfo.bestFormat ) {
-		sourceCapsFilter = gst_element_factory_make( "capsfilter", "source-capsfilter" );
+		sourceCapsFilter.reset( gst_element_factory_make( "capsfilter", "source-capsfilter" ) );
 		if( sourceCapsFilter ) {
-			GstCaps* sourceCaps = gst_caps_new_empty();
-			gst_caps_append_structure( sourceCaps, formatInfo.bestFormat ); // Takes ownership
-			g_object_set( sourceCapsFilter, "caps", sourceCaps, nullptr );
-			gst_caps_unref( sourceCaps );
+			GstCapsPtr sourceCaps( gst_caps_new_empty(), gstCapsDeleter );
+			gst_caps_append_structure( sourceCaps.get(), formatInfo.bestFormat ); // Takes ownership
+			g_object_set( sourceCapsFilter.get(), "caps", sourceCaps.get(), nullptr );
 		}
 		formatInfo.bestFormat = nullptr; // Ownership transferred
 	}
 
 	// Create common elements
-	GstElement* videoConvert = gst_element_factory_make( "videoconvert", "videoconvert" );
-	GstElement* capsFilter = gst_element_factory_make( "capsfilter", "capsfilter" );
-	GstElement* appSink = gst_element_factory_make( "appsink", "appsink" );
+	GstElementPtr videoConvert( gst_element_factory_make( "videoconvert", "videoconvert" ), gstElementDeleter );
+	GstElementPtr capsFilter( gst_element_factory_make( "capsfilter", "capsfilter" ), gstElementDeleter );
+	GstElementPtr appSink( gst_element_factory_make( "appsink", "appsink" ), gstElementDeleter );
 
 	if( ! videoConvert || ! capsFilter || ! appSink ) {
-		if( source ) gst_object_unref( source );
-		if( sourceCapsFilter ) gst_object_unref( sourceCapsFilter );
-		if( videoConvert ) gst_object_unref( videoConvert );
-		if( capsFilter ) gst_object_unref( capsFilter );
-		if( appSink ) gst_object_unref( appSink );
 		CI_LOG_E( "Failed to create common GStreamer elements" );
 		throw CaptureExcInitFail();
 	}
 
 	// Create pipeline-specific decoder elements
-	GstElement* decoder = nullptr;
-	GstElement* parser = nullptr;
+	GstElementPtr decoder( nullptr, gstElementDeleter );
+	GstElementPtr parser( nullptr, gstElementDeleter );
 
 	switch( formatInfo.pipelineType ) {
 		case PipelineType::RAW_DIRECT:
@@ -529,45 +529,26 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			break;
 
 		case PipelineType::JPEG_DECODE:
-			decoder = gst_element_factory_make( "jpegdec", "jpegdec" );
+			decoder.reset( gst_element_factory_make( "jpegdec", "jpegdec" ) );
 			if( ! decoder ) {
-				if( source ) gst_object_unref( source );
-				if( sourceCapsFilter ) gst_object_unref( sourceCapsFilter );
-				gst_object_unref( videoConvert );
-				gst_object_unref( capsFilter );
-				gst_object_unref( appSink );
 				CI_LOG_E( "Failed to create JPEG decoder" );
 				throw CaptureExcInitFail();
 			}
 			break;
 
 		case PipelineType::H264_DECODE:
-			parser = gst_element_factory_make( "h264parse", "h264parse" );
-			decoder = gst_element_factory_make( "avdec_h264", "avdec_h264" );
+			parser.reset( gst_element_factory_make( "h264parse", "h264parse" ) );
+			decoder.reset( gst_element_factory_make( "avdec_h264", "avdec_h264" ) );
 			if( ! parser || ! decoder ) {
-				if( source ) gst_object_unref( source );
-				if( sourceCapsFilter ) gst_object_unref( sourceCapsFilter );
-				if( parser ) gst_object_unref( parser );
-				if( decoder ) gst_object_unref( decoder );
-				gst_object_unref( videoConvert );
-				gst_object_unref( capsFilter );
-				gst_object_unref( appSink );
 				CI_LOG_E( "Failed to create H.264 decoder elements" );
 				throw CaptureExcInitFail();
 			}
 			break;
 
 		case PipelineType::HEVC_DECODE:
-			parser = gst_element_factory_make( "h265parse", "h265parse" );
-			decoder = gst_element_factory_make( "avdec_h265", "avdec_h265" );
+			parser.reset( gst_element_factory_make( "h265parse", "h265parse" ) );
+			decoder.reset( gst_element_factory_make( "avdec_h265", "avdec_h265" ) );
 			if( ! parser || ! decoder ) {
-				if( source ) gst_object_unref( source );
-				if( sourceCapsFilter ) gst_object_unref( sourceCapsFilter );
-				if( parser ) gst_object_unref( parser );
-				if( decoder ) gst_object_unref( decoder );
-				gst_object_unref( videoConvert );
-				gst_object_unref( capsFilter );
-				gst_object_unref( appSink );
 				CI_LOG_E( "Failed to create HEVC/H.265 decoder elements" );
 				throw CaptureExcInitFail();
 			}
@@ -575,13 +556,8 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 
 		case PipelineType::DECODEBIN_FALLBACK:
 		default:
-			decoder = gst_element_factory_make( "decodebin", "decodebin" );
+			decoder.reset( gst_element_factory_make( "decodebin", "decodebin" ) );
 			if( ! decoder ) {
-				if( source ) gst_object_unref( source );
-				if( sourceCapsFilter ) gst_object_unref( sourceCapsFilter );
-				gst_object_unref( videoConvert );
-				gst_object_unref( capsFilter );
-				gst_object_unref( appSink );
 				CI_LOG_E( "Failed to create decodebin fallback" );
 				throw CaptureExcInitFail();
 			}
@@ -589,25 +565,17 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 	}
 
 	// Set RGB format but let resolution negotiate automatically
-	GstCaps* caps = gst_caps_new_simple( "video/x-raw", "format", G_TYPE_STRING, "RGB", nullptr );
-	g_object_set( capsFilter, "caps", caps, nullptr );
-	gst_caps_unref( caps );
+	GstCapsPtr caps( gst_caps_new_simple( "video/x-raw", "format", G_TYPE_STRING, "RGB", nullptr ), gstCapsDeleter );
+	g_object_set( capsFilter.get(), "caps", caps.get(), nullptr );
 
-	g_object_set( appSink, "emit-signals", FALSE, "sync", FALSE, "max-buffers", 1, "drop", TRUE, nullptr );
+	g_object_set( appSink.get(), "emit-signals", FALSE, "sync", FALSE, "max-buffers", 1, "drop", TRUE, nullptr );
 
 	static GstAppSinkCallbacks sCallbacks = { nullptr, nullptr, &CaptureImplGStreamer::onNewSample };
-	gst_app_sink_set_callbacks( GST_APP_SINK( appSink ), &sCallbacks, this, nullptr );
+	gst_app_sink_set_callbacks( GST_APP_SINK( appSink.get() ), &sCallbacks, this, nullptr );
 
 	// Create pipeline
-	GstElement* pipeline = gst_pipeline_new( "cinder-capture" );
+	GstElementPtr pipeline( gst_pipeline_new( "cinder-capture" ), gstElementDeleter );
 	if( ! pipeline ) {
-		if( source ) gst_object_unref( source );
-		if( sourceCapsFilter ) gst_object_unref( sourceCapsFilter );
-		if( parser ) gst_object_unref( parser );
-		if( decoder ) gst_object_unref( decoder );
-		gst_object_unref( videoConvert );
-		gst_object_unref( capsFilter );
-		gst_object_unref( appSink );
 		CI_LOG_E( "Failed to create GStreamer pipeline" );
 		throw CaptureExcInitFail();
 	}
@@ -617,17 +585,15 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		case PipelineType::RAW_DIRECT: {
 			// Pipeline: v4l2src [-> capsfilter] -> videoconvert -> capsfilter -> appsink
 			if( sourceCapsFilter ) {
-				gst_bin_add_many( GST_BIN( pipeline ), source, sourceCapsFilter, videoConvert, capsFilter, appSink, nullptr );
-				if( ! gst_element_link_many( source, sourceCapsFilter, videoConvert, capsFilter, appSink, nullptr ) ) {
-					gst_object_unref( pipeline );
+				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
 					CI_LOG_E( "Failed to link RAW pipeline with source caps filter" );
 					throw CaptureExcInitFail();
 				}
 			}
 			else {
-				gst_bin_add_many( GST_BIN( pipeline ), source, videoConvert, capsFilter, appSink, nullptr );
-				if( ! gst_element_link_many( source, videoConvert, capsFilter, appSink, nullptr ) ) {
-					gst_object_unref( pipeline );
+				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+				if( ! gst_element_link_many( source.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
 					CI_LOG_E( "Failed to link RAW pipeline" );
 					throw CaptureExcInitFail();
 				}
@@ -638,17 +604,15 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		case PipelineType::JPEG_DECODE: {
 			// Pipeline: v4l2src [-> capsfilter] -> jpegdec -> videoconvert -> capsfilter -> appsink
 			if( sourceCapsFilter ) {
-				gst_bin_add_many( GST_BIN( pipeline ), source, sourceCapsFilter, decoder, videoConvert, capsFilter, appSink, nullptr );
-				if( ! gst_element_link_many( source, sourceCapsFilter, decoder, videoConvert, capsFilter, appSink, nullptr ) ) {
-					gst_object_unref( pipeline );
+				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
 					CI_LOG_E( "Failed to link JPEG pipeline with source caps filter" );
 					throw CaptureExcInitFail();
 				}
 			}
 			else {
-				gst_bin_add_many( GST_BIN( pipeline ), source, decoder, videoConvert, capsFilter, appSink, nullptr );
-				if( ! gst_element_link_many( source, decoder, videoConvert, capsFilter, appSink, nullptr ) ) {
-					gst_object_unref( pipeline );
+				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+				if( ! gst_element_link_many( source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
 					CI_LOG_E( "Failed to link JPEG pipeline" );
 					throw CaptureExcInitFail();
 				}
@@ -659,17 +623,15 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		case PipelineType::H264_DECODE: {
 			// Pipeline: v4l2src [-> capsfilter] -> h264parse -> avdec_h264 -> videoconvert -> capsfilter -> appsink
 			if( sourceCapsFilter ) {
-				gst_bin_add_many( GST_BIN( pipeline ), source, sourceCapsFilter, parser, decoder, videoConvert, capsFilter, appSink, nullptr );
-				if( ! gst_element_link_many( source, sourceCapsFilter, parser, decoder, videoConvert, capsFilter, appSink, nullptr ) ) {
-					gst_object_unref( pipeline );
+				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
 					CI_LOG_E( "Failed to link H.264 pipeline with source caps filter" );
 					throw CaptureExcInitFail();
 				}
 			}
 			else {
-				gst_bin_add_many( GST_BIN( pipeline ), source, parser, decoder, videoConvert, capsFilter, appSink, nullptr );
-				if( ! gst_element_link_many( source, parser, decoder, videoConvert, capsFilter, appSink, nullptr ) ) {
-					gst_object_unref( pipeline );
+				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+				if( ! gst_element_link_many( source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
 					CI_LOG_E( "Failed to link H.264 pipeline" );
 					throw CaptureExcInitFail();
 				}
@@ -680,17 +642,15 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		case PipelineType::HEVC_DECODE: {
 			// Pipeline: v4l2src [-> capsfilter] -> h265parse -> avdec_h265 -> videoconvert -> capsfilter -> appsink
 			if( sourceCapsFilter ) {
-				gst_bin_add_many( GST_BIN( pipeline ), source, sourceCapsFilter, parser, decoder, videoConvert, capsFilter, appSink, nullptr );
-				if( ! gst_element_link_many( source, sourceCapsFilter, parser, decoder, videoConvert, capsFilter, appSink, nullptr ) ) {
-					gst_object_unref( pipeline );
+				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
 					CI_LOG_E( "Failed to link HEVC pipeline with source caps filter" );
 					throw CaptureExcInitFail();
 				}
 			}
 			else {
-				gst_bin_add_many( GST_BIN( pipeline ), source, parser, decoder, videoConvert, capsFilter, appSink, nullptr );
-				if( ! gst_element_link_many( source, parser, decoder, videoConvert, capsFilter, appSink, nullptr ) ) {
-					gst_object_unref( pipeline );
+				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+				if( ! gst_element_link_many( source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
 					CI_LOG_E( "Failed to link HEVC pipeline" );
 					throw CaptureExcInitFail();
 				}
@@ -702,44 +662,48 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		default: {
 			// Pipeline: v4l2src [-> capsfilter] -> decodebin -> videoconvert -> capsfilter -> appsink
 			if( sourceCapsFilter ) {
-				gst_bin_add_many( GST_BIN( pipeline ), source, sourceCapsFilter, decoder, videoConvert, capsFilter, appSink, nullptr );
-				if( ! gst_element_link_many( source, sourceCapsFilter, decoder, nullptr ) ) {
-					gst_object_unref( pipeline );
+				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), decoder.get(), nullptr ) ) {
 					CI_LOG_E( "Failed to link source through caps filter to decodebin" );
 					throw CaptureExcInitFail();
 				}
 			}
 			else {
-				gst_bin_add_many( GST_BIN( pipeline ), source, decoder, videoConvert, capsFilter, appSink, nullptr );
-				if( ! gst_element_link( source, decoder ) ) {
-					gst_object_unref( pipeline );
+				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+				if( ! gst_element_link( source.get(), decoder.get() ) ) {
 					CI_LOG_E( "Failed to link source to decodebin" );
 					throw CaptureExcInitFail();
 				}
 			}
 
 			// Link videoconvert to capsfilter to appsink (separate for decodebin's dynamic pads)
-			if( ! gst_element_link_many( videoConvert, capsFilter, appSink, nullptr ) ) {
-				gst_object_unref( pipeline );
+			if( ! gst_element_link_many( videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
 				CI_LOG_E( "Failed to link decodebin video processing elements" );
 				throw CaptureExcInitFail();
 			}
 
 			// Store for decodebin pad-added callback
-			mVideoConvert = videoConvert;
+			mVideoConvert = videoConvert.get();
 
 			// Connect decodebin's dynamic pad
-			g_signal_connect( decoder, "pad-added", G_CALLBACK( onDecoderPadAdded ), videoConvert );
+			g_signal_connect( decoder.get(), "pad-added", G_CALLBACK( onDecoderPadAdded ), videoConvert.get() );
 			break;
 		}
 	}
 
-	mPipeline = pipeline;
-	mSource = source;
-	mVideoConvert = videoConvert;
-	mCapsFilter = capsFilter;
-	mAppSink = appSink;
+	// Transfer ownership to member variables (release from unique_ptr)
+	// Note: All elements added to the pipeline are now owned by it
+	mPipeline = pipeline.release();
+	mSource = source.release();
+	mVideoConvert = videoConvert.release();
+	mCapsFilter = capsFilter.release();
+	mAppSink = appSink.release();
 	mBus = gst_element_get_bus( mPipeline );
+
+	// Release ownership of elements that were added to pipeline but aren't stored as members
+	sourceCapsFilter.release();  // Owned by pipeline now
+	decoder.release();           // Owned by pipeline now
+	parser.release();            // Owned by pipeline now
 
 	return true;
 }
@@ -857,22 +821,22 @@ GstFlowReturn CaptureImplGStreamer::handleSample( GstSample* sample )
 		return GST_FLOW_OK;
 	}
 
-	GstCaps*   caps = gst_sample_get_caps( sample );
-	GstBuffer* buffer = gst_sample_get_buffer( sample );
+	// Take ownership of the sample
+	GstSamplePtr samplePtr( sample, gstSampleDeleter );
+
+	GstCaps*   caps = gst_sample_get_caps( samplePtr.get() );
+	GstBuffer* buffer = gst_sample_get_buffer( samplePtr.get() );
 	if( ! caps || ! buffer ) {
-		gst_sample_unref( sample );
 		return GST_FLOW_OK;
 	}
 
 	GstVideoInfo info;
 	if( ! gst_video_info_from_caps( &info, caps ) ) {
-		gst_sample_unref( sample );
 		return GST_FLOW_OK;
 	}
 
 	GstMapInfo mapInfo;
 	if( ! gst_buffer_map( buffer, &mapInfo, GST_MAP_READ ) ) {
-		gst_sample_unref( sample );
 		return GST_FLOW_OK;
 	}
 
@@ -904,87 +868,9 @@ GstFlowReturn CaptureImplGStreamer::handleSample( GstSample* sample )
 	}
 
 	gst_buffer_unmap( buffer, &mapInfo );
-	gst_sample_unref( sample );
+	// samplePtr automatically cleaned up
 
 	return GST_FLOW_OK;
-}
-
-// Find the best resolution from camera capabilities that matches the requested dimensions.
-// Strategy: 1) Exact match, 2) Same aspect ratio at smaller size, 3) Larger only if necessary
-ivec2 CaptureImplGStreamer::findBestResolution( GstDevice* device, int32_t targetWidth, int32_t targetHeight )
-{
-	if( ! device ) {
-		return ivec2( targetWidth, targetHeight );
-	}
-
-	GstCaps* deviceCaps = gst_device_get_caps( device );
-	if( ! deviceCaps ) {
-		return ivec2( targetWidth, targetHeight );
-	}
-
-	struct Resolution {
-		int32_t width, height;
-		int32_t score;
-	};
-
-	std::vector<Resolution> availableResolutions;
-	int						numStructures = gst_caps_get_size( deviceCaps );
-
-	// Parse all available resolutions from device capabilities
-	for( int i = 0; i < numStructures; ++i ) {
-		GstStructure* structure = gst_caps_get_structure( deviceCaps, i );
-		if( ! structure )
-			continue;
-
-		// Check if this structure has width and height
-		if( gst_structure_has_field( structure, "width" ) && gst_structure_has_field( structure, "height" ) ) {
-			int width, height;
-			if( gst_structure_get_int( structure, "width", &width ) && gst_structure_get_int( structure, "height", &height ) ) {
-
-				// Simple resolution scoring: prefer exact match, then smaller, then larger as last resort
-				double targetAspect = (double)targetWidth / targetHeight;
-				double currentAspect = (double)width / height;
-				bool   aspectMatch = std::abs( currentAspect - targetAspect ) < 0.05; // Within 5%
-
-				int32_t score = 0;
-
-				if( width == targetWidth && height == targetHeight ) {
-					// Perfect match
-					score = 1000000;
-				}
-				else if( aspectMatch && width <= targetWidth && height <= targetHeight ) {
-					// Same aspect ratio, smaller size - prefer larger of the smaller options
-					score = 500000 + width + height;
-				}
-				else if( aspectMatch && width >= targetWidth && height >= targetHeight ) {
-					// Same aspect ratio, larger size - prefer smaller of the larger options
-					score = 300000 - ( width - targetWidth ) - ( height - targetHeight );
-				}
-				else if( width <= targetWidth && height <= targetHeight ) {
-					// Different aspect ratio, smaller size - acceptable
-					score = 200000 + width + height;
-				}
-				else {
-					// Different aspect ratio, larger size - last resort, prefer smallest excess
-					int32_t excess = std::max( 0, width - targetWidth ) + std::max( 0, height - targetHeight );
-					score = 100000 - excess;
-				}
-
-				availableResolutions.push_back( { width, height, score } );
-			}
-		}
-	}
-
-	gst_caps_unref( deviceCaps );
-
-	// Find the resolution with the highest score
-	if( availableResolutions.empty() ) {
-		return ivec2( targetWidth, targetHeight );
-	}
-
-	auto best = std::max_element( availableResolutions.begin(), availableResolutions.end(), []( const Resolution& a, const Resolution& b ) { return a.score < b.score; } );
-
-	return ivec2( best->width, best->height );
 }
 
 // static
