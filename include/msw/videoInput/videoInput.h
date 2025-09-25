@@ -242,6 +242,8 @@ class videoInput{
 	public:
 		videoInput();
 		~videoInput();
+
+		std::vector<Capture::Mode> getDeviceCaps(int deviceID);
 				
 		//turns off console messages - default is to print messages
 		static void setVerbose(bool _verbose);

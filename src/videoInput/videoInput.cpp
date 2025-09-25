@@ -1638,101 +1638,46 @@ void videoInput::getMediaSubtypeAsString(GUID type, char * typeAsString){
 }
 
 //-------------------------------------------------------------------------------------------
-static void findClosestSizeAndSubtype(videoDevice * VD, int widthIn, int heightIn, int &widthOut, int &heightOut, GUID & mediatypeOut){
-	HRESULT hr;
-	
-	//find perfect match or closest size
-	int nearW				= 9999999;
-	int nearH				= 9999999;
-	bool foundClosestMatch 	= true;
+std::vector<Capture::Mode> videoInput::getDeviceCaps(int deviceID)
+{
+	std::vector<Capture::Mode> modes;
 
-	int iCount = 0; 
-	int iSize = 0;
-	hr = VD->streamConf->GetNumberOfCapabilities(&iCount, &iSize);
+	videoDevice * VD = new videoDevice();
+	HRESULT hr = getDevice(&VD->pVideoInputFilter, deviceID, VD->wDeviceName, VD->nDeviceName);
+	if (FAILED(hr)) {
+		delete VD;
+		return modes;
+	}
 
+	IAMStreamConfig *streamConf = NULL;
+    hr = VD->pCaptureGraph->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, VD->pVideoInputFilter, IID_IAMStreamConfig, (void **)&streamConf);
+	if(FAILED(hr)){
+		delete VD;
+		return modes;
+	}
+
+	int iCount = 0, iSize = 0;
+	hr = streamConf->GetNumberOfCapabilities(&iCount, &iSize);
 	if (iSize == sizeof(VIDEO_STREAM_CONFIG_CAPS))
 	{
-		//For each format type RGB24 YUV2 etc
 	    for (int iFormat = 0; iFormat < iCount; iFormat++)
 	    {
 			VIDEO_STREAM_CONFIG_CAPS scc;
 			AM_MEDIA_TYPE *pmtConfig;
-			hr =  VD->streamConf->GetStreamCaps(iFormat, &pmtConfig, (BYTE*)&scc);
-			
+			hr =  streamConf->GetStreamCaps(iFormat, &pmtConfig, (BYTE*)&scc);
 			if (SUCCEEDED(hr)){
-
-				//his is how many diff sizes are available for the format
-	            int stepX = scc.OutputGranularityX;
-	            int stepY = scc.OutputGranularityY;
-	       		
-	       		int tempW = 999999;
-	       		int tempH = 999999;
-		       		
-	       		//Don't want to get stuck in a loop
-	       		if(stepX < 1 || stepY < 1) continue;
-	       		
-	       		//if(verbose)printf("min is %i %i max is %i %i - res is %i %i \n", scc.MinOutputSize.cx, scc.MinOutputSize.cy,  scc.MaxOutputSize.cx,  scc.MaxOutputSize.cy, stepX, stepY);
-	       		//if(verbose)printf("min frame duration is %i  max duration is %i\n", scc.MinFrameInterval, scc.MaxFrameInterval);
-
-	       		bool exactMatch 	= false;
-	       		bool exactMatchX	= false;
-				bool exactMatchY	= false;
-		
-	            for(int x = scc.MinOutputSize.cx; x <= scc.MaxOutputSize.cx; x+= stepX){           	
-	            	//If we find an exact match
-	            	if( widthIn == x ){
-						exactMatchX = true;
-	            		tempW = x;			            		
-	            	}
-	            	//Otherwise lets find the closest match based on width
-	            	else if( abs(widthIn-x) < abs(widthIn-tempW) ){
-	            		tempW = x;			            		
-	            	}
-	            }	
-		            
-	            for(int y = scc.MinOutputSize.cy; y <= scc.MaxOutputSize.cy; y+= stepY){           	
-	            	//If we find an exact match
-	            	if( heightIn == y){
-						exactMatchY = true;
-	            		tempH = y;		    			            		
-	            	}
-	            	//Otherwise lets find the closest match based on height
-	            	else if( abs(heightIn-y) < abs(heightIn-tempH) ){
-	            		tempH = y;		    			            		
-	            	}
-	            }			           		            
-			               
-		        //see if we have an exact match!
-		        if(exactMatchX && exactMatchY){
-		        	foundClosestMatch = false;
-		        	exactMatch = true;
-
-					widthOut		= widthIn;
-					heightOut		= heightIn;
-					mediatypeOut	= pmtConfig->subtype;	
-		        }       
-			      	
-		      	//otherwise lets see if this filters closest size is the closest 
-		      	//available. the closest size is determined by the sum difference
-		    	//of the widths and heights
-		      	else if( abs(widthIn - tempW) + abs(heightIn - tempH)  < abs(widthIn - nearW) + abs(heightIn - nearH) )
-		      	{
-		      		nearW = tempW;
-		      		nearH = tempH;
-
-					widthOut		= nearW;
-					heightOut		= nearH;
-					mediatypeOut	= pmtConfig->subtype;	
-		      	}
-			               
-		        MyDeleteMediaType(pmtConfig);
-		            			     		            
-		        //If we have found an exact match no need to search anymore
-		        if(exactMatch)break;
+				int width = scc.MaxOutputSize.cx;
+				int height = scc.MaxOutputSize.cy;
+				modes.push_back( Capture::Mode( width, height, 30, Capture::Mode::Codec::Uncompressed, pmtConfig->subtype) );
+				MyDeleteMediaType(pmtConfig);
 	        }
 	     }
-	}	
+	}
 
+	streamConf->Release();
+	delete VD;
+
+	return modes;
 }
 
 
