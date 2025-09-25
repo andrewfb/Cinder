@@ -138,6 +138,7 @@ void CaptureImplGStreamer::ensureGStreamerInitialized()
 				if( err )
 					g_error_free( err );
 				CI_LOG_E( message );
+				throw CaptureExcInitFail();
 			}
 		}
 	} );
@@ -339,15 +340,17 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 						g_object_set( source, "device", device_path, nullptr );
 					}
 					else {
-						// Try default device
-						g_object_set( source, "device", "/dev/video0", nullptr );
+						gst_object_unref( source );
+						CI_LOG_E( "Cannot determine device path for selected camera" );
+						throw CaptureExcInitFail();
 					}
 					gst_structure_free( props );
 				}
 			}
 			else {
-				// Use default device
-				g_object_set( source, "device", "/dev/video0", nullptr );
+				gst_object_unref( source );
+				CI_LOG_E( "No camera device available or selected" );
+				throw CaptureExcInitFail();
 			}
 		}
 	}
@@ -388,7 +391,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 
 	if( ! source ) {
 		CI_LOG_E( "Failed to create GStreamer source element" );
-		return false;
+		throw CaptureExcInitFail();
 	}
 
 	// Add decoder and processing elements
@@ -409,7 +412,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		if( appSink )
 			gst_object_unref( appSink );
 		CI_LOG_E( "Failed to create GStreamer elements" );
-		return false;
+		throw CaptureExcInitFail();
 	}
 
 	// Set RGB format but let resolution negotiate automatically
@@ -425,11 +428,12 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 	GstElement* pipeline = gst_pipeline_new( "cinder-capture" );
 	if( ! pipeline ) {
 		gst_object_unref( source );
+		gst_object_unref( decoder );
 		gst_object_unref( videoConvert );
 		gst_object_unref( capsFilter );
 		gst_object_unref( appSink );
 		CI_LOG_E( "Failed to create GStreamer pipeline" );
-		return false;
+		throw CaptureExcInitFail();
 	}
 
 	// Add all elements to pipeline
@@ -438,10 +442,9 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 
 		// Link source through caps filter to decoder
 		if( ! gst_element_link_many( source, sourceCapsFilter, decoder, nullptr ) ) {
-			CI_LOG_E( "Failed to link source through caps filter to decoder" );
 			gst_object_unref( pipeline );
-			mPipeline = nullptr;
-			return false;
+			CI_LOG_E( "Failed to link source through caps filter to decoder" );
+			throw CaptureExcInitFail();
 		}
 	}
 	else {
@@ -449,19 +452,17 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 
 		// Link source to decoder directly
 		if( ! gst_element_link( source, decoder ) ) {
-			CI_LOG_E( "Failed to link source to decoder" );
 			gst_object_unref( pipeline );
-			mPipeline = nullptr;
-			return false;
+			CI_LOG_E( "Failed to link source to decoder" );
+			throw CaptureExcInitFail();
 		}
 	}
 
 	// Link videoconvert to capsfilter to appsink
 	if( ! gst_element_link_many( videoConvert, capsFilter, appSink, nullptr ) ) {
-		CI_LOG_E( "Failed to link video processing elements" );
 		gst_object_unref( pipeline );
-		mPipeline = nullptr;
-		return false;
+		CI_LOG_E( "Failed to link video processing elements" );
+		throw CaptureExcInitFail();
 	}
 
 	// Store for later use in decodebin pad-added callback
