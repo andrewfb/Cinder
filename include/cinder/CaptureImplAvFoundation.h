@@ -39,6 +39,7 @@ class CaptureImplAvFoundationDevice : public Capture::Device {
 	Capture::DeviceIdentifier	getUniqueId() const { return mUniqueId; }
 	bool						isFrontFacing() const { return mFrontFacing; }
 	void*						getNative() const { return mNativeDevice; }
+	std::vector<Capture::Mode>	getModes() const override;
   private:
 	Capture::DeviceIdentifier	mUniqueId;
 	AVCaptureDevice				*mNativeDevice;
@@ -66,6 +67,7 @@ class CaptureImplAvFoundationDevice : public Capture::Device {
 + (const std::vector<cinder::Capture::DeviceRef>&)getDevices:(BOOL)forceRefresh;
 
 - (id)initWithDevice:(const cinder::Capture::DeviceRef)device width:(int)width height:(int)height;
+- (id)initWithDevice:(const cinder::Capture::DeviceRef)device mode:(const cinder::Capture::Mode&)mode;
 - (bool)prepareStartCapture;
 - (void)startCapture;
 - (void)stopCapture;
