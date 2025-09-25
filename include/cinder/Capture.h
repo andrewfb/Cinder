@@ -158,9 +158,15 @@ class CI_API Capture {
 };
 
 class CI_API CaptureExc : public Exception {
+  public:
+	CaptureExc() {}
+	CaptureExc( const std::string &description ) : Exception( description ) {}
 };
 
 class CI_API CaptureExcInitFail : public CaptureExc {
+  public:
+	CaptureExcInitFail() {}
+	CaptureExcInitFail( const std::string &description ) : CaptureExc( description ) {}
 };
 
 class CI_API CaptureExcInvalidChannelOrder : public CaptureExc {

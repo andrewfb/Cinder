@@ -116,7 +116,7 @@ CaptureImplDirectShow::CaptureImplDirectShow( int32_t width, int32_t height, con
 		mDeviceID = device->getUniqueId();
 	}
 	if( ! getVideoInput().setupDevice( mDeviceID, mWidth, mHeight ) )
-		throw CaptureExcInitFail();
+		throw CaptureExcInitFail( "Failed to setup DirectShow video input device" );
 	mWidth = getVideoInput().getWidth( mDeviceID );
 	mHeight = getVideoInput().getHeight( mDeviceID );
 	mIsCapturing = true;
@@ -133,9 +133,9 @@ void CaptureImplDirectShow::start()
 	if( mIsCapturing ) return;
 
 	if( ! getVideoInput().setupDevice( mDeviceID, mWidth, mHeight ) )
-		throw CaptureExcInitFail();
+		throw CaptureExcInitFail( "Failed to setup DirectShow video input device" );
 	if( ! getVideoInput().isDeviceSetup( mDeviceID ) )
-		throw CaptureExcInitFail();
+		throw CaptureExcInitFail( "DirectShow video input device not properly initialized" );
 	mWidth = getVideoInput().getWidth( mDeviceID );
 	mHeight = getVideoInput().getHeight( mDeviceID );
 	mIsCapturing = true;

@@ -151,8 +151,7 @@ void CaptureImplGStreamer::ensureGStreamerInitialized()
 					message += ": " + std::string( err->message );
 				if( err )
 					g_error_free( err );
-				CI_LOG_E( message );
-				throw CaptureExcInitFail();
+				throw CaptureExcInitFail( message );
 			}
 		}
 	} );
@@ -241,7 +240,7 @@ CaptureImplGStreamer::CaptureImplGStreamer( int32_t width, int32_t height, const
 	mBestHeight = height;
 
 	if( ! initializePipeline( mBestWidth, mBestHeight ) )
-		throw CaptureExcInitFail();
+		throw CaptureExcInitFail( "Failed to initialize capture pipeline" );
 }
 
 CaptureImplGStreamer::~CaptureImplGStreamer()
@@ -257,7 +256,7 @@ void CaptureImplGStreamer::start()
 
 
 	if( ! mPipeline && ! initializePipeline( mRequestedWidth, mRequestedHeight ) )
-		throw CaptureExcInitFail();
+		throw CaptureExcInitFail( "Failed to initialize capture pipeline" );
 
 	GstStateChangeReturn result = gst_element_set_state( mPipeline, GST_STATE_PLAYING );
 	if( result == GST_STATE_CHANGE_FAILURE ) {
@@ -282,7 +281,7 @@ void CaptureImplGStreamer::start()
 		}
 		gst_object_unref( bus );
 
-		throw CaptureExcInitFail();
+		throw CaptureExcInitFail( "Failed to start GStreamer pipeline" );
 	}
 
 	mIsCapturing = true;
@@ -466,8 +465,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 	// Create v4l2src
 	GstElementPtr source( gst_element_factory_make( "v4l2src", "camera-source" ), gstElementDeleter );
 	if( ! source ) {
-		CI_LOG_E( "Failed to create GStreamer source element" );
-		throw CaptureExcInitFail();
+		throw CaptureExcInitFail( "Failed to create GStreamer source element" );
 	}
 
 	// Set device path
@@ -485,15 +483,13 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 					g_object_set( source.get(), "device", device_path, nullptr );
 				}
 				else {
-					CI_LOG_E( "Cannot determine device path for selected camera" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Cannot determine device path for selected camera" );
 				}
 				gst_structure_free( props );
 			}
 		}
 		else {
-			CI_LOG_E( "No camera device available or selected" );
-			throw CaptureExcInitFail();
+			throw CaptureExcInitFail( "No camera device available or selected" );
 		}
 	}
 
@@ -515,8 +511,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 	GstElementPtr appSink( gst_element_factory_make( "appsink", "appsink" ), gstElementDeleter );
 
 	if( ! videoConvert || ! capsFilter || ! appSink ) {
-		CI_LOG_E( "Failed to create common GStreamer elements" );
-		throw CaptureExcInitFail();
+		throw CaptureExcInitFail( "Failed to create common GStreamer elements" );
 	}
 
 	// Create pipeline-specific decoder elements
@@ -531,8 +526,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		case PipelineType::JPEG_DECODE:
 			decoder.reset( gst_element_factory_make( "jpegdec", "jpegdec" ) );
 			if( ! decoder ) {
-				CI_LOG_E( "Failed to create JPEG decoder" );
-				throw CaptureExcInitFail();
+				throw CaptureExcInitFail( "Failed to create JPEG decoder" );
 			}
 			break;
 
@@ -540,8 +534,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			parser.reset( gst_element_factory_make( "h264parse", "h264parse" ) );
 			decoder.reset( gst_element_factory_make( "avdec_h264", "avdec_h264" ) );
 			if( ! parser || ! decoder ) {
-				CI_LOG_E( "Failed to create H.264 decoder elements" );
-				throw CaptureExcInitFail();
+				throw CaptureExcInitFail( "Failed to create H.264 decoder elements" );
 			}
 			break;
 
@@ -549,8 +542,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			parser.reset( gst_element_factory_make( "h265parse", "h265parse" ) );
 			decoder.reset( gst_element_factory_make( "avdec_h265", "avdec_h265" ) );
 			if( ! parser || ! decoder ) {
-				CI_LOG_E( "Failed to create HEVC/H.265 decoder elements" );
-				throw CaptureExcInitFail();
+				throw CaptureExcInitFail( "Failed to create HEVC/H.265 decoder elements" );
 			}
 			break;
 
@@ -558,8 +550,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		default:
 			decoder.reset( gst_element_factory_make( "decodebin", "decodebin" ) );
 			if( ! decoder ) {
-				CI_LOG_E( "Failed to create decodebin fallback" );
-				throw CaptureExcInitFail();
+				throw CaptureExcInitFail( "Failed to create decodebin fallback" );
 			}
 			break;
 	}
@@ -576,8 +567,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 	// Create pipeline
 	GstElementPtr pipeline( gst_pipeline_new( "cinder-capture" ), gstElementDeleter );
 	if( ! pipeline ) {
-		CI_LOG_E( "Failed to create GStreamer pipeline" );
-		throw CaptureExcInitFail();
+		throw CaptureExcInitFail( "Failed to create GStreamer pipeline" );
 	}
 
 	// Build and link pipeline based on type
@@ -587,15 +577,13 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			if( sourceCapsFilter ) {
 				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
 				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					CI_LOG_E( "Failed to link RAW pipeline with source caps filter" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Failed to link RAW pipeline with source caps filter" );
 				}
 			}
 			else {
 				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
 				if( ! gst_element_link_many( source.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					CI_LOG_E( "Failed to link RAW pipeline" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Failed to link RAW pipeline" );
 				}
 			}
 			break;
@@ -606,15 +594,13 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			if( sourceCapsFilter ) {
 				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
 				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					CI_LOG_E( "Failed to link JPEG pipeline with source caps filter" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Failed to link JPEG pipeline with source caps filter" );
 				}
 			}
 			else {
 				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
 				if( ! gst_element_link_many( source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					CI_LOG_E( "Failed to link JPEG pipeline" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Failed to link JPEG pipeline" );
 				}
 			}
 			break;
@@ -625,15 +611,13 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			if( sourceCapsFilter ) {
 				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
 				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					CI_LOG_E( "Failed to link H.264 pipeline with source caps filter" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Failed to link H.264 pipeline with source caps filter" );
 				}
 			}
 			else {
 				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
 				if( ! gst_element_link_many( source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					CI_LOG_E( "Failed to link H.264 pipeline" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Failed to link H.264 pipeline" );
 				}
 			}
 			break;
@@ -644,15 +628,13 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			if( sourceCapsFilter ) {
 				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
 				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					CI_LOG_E( "Failed to link HEVC pipeline with source caps filter" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Failed to link HEVC pipeline with source caps filter" );
 				}
 			}
 			else {
 				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
 				if( ! gst_element_link_many( source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					CI_LOG_E( "Failed to link HEVC pipeline" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Failed to link HEVC pipeline" );
 				}
 			}
 			break;
@@ -664,22 +646,19 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 			if( sourceCapsFilter ) {
 				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
 				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), decoder.get(), nullptr ) ) {
-					CI_LOG_E( "Failed to link source through caps filter to decodebin" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Failed to link source through caps filter to decodebin" );
 				}
 			}
 			else {
 				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
 				if( ! gst_element_link( source.get(), decoder.get() ) ) {
-					CI_LOG_E( "Failed to link source to decodebin" );
-					throw CaptureExcInitFail();
+					throw CaptureExcInitFail( "Failed to link source to decodebin" );
 				}
 			}
 
 			// Link videoconvert to capsfilter to appsink (separate for decodebin's dynamic pads)
 			if( ! gst_element_link_many( videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-				CI_LOG_E( "Failed to link decodebin video processing elements" );
-				throw CaptureExcInitFail();
+				throw CaptureExcInitFail( "Failed to link decodebin video processing elements" );
 			}
 
 			// Store for decodebin pad-added callback
