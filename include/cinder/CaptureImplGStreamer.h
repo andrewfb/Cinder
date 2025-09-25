@@ -85,8 +85,6 @@ class CaptureImplGStreamer {
 	void cleanupPipeline();
 	void startBusWatch();
 	void stopBusWatch();
-	void startMainLoop();
-	void stopMainLoop();
 
 	static GstFlowReturn onNewSample( GstAppSink *sink, gpointer userData );
 	static void onDecoderPadAdded( GstElement *decoder, GstPad *pad, gpointer userData );
@@ -109,16 +107,11 @@ class CaptureImplGStreamer {
 
 	std::thread				mBusWatchThread;
 	std::atomic<bool>		mRunBusWatch;
-	GMainLoop				*mMainLoop;
-	std::thread				mMainLoopThread;
 
 	int32_t					mRequestedWidth;
 	int32_t					mRequestedHeight;
 	int32_t					mBestWidth;
 	int32_t					mBestHeight;
-	int32_t					mNativeWidth;  // Actual camera resolution (before stereo cropping)
-	int32_t					mNativeHeight;
-	bool					mIsStereoCrop; // True if we're cropping stereo to single eye
 	std::atomic<int32_t>	mWidth;
 	std::atomic<int32_t>	mHeight;
 	std::atomic<bool>		mIsCapturing;
