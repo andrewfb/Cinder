@@ -275,21 +275,6 @@ class CaptureImplGStreamer {
 	 */
 	static void			ensureGStreamerInitialized();
 
-	/**
-	 * @brief Find best resolution match for target dimensions
-	 * @param device GStreamer device to query
-	 * @param targetWidth Desired width
-	 * @param targetHeight Desired height
-	 * @return Best matching resolution as ivec2
-	 *
-	 * Implements the resolution selection algorithm:
-	 * 1. Enumerate all device capabilities
-	 * 2. Score each resolution based on size and aspect ratio matching
-	 * 3. Return highest-scoring resolution
-	 *
-	 * @deprecated This method is replaced by the format analysis in analyzeDeviceFormat()
-	 */
-	ivec2 findBestResolution( GstDevice* device, int32_t targetWidth, int32_t targetHeight );
 
 	// Thread synchronization
 	mutable std::mutex			  mMutex;
