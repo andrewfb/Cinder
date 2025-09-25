@@ -5,9 +5,9 @@
  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
  the following conditions are met:
 
-    * Redistributions of source code must retain the above copyright notice, this list of conditions and
+	* Redistributions of source code must retain the above copyright notice, this list of conditions and
 	the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
+	* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
 	the following disclaimer in the documentation and/or other materials provided with the distribution.
 
  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
@@ -25,18 +25,18 @@
 #include "cinder/Cinder.h"
 
 #if defined( CINDER_LINUX )
-#include "cinder/Capture.h"
-#include "cinder/Surface.h"
+	#include "cinder/Capture.h"
+	#include "cinder/Surface.h"
 
-#include <gst/gst.h>
-#include <gst/app/gstappsink.h>
-#include <gst/video/video.h>
+	#include <gst/gst.h>
+	#include <gst/app/gstappsink.h>
+	#include <gst/video/video.h>
 
-#include <atomic>
-#include <memory>
-#include <mutex>
-#include <thread>
-#include <vector>
+	#include <atomic>
+	#include <memory>
+	#include <mutex>
+	#include <thread>
+	#include <vector>
 
 namespace cinder {
 
@@ -50,13 +50,13 @@ class CaptureImplGStreamer {
 	void start();
 	void stop();
 
-	bool		isCapturing();
-	bool		checkNewFrame() const;
+	bool isCapturing();
+	bool checkNewFrame() const;
 
-	int32_t		getWidth() const { return mWidth; }
-	int32_t		getHeight() const { return mHeight; }
+	int32_t getWidth() const { return mWidth; }
+	int32_t getHeight() const { return mHeight; }
 
-	Surface8uRef	getSurface() const;
+	Surface8uRef getSurface() const;
 
 	const Capture::DeviceRef getDevice() const { return mDevice; }
 
@@ -64,18 +64,18 @@ class CaptureImplGStreamer {
 
 	class Device : public Capture::Device {
 	  public:
-		Device( GstDevice *device, const std::string &name, const std::string &uniqueId );
+		Device( GstDevice* device, const std::string& name, const std::string& uniqueId );
 		~Device() override;
 
-		bool						checkAvailable() const override;
-		bool						isConnected() const override;
-		Capture::DeviceIdentifier	getUniqueId() const override { return mUniqueId; }
+		bool					  checkAvailable() const override;
+		bool					  isConnected() const override;
+		Capture::DeviceIdentifier getUniqueId() const override { return mUniqueId; }
 
 		GstDevice* getGstDevice() const { return mDevice; }
 
 	  private:
-		std::string		mUniqueId;
-		GstDevice		*mDevice;
+		std::string mUniqueId;
+		GstDevice*	mDevice;
 	};
 
   private:
@@ -86,37 +86,37 @@ class CaptureImplGStreamer {
 	void startBusWatch();
 	void stopBusWatch();
 
-	static GstFlowReturn onNewSample( GstAppSink *sink, gpointer userData );
-	static void onDecoderPadAdded( GstElement *decoder, GstPad *pad, gpointer userData );
-	GstFlowReturn handleSample( GstSample *sample );
-	static void ensureGStreamerInitialized();
+	static GstFlowReturn onNewSample( GstAppSink* sink, gpointer userData );
+	static void			 onDecoderPadAdded( GstElement* decoder, GstPad* pad, gpointer userData );
+	GstFlowReturn		 handleSample( GstSample* sample );
+	static void			 ensureGStreamerInitialized();
 
-	ivec2 findBestResolution( GstDevice *device, int32_t targetWidth, int32_t targetHeight );
+	ivec2 findBestResolution( GstDevice* device, int32_t targetWidth, int32_t targetHeight );
 
-	mutable std::mutex		mMutex;
-	std::unique_ptr<SurfaceCache>	mSurfaceCache;
-	mutable Surface8uRef	mCurrentFrame;
-	mutable bool			mHasNewFrame;
+	mutable std::mutex			  mMutex;
+	std::unique_ptr<SurfaceCache> mSurfaceCache;
+	mutable Surface8uRef		  mCurrentFrame;
+	mutable bool				  mHasNewFrame;
 
-	GstElement				*mPipeline;
-	GstElement				*mSource;
-	GstElement				*mVideoConvert;
-	GstElement				*mCapsFilter;
-	GstElement				*mAppSink;
-	GstBus					*mBus;
+	GstElement* mPipeline;
+	GstElement* mSource;
+	GstElement* mVideoConvert;
+	GstElement* mCapsFilter;
+	GstElement* mAppSink;
+	GstBus*		mBus;
 
-	std::thread				mBusWatchThread;
-	std::atomic<bool>		mRunBusWatch;
+	std::thread		  mBusWatchThread;
+	std::atomic<bool> mRunBusWatch;
 
-	int32_t					mRequestedWidth;
-	int32_t					mRequestedHeight;
-	int32_t					mBestWidth;
-	int32_t					mBestHeight;
-	std::atomic<int32_t>	mWidth;
-	std::atomic<int32_t>	mHeight;
-	std::atomic<bool>		mIsCapturing;
+	int32_t				 mRequestedWidth;
+	int32_t				 mRequestedHeight;
+	int32_t				 mBestWidth;
+	int32_t				 mBestHeight;
+	std::atomic<int32_t> mWidth;
+	std::atomic<int32_t> mHeight;
+	std::atomic<bool>	 mIsCapturing;
 
-	Capture::DeviceRef		mDevice;
+	Capture::DeviceRef mDevice;
 };
 
 } // namespace cinder
