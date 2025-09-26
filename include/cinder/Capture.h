@@ -150,10 +150,7 @@ class CI_API Capture {
 		};
 
 		// Construction
-		Mode( const ivec2& size, const MediaTime& frameRate, Codec codec, PixelFormat pixelFormat, const std::string& description = "" );
 		Mode( int32_t width, int32_t height, const MediaTime& frameRate, Codec codec, PixelFormat pixelFormat, const std::string& description = "" );
-		Mode( const ivec2& size, const MediaTime& frameRate, Codec codec, PixelFormat pixelFormat, const std::string& description, const MediaTime& minFrameRate, const MediaTime& maxFrameRate );
-		Mode( int32_t width, int32_t height, const MediaTime& frameRate, Codec codec, PixelFormat pixelFormat, const std::string& description, const MediaTime& minFrameRate, const MediaTime& maxFrameRate );
 		Mode();  // Default constructor
 
 		// Core properties
@@ -165,13 +162,6 @@ class CI_API Capture {
 		Codec               getCodec() const { return mCodec; }
 		PixelFormat         getPixelFormat() const { return mPixelFormat; }
 		const std::string&  getDescription() const { return mDescription; }
-
-		// Frame rate range metadata
-		bool                hasFrameRateRange() const { return mHasFrameRateRange; }
-		const MediaTime&    getMinFrameRate() const { return mMinFrameRate; }
-		const MediaTime&    getMaxFrameRate() const { return mMaxFrameRate; }
-		float               getMinFrameRateFloat() const { return static_cast<float>( 1.0 / mMinFrameRate.getSeconds() ); }
-		float               getMaxFrameRateFloat() const { return static_cast<float>( 1.0 / mMaxFrameRate.getSeconds() ); }
 
 		// Utility
 		float               getAspectRatio() const { return mSize.x / static_cast<float>( mSize.y ); }
@@ -200,11 +190,6 @@ class CI_API Capture {
 		PixelFormat mPixelFormat;
 		std::string mDescription;
 		std::string mPlatformData;
-
-		// Frame rate range metadata
-		bool        mHasFrameRateRange;
-		MediaTime   mMinFrameRate;
-		MediaTime   mMaxFrameRate;
 	};
 
 	// This is an abstract base class for implementing platform specific devices
