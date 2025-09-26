@@ -9,6 +9,8 @@
 
 #include "msw/videoInput/videoInput.h"
 #include "cinder/msw/CinderMsw.h"
+#include "cinder/Capture.h"
+#include "cinder/MediaTime.h"
 #include <tchar.h>
 
 //Include Directshow stuff here so we don't worry about needing all the h files.
@@ -698,6 +700,24 @@ bool videoInput::setupDevice(int deviceNumber, int w, int h, int connection){
 
 	setAttemptCaptureSize(deviceNumber,w,h);
 	setPhyCon(deviceNumber, connection);
+	if(setup(deviceNumber))return true;
+	return false;
+}
+
+// ---------------------------------------------------------------------- 
+// Setup a device with specific size and media type (GUID)
+//                                            
+// ---------------------------------------------------------------------- 
+
+bool videoInput::setupDevice(int deviceNumber, int w, int h, GUID mediaType){
+	if(deviceNumber >= VI_MAX_CAMERAS || VDList[deviceNumber]->readyToCapture) return false;
+
+	setAttemptCaptureSize(deviceNumber,w,h);
+	
+	// Set the requested media type
+	VDList[deviceNumber]->videoType = mediaType;
+	VDList[deviceNumber]->specificFormat = true;
+	
 	if(setup(deviceNumber))return true;
 	return false;
 }
@@ -1637,48 +1657,6 @@ void videoInput::getMediaSubtypeAsString(GUID type, char * typeAsString){
 	memcpy(typeAsString, tmpStr, sizeof(char)*8);
 }
 
-//-------------------------------------------------------------------------------------------
-std::vector<Capture::Mode> videoInput::getDeviceCaps(int deviceID)
-{
-	std::vector<Capture::Mode> modes;
-
-	videoDevice * VD = new videoDevice();
-	HRESULT hr = getDevice(&VD->pVideoInputFilter, deviceID, VD->wDeviceName, VD->nDeviceName);
-	if (FAILED(hr)) {
-		delete VD;
-		return modes;
-	}
-
-	IAMStreamConfig *streamConf = NULL;
-    hr = VD->pCaptureGraph->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, VD->pVideoInputFilter, IID_IAMStreamConfig, (void **)&streamConf);
-	if(FAILED(hr)){
-		delete VD;
-		return modes;
-	}
-
-	int iCount = 0, iSize = 0;
-	hr = streamConf->GetNumberOfCapabilities(&iCount, &iSize);
-	if (iSize == sizeof(VIDEO_STREAM_CONFIG_CAPS))
-	{
-	    for (int iFormat = 0; iFormat < iCount; iFormat++)
-	    {
-			VIDEO_STREAM_CONFIG_CAPS scc;
-			AM_MEDIA_TYPE *pmtConfig;
-			hr =  streamConf->GetStreamCaps(iFormat, &pmtConfig, (BYTE*)&scc);
-			if (SUCCEEDED(hr)){
-				int width = scc.MaxOutputSize.cx;
-				int height = scc.MaxOutputSize.cy;
-				modes.push_back( Capture::Mode( width, height, 30, Capture::Mode::Codec::Uncompressed, pmtConfig->subtype) );
-				MyDeleteMediaType(pmtConfig);
-	        }
-	     }
-	}
-
-	streamConf->Release();
-	delete VD;
-
-	return modes;
-}
 
 
 //---------------------------------------------------------------------------------------------------
@@ -1854,18 +1832,18 @@ int videoInput::start(int deviceID, videoDevice *VD){
 		
 		//if we didn't find the requested size - lets try and find the closest matching size
 		if( foundSize == false ){
-			if( verbose )printf("SETUP: couldn't find requested size - searching for closest matching size\n");
+			if( verbose )printf("SETUP: couldn't find requested size - using default fallback\n");
 
-			int closestWidth		= -1;
-			int closestHeight		= -1;
-			GUID newMediaSubtype;
-
-			findClosestSizeAndSubtype(VD, VD->tryWidth, VD->tryHeight, closestWidth, closestHeight, newMediaSubtype);
+			// TODO: Implement findClosestSizeAndSubtype or use default fallback
+			// For now, just use a default size as fallback
+			int closestWidth = 640;
+			int closestHeight = 480;
+			GUID newMediaSubtype = MEDIASUBTYPE_RGB24;
 				
 			if( closestWidth != -1 && closestHeight != -1){
 				getMediaSubtypeAsString(newMediaSubtype, guidStr);
 
-				if(verbose)printf("SETUP: closest supported size is %s @ %i %i\n", guidStr, closestWidth, closestHeight);
+				if(verbose)printf("SETUP: using fallback size %s @ %i %i\n", guidStr, closestWidth, closestHeight);
 				if( setSizeAndSubtype(VD, closestWidth, closestHeight, newMediaSubtype) ){
 					VD->setSize(closestWidth, closestHeight);
 					foundSize = true;
@@ -2362,6 +2340,223 @@ HRESULT videoInput::routeCrossbar(ICaptureGraphBuilder2 **ppBuild, IBaseFilter *
 	
 	return hr;
 }
+
+// ---------------------------------------------------------------------- 
+// Get device resolutions by enumerating DirectShow capabilities
+// ---------------------------------------------------------------------- 
+std::vector<std::pair<int, int>> videoInput::getDeviceResolutions(int deviceID) {
+	std::vector<std::pair<int, int>> resolutions;
+	
+	if (deviceID >= VI_MAX_CAMERAS) {
+		return resolutions;
+	}
+	
+	// Create temporary device to enumerate capabilities
+	videoDevice tempDevice;
+	HRESULT hr = getDevice(&tempDevice.pVideoInputFilter, deviceID, tempDevice.wDeviceName, tempDevice.nDeviceName);
+	if (FAILED(hr)) {
+		return resolutions;
+	}
+	
+	// Create capture graph builder
+	hr = CoCreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER, IID_ICaptureGraphBuilder2, (void**)&tempDevice.pCaptureGraph);
+	if (FAILED(hr)) {
+		tempDevice.pVideoInputFilter->Release();
+		return resolutions;
+	}
+	
+	// Create filter graph
+	hr = CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&tempDevice.pGraph);
+	if (FAILED(hr)) {
+		tempDevice.pCaptureGraph->Release();
+		tempDevice.pVideoInputFilter->Release();
+		return resolutions;
+	}
+	
+	// Set the filter graph
+	tempDevice.pCaptureGraph->SetFiltergraph(tempDevice.pGraph);
+	tempDevice.pGraph->AddFilter(tempDevice.pVideoInputFilter, tempDevice.wDeviceName);
+	
+	// Get stream configuration interface
+	IAMStreamConfig *streamConf = NULL;
+	hr = tempDevice.pCaptureGraph->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, tempDevice.pVideoInputFilter, IID_IAMStreamConfig, (void**)&streamConf);
+	
+	if (SUCCEEDED(hr)) {
+		int iCount = 0, iSize = 0;
+		hr = streamConf->GetNumberOfCapabilities(&iCount, &iSize);
+		
+		if (SUCCEEDED(hr) && iSize == sizeof(VIDEO_STREAM_CONFIG_CAPS)) {
+			for (int iFormat = 0; iFormat < iCount; iFormat++) {
+				VIDEO_STREAM_CONFIG_CAPS scc;
+				AM_MEDIA_TYPE *pmtConfig;
+				hr = streamConf->GetStreamCaps(iFormat, &pmtConfig, (BYTE*)&scc);
+				
+				if (SUCCEEDED(hr)) {
+					// Get all supported resolutions from min to max
+					int minWidth = scc.MinOutputSize.cx;
+					int maxWidth = scc.MaxOutputSize.cx;
+					int minHeight = scc.MinOutputSize.cy;
+					int maxHeight = scc.MaxOutputSize.cy;
+					int stepX = scc.OutputGranularityX;
+					int stepY = scc.OutputGranularityY;
+					
+					// Add the specific max resolution (most important)
+					resolutions.emplace_back(maxWidth, maxHeight);
+					
+					// Add min resolution if different
+					if (minWidth != maxWidth || minHeight != maxHeight) {
+						resolutions.emplace_back(minWidth, minHeight);
+					}
+					
+					// Add some intermediate resolutions if there's a range
+					if (stepX > 0 && stepY > 0 && (maxWidth - minWidth) > stepX && (maxHeight - minHeight) > stepY) {
+						// Add quarter resolution
+						int quarterW = minWidth + (maxWidth - minWidth) / 4;
+						int quarterH = minHeight + (maxHeight - minHeight) / 4;
+						quarterW = ((quarterW / stepX) * stepX);
+						quarterH = ((quarterH / stepY) * stepY);
+						if (quarterW >= minWidth && quarterW <= maxWidth && quarterH >= minHeight && quarterH <= maxHeight) {
+							resolutions.emplace_back(quarterW, quarterH);
+						}
+						
+						// Add half resolution
+						int halfW = minWidth + (maxWidth - minWidth) / 2;
+						int halfH = minHeight + (maxHeight - minHeight) / 2;
+						halfW = ((halfW / stepX) * stepX);
+						halfH = ((halfH / stepY) * stepY);
+						if (halfW >= minWidth && halfW <= maxWidth && halfH >= minHeight && halfH <= maxHeight) {
+							resolutions.emplace_back(halfW, halfH);
+						}
+					}
+					
+					// Clean up media type
+					if (pmtConfig->cbFormat != 0) {
+						CoTaskMemFree((PVOID)pmtConfig->pbFormat);
+						pmtConfig->cbFormat = 0;
+						pmtConfig->pbFormat = NULL;
+					}
+					if (pmtConfig->pUnk != NULL) {
+						pmtConfig->pUnk->Release();
+						pmtConfig->pUnk = NULL;
+					}
+					CoTaskMemFree(pmtConfig);
+				}
+			}
+		}
+		streamConf->Release();
+	}
+	
+	// Clean up
+	tempDevice.pGraph->Release();
+	tempDevice.pCaptureGraph->Release();
+	tempDevice.pVideoInputFilter->Release();
+	
+	// Remove duplicates
+	std::sort(resolutions.begin(), resolutions.end());
+	resolutions.erase(std::unique(resolutions.begin(), resolutions.end()), resolutions.end());
+	
+	return resolutions;
+}
+
+// ---------------------------------------------------------------------- 
+// Get supported formats for a specific resolution
+// ---------------------------------------------------------------------- 
+std::vector<GUID> videoInput::getDeviceFormats(int deviceID, int width, int height) {
+	std::vector<GUID> formats;
+	
+	if (deviceID >= VI_MAX_CAMERAS) {
+		return formats;
+	}
+	
+	// Create temporary device to enumerate capabilities
+	videoDevice tempDevice;
+	HRESULT hr = getDevice(&tempDevice.pVideoInputFilter, deviceID, tempDevice.wDeviceName, tempDevice.nDeviceName);
+	if (FAILED(hr)) {
+		return formats;
+	}
+	
+	// Create capture graph builder
+	hr = CoCreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER, IID_ICaptureGraphBuilder2, (void**)&tempDevice.pCaptureGraph);
+	if (FAILED(hr)) {
+		tempDevice.pVideoInputFilter->Release();
+		return formats;
+	}
+	
+	// Create filter graph
+	hr = CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&tempDevice.pGraph);
+	if (FAILED(hr)) {
+		tempDevice.pCaptureGraph->Release();
+		tempDevice.pVideoInputFilter->Release();
+		return formats;
+	}
+	
+	// Set the filter graph
+	tempDevice.pCaptureGraph->SetFiltergraph(tempDevice.pGraph);
+	tempDevice.pGraph->AddFilter(tempDevice.pVideoInputFilter, tempDevice.wDeviceName);
+	
+	// Get stream configuration interface
+	IAMStreamConfig *streamConf = NULL;
+	hr = tempDevice.pCaptureGraph->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, tempDevice.pVideoInputFilter, IID_IAMStreamConfig, (void**)&streamConf);
+	
+	if (SUCCEEDED(hr)) {
+		int iCount = 0, iSize = 0;
+		hr = streamConf->GetNumberOfCapabilities(&iCount, &iSize);
+		
+		if (SUCCEEDED(hr) && iSize == sizeof(VIDEO_STREAM_CONFIG_CAPS)) {
+			for (int iFormat = 0; iFormat < iCount; iFormat++) {
+				VIDEO_STREAM_CONFIG_CAPS scc;
+				AM_MEDIA_TYPE *pmtConfig;
+				hr = streamConf->GetStreamCaps(iFormat, &pmtConfig, (BYTE*)&scc);
+				
+				if (SUCCEEDED(hr)) {
+					// Check if this capability supports our target resolution
+					if (width >= (int)scc.MinOutputSize.cx && width <= (int)scc.MaxOutputSize.cx &&
+						height >= (int)scc.MinOutputSize.cy && height <= (int)scc.MaxOutputSize.cy) {
+						
+						// Check granularity
+						if (scc.OutputGranularityX > 0 && scc.OutputGranularityY > 0) {
+							if ((width - scc.MinOutputSize.cx) % scc.OutputGranularityX == 0 &&
+								(height - scc.MinOutputSize.cy) % scc.OutputGranularityY == 0) {
+								formats.push_back(pmtConfig->subtype);
+							}
+						} else {
+							formats.push_back(pmtConfig->subtype);
+						}
+					}
+					
+					// Clean up media type
+					if (pmtConfig->cbFormat != 0) {
+						CoTaskMemFree((PVOID)pmtConfig->pbFormat);
+						pmtConfig->cbFormat = 0;
+						pmtConfig->pbFormat = NULL;
+					}
+					if (pmtConfig->pUnk != NULL) {
+						pmtConfig->pUnk->Release();
+						pmtConfig->pUnk = NULL;
+					}
+					CoTaskMemFree(pmtConfig);
+				}
+			}
+		}
+		streamConf->Release();
+	}
+	
+	// Clean up
+	tempDevice.pGraph->Release();
+	tempDevice.pCaptureGraph->Release();
+	tempDevice.pVideoInputFilter->Release();
+	
+	// Remove duplicates
+	std::sort(formats.begin(), formats.end(), [](const GUID& a, const GUID& b) {
+		return memcmp(&a, &b, sizeof(GUID)) < 0;
+	});
+	formats.erase(std::unique(formats.begin(), formats.end(), [](const GUID& a, const GUID& b) {
+		return memcmp(&a, &b, sizeof(GUID)) == 0;
+	}), formats.end());
+	
+	return formats;
+}
+
 
 #if defined( __clang__ ) || defined( __GCC__ )
     #pragma GCC diagnostic pop

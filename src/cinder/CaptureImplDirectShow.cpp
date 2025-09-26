@@ -21,6 +21,15 @@
 */
 
 #include "cinder/CaptureImplDirectShow.h"
+#include <dshow.h>
+#include <dvdmedia.h>  // For VIDEO_STREAM_CONFIG_CAPS
+#include <set>
+#include <tuple>
+
+// DirectShow GUID constants that may be missing from some headers
+#ifndef MEDIASUBTYPE_I420
+static const GUID MEDIASUBTYPE_I420 = { 0x30323449, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
+#endif
 
 using namespace std;
 
@@ -216,7 +225,81 @@ Surface8uRef CaptureImplDirectShow::getSurface() const
 
 std::vector<Capture::Mode> CaptureImplDirectShow::Device::getModes() const
 {
-	return getVideoInput().getDeviceCaps( mUniqueId );
+	std::vector<Capture::Mode> modes;
+	
+	// Get actual device resolutions using DirectShow enumeration
+	auto resolutions = getVideoInput().getDeviceResolutions(mUniqueId);
+	
+	if (resolutions.empty()) {
+		// Fallback if enumeration fails
+		modes.push_back(Capture::Mode(640, 480, MediaTime(1.0/30.0), Capture::Mode::Codec::Uncompressed, Capture::Mode::PixelFormat::BGR24, "640x480 30fps BGR24 (fallback)"));
+		return modes;
+	}
+	
+	// Use a set to track unique combinations and avoid duplicates
+	std::set<std::tuple<int, int, Capture::Mode::PixelFormat>> uniqueModes;
+	
+	// For each resolution, get the supported pixel formats
+	for (const auto& res : resolutions) {
+		int width = res.first;
+		int height = res.second;
+		
+		auto formats = getVideoInput().getDeviceFormats(mUniqueId, width, height);
+		
+		if (formats.empty()) {
+			// Add with default format if no formats found
+			auto key = std::make_tuple(width, height, Capture::Mode::PixelFormat::BGR24);
+			if (uniqueModes.find(key) == uniqueModes.end()) {
+				uniqueModes.insert(key);
+				modes.push_back(Capture::Mode(width, height, MediaTime(1.0/30.0), Capture::Mode::Codec::Uncompressed, Capture::Mode::PixelFormat::BGR24, 
+					std::to_string(width) + "x" + std::to_string(height) + " 30fps BGR24"));
+			}
+		} else {
+			// Add mode for each supported format
+			for (const auto& guid : formats) {
+				Capture::Mode::PixelFormat pixelFormat = Capture::Mode::PixelFormat::BGR24; // default
+				std::string formatName = "Unknown";
+				
+				// Convert GUID to PixelFormat
+				if (IsEqualGUID(guid, MEDIASUBTYPE_RGB24)) {
+					pixelFormat = Capture::Mode::PixelFormat::RGB24;
+					formatName = "RGB24";
+				} else if (IsEqualGUID(guid, MEDIASUBTYPE_RGB32)) {
+					pixelFormat = Capture::Mode::PixelFormat::ARGB32;
+					formatName = "RGB32";
+				} else if (IsEqualGUID(guid, MEDIASUBTYPE_YUY2)) {
+					pixelFormat = Capture::Mode::PixelFormat::YUY2;
+					formatName = "YUY2";
+				} else if (IsEqualGUID(guid, MEDIASUBTYPE_UYVY)) {
+					pixelFormat = Capture::Mode::PixelFormat::UYVY;
+					formatName = "UYVY";
+				} else if (IsEqualGUID(guid, MEDIASUBTYPE_IYUV)) {
+					pixelFormat = Capture::Mode::PixelFormat::YUV420P;
+					formatName = "IYUV";
+				} else if (IsEqualGUID(guid, MEDIASUBTYPE_YV12)) {
+					pixelFormat = Capture::Mode::PixelFormat::YV12;
+					formatName = "YV12";
+				} else if (IsEqualGUID(guid, MEDIASUBTYPE_NV12)) {
+					pixelFormat = Capture::Mode::PixelFormat::NV12;
+					formatName = "NV12";
+				} else {
+					// Default to BGR24 for unknown formats
+					pixelFormat = Capture::Mode::PixelFormat::BGR24;
+					formatName = "BGR24";
+				}
+				
+				// Check for duplicates
+				auto key = std::make_tuple(width, height, pixelFormat);
+				if (uniqueModes.find(key) == uniqueModes.end()) {
+					uniqueModes.insert(key);
+					std::string description = std::to_string(width) + "x" + std::to_string(height) + " 30fps " + formatName;
+					modes.push_back(Capture::Mode(width, height, MediaTime(1.0/30.0), Capture::Mode::Codec::Uncompressed, pixelFormat, description));
+				}
+			}
+		}
+	}
+	
+	return modes;
 }
 
 } //namespace

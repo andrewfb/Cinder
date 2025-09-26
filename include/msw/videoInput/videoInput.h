@@ -40,6 +40,7 @@ Thanks to:
 
 
 #include <wchar.h>
+#include <vector>
 
 //this is for TryEnterCriticalSection
 #ifndef _WIN32_WINNT
@@ -243,7 +244,6 @@ class videoInput{
 		videoInput();
 		~videoInput();
 
-		std::vector<Capture::Mode> getDeviceCaps(int deviceID);
 				
 		//turns off console messages - default is to print messages
 		static void setVerbose(bool _verbose);
@@ -269,6 +269,7 @@ class videoInput{
 		//Choose one of these four to setup your device
 		bool setupDevice(int deviceID);
 		bool setupDevice(int deviceID, int w, int h);
+		bool setupDevice(int deviceID, int w, int h, GUID mediaType);
 
 		//These two are only for capture cards
 		//USB and Firewire cameras souldn't specify connection 
@@ -314,6 +315,10 @@ class videoInput{
 		int  getWidth(int deviceID);
 		int  getHeight(int deviceID);
 		int  getSize(int deviceID);
+		
+		//get device capabilities for mode enumeration
+		std::vector<std::pair<int, int>> getDeviceResolutions(int deviceID);
+		std::vector<GUID> getDeviceFormats(int deviceID, int width, int height);
 		
 		//completely stops and frees a device
 		void stopDevice(int deviceID);
