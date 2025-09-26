@@ -26,14 +26,16 @@
 #include "cinder/Capture.h"
 #include "cinder/Surface.h"
 #include <memory>
+#include <mutex>
 
 namespace cinder {
 
-class DirectShowCapture;
+// Forward declarations for integrated DirectShow types (defined in implementation)
 
 class CaptureImplDirectShow {
  public:
 	class Device;
+	friend class SampleGrabberCallback;
 
 	CaptureImplDirectShow( int32_t width, int32_t height, const Capture::DeviceRef device );
 	CaptureImplDirectShow( const Capture::DeviceRef& device, const Capture::Mode& mode );
@@ -53,6 +55,9 @@ class CaptureImplDirectShow {
 	const Capture::DeviceRef getDevice() const { return mDevice; }
 
 	static const std::vector<Capture::DeviceRef>&	getDevices( bool forceRefresh = false );
+	
+	// Public method to update dimensions (used by DirectShow setup)
+	void updateDimensions(int width, int height);
 
 	class Device : public Capture::Device {
  	  public:
@@ -70,11 +75,22 @@ class CaptureImplDirectShow {
 	int									mDeviceID;
 	bool								mIsCapturing;
 	std::unique_ptr<class SurfaceCache>	mSurfaceCache;
-	std::unique_ptr<DirectShowCapture>	mDirectShowCapture;
 
 	int32_t					mWidth, mHeight;
 	mutable Surface8uRef	mCurrentFrame;
 	Capture::DeviceRef		mDevice;
+	
+	// New integrated DirectShow members (using void* to avoid forward declaration issues)
+	void*								mComInit;
+	void*								mDeviceContext;
+	void*								mCallback;
+	std::unique_ptr<unsigned char[]>	mPixelBuffer;
+	
+	mutable bool						mNewFrameAvailable = false;
+	mutable std::mutex					mFrameMutex;
+	
+	// Direct DirectShow setup methods
+	bool setupDeviceDirect(int deviceId, int width, int height);
 };
 
 } //namespace
