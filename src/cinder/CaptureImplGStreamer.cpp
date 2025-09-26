@@ -437,39 +437,16 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 				for( const auto& formatCombo : formatCombos ) {
 					if( rate.first > 0 && rate.second > 0 ) {
 						// GStreamer gives us framerate as num/denom (e.g., 30/1 for 30fps)
-						// MediaTime expects value/base where seconds = value/base
-						// So for 30fps: 1 second / 30 frames = MediaTime(1, 30)
-						// But GStreamer gives 30/1, so we keep it as is since it represents frames per second
-						MediaTime frameRate( rate.first, rate.second ); // MediaTime(fps_numerator, fps_denominator)
+						// MediaTime expects frame duration: seconds per frame
+						// So for 30fps: MediaTime should be (1, 30) meaning 1/30 seconds per frame
+						// GStreamer gives 30/1, so we need to swap: MediaTime(denom, num)
+						MediaTime frameRate( rate.second, rate.first ); // MediaTime(frame_duration_num, frame_duration_denom)
 
 						std::string description = std::string( mediaType );
 
-						// Create frame rate range from the available framerates
-						// Find min and max frame rates from the framerates vector
-						double minFpsDouble = std::numeric_limits<double>::max();
-						double maxFpsDouble = 0.0;
-
-						for( const auto& r : framerates ) {
-							if( r.first > 0 && r.second > 0 ) {
-								double fps = (double)r.first / r.second;
-								minFpsDouble = std::min( minFpsDouble, fps );
-								maxFpsDouble = std::max( maxFpsDouble, fps );
-							}
-						}
-
-						Capture::Mode mode;
-						if( minFpsDouble != maxFpsDouble ) {
-							// Device supports variable frame rates - store the range
-							MediaTime minFrameRate( 1, (int)round( minFpsDouble ) ); // Min FPS
-							MediaTime maxFrameRate( 1, (int)round( maxFpsDouble ) ); // Max FPS
-							mode = Capture::Mode( res.first, res.second, frameRate,
-												  formatCombo.first, formatCombo.second, description,
-												  minFrameRate, maxFrameRate );
-						} else {
-							// Device has fixed frame rate - use simple constructor without range
-							mode = Capture::Mode( res.first, res.second, frameRate,
-												  formatCombo.first, formatCombo.second, description );
-						}
+						// Create mode with single frame rate
+						Capture::Mode mode( res.first, res.second, frameRate,
+											formatCombo.first, formatCombo.second, description );
 
 						// Store platform-specific data for exact pipeline construction
 						// For raw formats, include the format in the caps
@@ -661,6 +638,29 @@ void CaptureImplGStreamer::stop()
 
 bool CaptureImplGStreamer::isCapturing()
 {
+	// Check both our flag and the actual pipeline state
+	if( ! mIsCapturing )
+		return false;
+
+	// Verify pipeline is in a valid state
+	if( mPipeline ) {
+		GstState state;
+		GstStateChangeReturn ret = gst_element_get_state( mPipeline, &state, nullptr, 0 );
+
+		// Consider PLAYING and PAUSED as valid capturing states
+		// PAUSED can be normal during startup or when seeking
+		bool pipelineValid = (ret != GST_STATE_CHANGE_FAILURE) &&
+							 (state == GST_STATE_PLAYING || state == GST_STATE_PAUSED);
+
+		// Only update flag for actual failures
+		if( mIsCapturing && ret == GST_STATE_CHANGE_FAILURE ) {
+			CI_LOG_W( "Pipeline failure detected - marking capture as stopped" );
+			mIsCapturing = false;
+		}
+
+		return mIsCapturing && pipelineValid;
+	}
+
 	return mIsCapturing;
 }
 
@@ -1087,6 +1087,12 @@ void CaptureImplGStreamer::startBusWatch()
 							CI_LOG_E( "Capture error: " << err->message );
 						if( dbg )
 							CI_LOG_E( "Debug info: " << dbg );
+
+						// Mark as not capturing when pipeline errors occur
+						// This handles device disconnection and other critical failures
+						mIsCapturing = false;
+						CI_LOG_W( "Device disconnection or pipeline failure detected - marking capture as stopped" );
+
 						if( err )
 							g_error_free( err );
 						if( dbg )
