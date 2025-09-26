@@ -461,19 +461,6 @@ std::vector<DirectShowCapture::StreamFormat> DirectShowCapture::getDeviceFormats
 	return formats;
 }
 
-std::vector<std::pair<int, int>> DirectShowCapture::getDeviceResolutions( int deviceId )
-{
-	std::vector<std::pair<int, int>> resolutions;
-	auto							 formats = getDeviceFormats( deviceId );
-
-	std::set<std::pair<int, int>> uniqueResolutions;
-	for( const auto& format : formats ) {
-		uniqueResolutions.insert( { format.width, format.height } );
-	}
-
-	resolutions.assign( uniqueResolutions.begin(), uniqueResolutions.end() );
-	return resolutions;
-}
 
 DirectShowCapture::ComPtr<IBaseFilter> DirectShowCapture::createSourceFilter( int deviceId )
 {
@@ -1029,29 +1016,7 @@ bool DirectShowCapture::isDeviceConnected( int deviceId ) const
 	return deviceId >= 0 && deviceId < static_cast<int>( devices.size() );
 }
 
-std::string DirectShowCapture::getDeviceName( int deviceId ) const
-{
-	auto devices = enumerateDevices();
-	if( deviceId >= 0 && deviceId < static_cast<int>( devices.size() ) ) {
-		return devices[deviceId].friendlyName;
-	}
-	return "";
-}
 
-bool DirectShowCapture::showSettingsWindow()
-{
-	return false;
-}
-
-bool DirectShowCapture::setVideoProperty( long property, long value, long flags )
-{
-	return false;
-}
-
-bool DirectShowCapture::getVideoProperty( long property, long& min, long& max, long& step, long& current, long& flags, long& defaultValue )
-{
-	return false;
-}
 
 
 } // namespace cinder

@@ -77,8 +77,6 @@ public:
     // Device capabilities
     std::vector<Capture::Mode> getDeviceModes(int deviceId);
     std::vector<StreamFormat> getDeviceFormats(int deviceId);
-    std::vector<std::pair<int, int>> getDeviceResolutions(int deviceId);
-    
     // Setup and configuration
     bool setupDevice(int deviceId);
     bool setupDevice(int deviceId, int width, int height);
@@ -102,12 +100,7 @@ public:
     
     // Device state
     bool isDeviceConnected(int deviceId) const;
-    std::string getDeviceName(int deviceId) const;
     
-    // Settings and controls
-    bool showSettingsWindow();
-    bool setVideoProperty(long property, long value, long flags = 0);
-    bool getVideoProperty(long property, long& min, long& max, long& step, long& current, long& flags, long& defaultValue);
     
 
 private:
