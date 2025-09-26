@@ -164,43 +164,16 @@ STDMETHODIMP DirectShowCapture::SampleGrabberCallback::SampleCB(double sampleTim
             long actualDataLength = sample->GetActualDataLength();
             int expectedSize = mParent->getSize(); // width * height * 3
             
-            OutputDebugStringA(("SampleCB: actualDataLength=" + std::to_string(actualDataLength) + 
-                               " expectedSize=" + std::to_string(expectedSize) + 
-                               " dimensions=" + std::to_string(mParent->mWidth) + "x" + std::to_string(mParent->mHeight) + "\n").c_str());
-            
-            if (actualDataLength == expectedSize) {
-                // Handle format based on what DirectShow actually delivered
-                int width = mParent->mWidth;
-                int height = mParent->mHeight;
-                int widthInBytes = width * 3;
-                
-                // Check what format we actually received by looking at the connected media type
-                if (IsEqualGUID(mParent->mActualFormat, MEDIASUBTYPE_RGB24)) {
-                    // RGB24 format - copy without flip since DirectShow is delivering right-side up
-                    memcpy(mParent->mPixelBuffer.get(), ptrBuffer, expectedSize);
-                    OutputDebugStringA("SampleCB: RGB24 data copied without flip\n");
-                } else {
-                    // Assume BGR24 or other format - need to handle channel swapping, no flip
-                    for (int y = 0; y < height; y++) {
-                        for (int x = 0; x < width; x++) {
-                            int pixelIndex = (y * width + x) * 3;
-                            
-                            // Swap R and B channels (BGR -> RGB) 
-                            mParent->mPixelBuffer.get()[pixelIndex + 0] = ptrBuffer[pixelIndex + 2];  // R
-                            mParent->mPixelBuffer.get()[pixelIndex + 1] = ptrBuffer[pixelIndex + 1];  // G  
-                            mParent->mPixelBuffer.get()[pixelIndex + 2] = ptrBuffer[pixelIndex + 0];  // B
-                        }
-                    }
-                    OutputDebugStringA("SampleCB: BGR24 data converted to RGB24 without flip\n");
-                }
-                
+            // Simple memcpy like videoInput did - SampleGrabber handles format conversion to RGB24
+            if (actualDataLength >= expectedSize) {
+                memcpy(mParent->mPixelBuffer.get(), ptrBuffer, expectedSize);
                 mParent->mNewFrameAvailable = true;
+                OutputDebugStringA(("SampleCB: Copied " + std::to_string(expectedSize) + " bytes\n").c_str());
             } else if (actualDataLength > 0) {
-                // Size mismatch - copy what we can
-                int copySize = std::min(actualDataLength, (long)expectedSize);
-                memcpy(mParent->mPixelBuffer.get(), ptrBuffer, copySize);
+                // Partial data - copy what we can
+                memcpy(mParent->mPixelBuffer.get(), ptrBuffer, actualDataLength);
                 mParent->mNewFrameAvailable = true;
-                OutputDebugStringA(("SampleCB: Size mismatch - copied " + std::to_string(copySize) + " bytes\n").c_str());
+                OutputDebugStringA(("SampleCB: Partial copy " + std::to_string(actualDataLength) + " bytes\n").c_str());
             }
         }
     } catch (...) {
@@ -1118,116 +1091,6 @@ bool DirectShowCapture::getVideoProperty(long property, long& min, long& max, lo
     return false;
 }
 
-bool DirectShowCapture::convertYUY2ToRGB24(const BYTE* yuy2Data, BYTE* rgb24Data, int width, int height) {
-    // YUY2 format: Y0 U0 Y1 V0 (4 bytes for 2 pixels)
-    // Convert to RGB24: R G B R G B (6 bytes for 2 pixels)
-    // Flip vertically since DirectShow delivers upside down
-    
-    for (int y = 0; y < height; y++) {
-        int flippedY = height - 1 - y;  // Flip vertically
-        for (int x = 0; x < width; x += 2) {
-            int yuy2Index = (y * width + x) * 2;
-            int rgb24Index = (flippedY * width + x) * 3;
-            
-            if (yuy2Index + 3 >= width * height * 2 || rgb24Index + 5 >= width * height * 3) {
-                break; // Prevent buffer overflow
-            }
-            
-            int Y0 = yuy2Data[yuy2Index + 0];
-            int U = yuy2Data[yuy2Index + 1];
-            int Y1 = yuy2Data[yuy2Index + 2];
-            int V = yuy2Data[yuy2Index + 3];
-            
-            // Convert first pixel (Y0, U, V)
-            int C0 = Y0 - 16;
-            int D = U - 128;
-            int E = V - 128;
-            
-            int R0 = (298 * C0 + 409 * E + 128) >> 8;
-            int G0 = (298 * C0 - 100 * D - 208 * E + 128) >> 8;
-            int B0 = (298 * C0 + 516 * D + 128) >> 8;
-            
-            // Clamp values
-            R0 = std::max(0, std::min(255, R0));
-            G0 = std::max(0, std::min(255, G0));
-            B0 = std::max(0, std::min(255, B0));
-            
-            rgb24Data[rgb24Index + 0] = (BYTE)B0;  // Cinder expects BGR order
-            rgb24Data[rgb24Index + 1] = (BYTE)G0;
-            rgb24Data[rgb24Index + 2] = (BYTE)R0;
-            
-            // Convert second pixel (Y1, U, V) if within bounds
-            if (x + 1 < width) {
-                int C1 = Y1 - 16;
-                
-                int R1 = (298 * C1 + 409 * E + 128) >> 8;
-                int G1 = (298 * C1 - 100 * D - 208 * E + 128) >> 8;
-                int B1 = (298 * C1 + 516 * D + 128) >> 8;
-                
-                // Clamp values
-                R1 = std::max(0, std::min(255, R1));
-                G1 = std::max(0, std::min(255, G1));
-                B1 = std::max(0, std::min(255, B1));
-                
-                rgb24Data[rgb24Index + 3] = (BYTE)B1;  // Cinder expects BGR order
-                rgb24Data[rgb24Index + 4] = (BYTE)G1;
-                rgb24Data[rgb24Index + 5] = (BYTE)R1;
-            }
-        }
-    }
-    
-    return true;
-}
-
-bool DirectShowCapture::convertBGR24ToRGB24(const BYTE* bgr24Data, BYTE* rgb24Data, int width, int height) {
-    // BGR24 camera format: B G R B G R...  
-    // Cinder expects: B G R B G R... (BGR order)
-    // Copy line by line and flip vertically since DirectShow delivers upside down
-    
-    OutputDebugStringA(("DirectShow: BGR24 conversion - width=" + std::to_string(width) + " height=" + std::to_string(height) + "\n").c_str());
-    
-    int rowBytes = width * 3;
-    for (int y = 0; y < height; y++) {
-        int flippedY = height - 1 - y;  // Flip vertically
-        const BYTE* srcRow = bgr24Data + (y * rowBytes);
-        BYTE* dstRow = rgb24Data + (flippedY * rowBytes);
-        memcpy(dstRow, srcRow, rowBytes);
-    }
-    
-    OutputDebugStringA("DirectShow: BGR24 copy with vertical flip completed\n");
-    return true;
-}
-
-bool DirectShowCapture::convertBGR24WithStride(const BYTE* bgr24Data, BYTE* rgb24Data, int width, int height, int stride) {
-    // Handle BGR24 data with stride/padding
-    // Copy line by line, skipping any padding, and flip vertically
-    
-    OutputDebugStringA(("DirectShow: BGR24 stride conversion - width=" + std::to_string(width) + " height=" + std::to_string(height) + " stride=" + std::to_string(stride) + "\n").c_str());
-    
-    int outputRowBytes = width * 3;  // Output has no padding
-    
-    for (int y = 0; y < height; y++) {
-        int flippedY = height - 1 - y;  // Flip vertically
-        const BYTE* srcRow = bgr24Data + (y * stride);  // Source has stride
-        BYTE* dstRow = rgb24Data + (flippedY * outputRowBytes);  // Output has no padding
-        memcpy(dstRow, srcRow, outputRowBytes);  // Copy only actual pixel data, skip padding
-    }
-    
-    OutputDebugStringA("DirectShow: BGR24 stride conversion with vertical flip completed\n");
-    return true;
-}
-
-void DirectShowCapture::copyRGB24WithFlip(const BYTE* srcData, BYTE* dstData, int width, int height) {
-    // Copy RGB24 data and flip vertically since DirectShow delivers upside down
-    int rowBytes = width * 3;
-    
-    for (int y = 0; y < height; y++) {
-        int flippedY = height - 1 - y;  // Flip vertically
-        const BYTE* srcRow = srcData + (y * rowBytes);
-        BYTE* dstRow = dstData + (flippedY * rowBytes);
-        memcpy(dstRow, srcRow, rowBytes);
-    }
-}
 
 
 } // namespace cinder
