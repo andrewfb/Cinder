@@ -97,12 +97,14 @@ void CaptureBasicApp::draw()
 	if( mShowUI ) {
 		ImGui::Begin( "Video Capture Control" );
 
-		// Device selection
+		// Device selection with refresh button
 		if( ! mDevices.empty() ) {
 			// Ensure selected index is valid
 			if( mSelectedDeviceIndex >= (int)mDevices.size() ) {
 				mSelectedDeviceIndex = 0;
 			}
+
+			// Device dropdown and refresh button on same line
 			if( ImGui::BeginCombo( "Camera Device", mDevices[mSelectedDeviceIndex]->getName().c_str() ) ) {
 				for( int i = 0; i < mDevices.size(); i++ ) {
 					bool isSelected = ( mSelectedDeviceIndex == i );
@@ -120,6 +122,52 @@ void CaptureBasicApp::draw()
 					}
 				}
 				ImGui::EndCombo();
+			}
+		}
+
+		// Add refresh button on next line, flush right
+		if( ! mDevices.empty() ) {
+			float buttonWidth = 120.0f;
+			float availableWidth = ImGui::GetContentRegionAvail().x;
+			ImGui::SetCursorPosX( ImGui::GetCursorPosX() + availableWidth - buttonWidth );
+			if( ImGui::Button( "Refresh Devices", ImVec2(buttonWidth, 0) ) ) {
+				CI_LOG_I( "Refreshing device list..." );
+
+				// Stop current capture if running
+				if( mCapture ) {
+					mCapture->stop();
+					mCapture = nullptr;
+					mTexture = nullptr;
+				}
+
+				// Get the new device list - force refresh to ensure we get current state
+				auto newDevices = Capture::getDevices( true );
+
+				// Print changes for debugging
+				CI_LOG_I( "Previous device count: " << mDevices.size() << ", New device count: " << newDevices.size() );
+
+				// Update the device list
+				mDevices = newDevices;
+
+				// Print the refreshed device list
+				printDevices();
+
+				// Handle device selection after refresh
+				if( mDevices.empty() ) {
+					mSelectedDeviceIndex = 0;
+					CI_LOG_W( "No capture devices found after refresh" );
+				} else {
+					// Try to maintain current device selection if possible
+					if( mSelectedDeviceIndex >= (int)mDevices.size() ) {
+						mSelectedDeviceIndex = 0;
+					}
+
+					// Update modes for the selected device
+					updateModes();
+
+					// Restart capture with selected device
+					setupCapture( mDevices[mSelectedDeviceIndex] );
+				}
 			}
 		}
 
@@ -195,9 +243,17 @@ void CaptureBasicApp::draw()
 			ImGui::Text( "Current Mode Details:" );
 			ImGui::Text( "Resolution: %d x %dpx", mCapture->getWidth(), mCapture->getHeight() );
 
+			// Connection status
+			if( mCapture->isCapturing() ) {
+				ImGui::TextColored( ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "Status: Connected" );
+			} else {
+				ImGui::TextColored( ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Status: Disconnected" );
+			}
+
 			// If we have a selected mode, show its details
 			if( mSelectedModeIndex >= 0 && mSelectedModeIndex < (int)mCurrentModes.size() ) {
 				const auto& mode = mCurrentModes[mSelectedModeIndex];
+
 
 				// Format frame rate - show whole numbers without decimals, keep decimals for non-whole numbers
 				float fps = mode.getFrameRateFloat();
@@ -205,6 +261,15 @@ void CaptureBasicApp::draw()
 					ImGui::Text( "Frame Rate: %.0f FPS", fps );
 				} else {
 					ImGui::Text( "Frame Rate: %.2f FPS", fps );
+				}
+
+				// Show frame rate range if available
+				if( mode.hasFrameRateRange() ) {
+					float minFps = mode.getMinFrameRateFloat();
+					float maxFps = mode.getMaxFrameRateFloat();
+					if( minFps != maxFps ) {
+						ImGui::Text( "Frame Rate Range: %.1f - %.1f FPS", minFps, maxFps );
+					}
 				}
 
 				ImGui::Text( "Codec: %s", mode.getCodecString().c_str() );

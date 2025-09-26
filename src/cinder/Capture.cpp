@@ -50,17 +50,27 @@ namespace cinder {
 // Capture::Mode
 
 Capture::Mode::Mode()
-	: mSize( 0, 0 ), mFrameRate( MediaTime() ), mCodec( Codec::Unknown ), mPixelFormat( PixelFormat::Unknown )
+	: mSize( 0, 0 ), mFrameRate( MediaTime() ), mCodec( Codec::Unknown ), mPixelFormat( PixelFormat::Unknown ), mHasFrameRateRange( false ), mMinFrameRate( MediaTime() ), mMaxFrameRate( MediaTime() )
 {
 }
 
 Capture::Mode::Mode( const ivec2& size, const MediaTime& frameRate, Codec codec, PixelFormat pixelFormat, const std::string& description )
-	: mSize( size ), mFrameRate( frameRate ), mCodec( codec ), mPixelFormat( pixelFormat ), mDescription( description )
+	: mSize( size ), mFrameRate( frameRate ), mCodec( codec ), mPixelFormat( pixelFormat ), mDescription( description ), mHasFrameRateRange( false ), mMinFrameRate( MediaTime() ), mMaxFrameRate( MediaTime() )
 {
 }
 
 Capture::Mode::Mode( int32_t width, int32_t height, const MediaTime& frameRate, Codec codec, PixelFormat pixelFormat, const std::string& description )
-	: mSize( width, height ), mFrameRate( frameRate ), mCodec( codec ), mPixelFormat( pixelFormat ), mDescription( description )
+	: mSize( width, height ), mFrameRate( frameRate ), mCodec( codec ), mPixelFormat( pixelFormat ), mDescription( description ), mHasFrameRateRange( false ), mMinFrameRate( MediaTime() ), mMaxFrameRate( MediaTime() )
+{
+}
+
+Capture::Mode::Mode( const ivec2& size, const MediaTime& frameRate, Codec codec, PixelFormat pixelFormat, const std::string& description, const MediaTime& minFrameRate, const MediaTime& maxFrameRate )
+	: mSize( size ), mFrameRate( frameRate ), mCodec( codec ), mPixelFormat( pixelFormat ), mDescription( description ), mHasFrameRateRange( true ), mMinFrameRate( minFrameRate ), mMaxFrameRate( maxFrameRate )
+{
+}
+
+Capture::Mode::Mode( int32_t width, int32_t height, const MediaTime& frameRate, Codec codec, PixelFormat pixelFormat, const std::string& description, const MediaTime& minFrameRate, const MediaTime& maxFrameRate )
+	: mSize( width, height ), mFrameRate( frameRate ), mCodec( codec ), mPixelFormat( pixelFormat ), mDescription( description ), mHasFrameRateRange( true ), mMinFrameRate( minFrameRate ), mMaxFrameRate( maxFrameRate )
 {
 }
 
