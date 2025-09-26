@@ -25,9 +25,11 @@
 #include "cinder/Cinder.h"
 #include "cinder/Capture.h"
 #include "cinder/Surface.h"
-#include "msw/videoInput/videoInput.h"
+#include <memory>
 
 namespace cinder {
+
+class DirectShowCapture;
 
 class CaptureImplDirectShow {
  public:
@@ -68,6 +70,7 @@ class CaptureImplDirectShow {
 	int									mDeviceID;
 	bool								mIsCapturing;
 	std::unique_ptr<class SurfaceCache>	mSurfaceCache;
+	std::unique_ptr<DirectShowCapture>	mDirectShowCapture;
 
 	int32_t					mWidth, mHeight;
 	mutable Surface8uRef	mCurrentFrame;

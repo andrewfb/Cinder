@@ -21,6 +21,7 @@
 */
 
 #include "cinder/CaptureImplDirectShow.h"
+#include "cinder/msw/DirectShowCapture.h"
 #include <dshow.h>
 #include <dvdmedia.h>  // For VIDEO_STREAM_CONFIG_CAPS
 #include <set>
@@ -70,20 +71,19 @@ class SurfaceCache {
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// videoInput
+// DirectShowCapture
 
 namespace impl {
-	static videoInput& setupVideoInput()
+	static DirectShowCapture& setupDirectShowCapture()
 	{
-		static videoInput inst;
-		inst.setUseCallback( true );
+		static DirectShowCapture inst;
 		return inst;
 	}
 }
 
-static videoInput& getVideoInput()
+static DirectShowCapture& getDirectShowCapture()
 {
-	static videoInput& instance = impl::setupVideoInput();
+	static DirectShowCapture& instance = impl::setupDirectShowCapture();
 	return instance;
 }
 
@@ -92,12 +92,14 @@ static videoInput& getVideoInput()
 
 bool CaptureImplDirectShow::Device::checkAvailable() const
 {
-	return ( mUniqueId >=0 ) && ( mUniqueId < (int)CaptureImplDirectShow::getDevices().size() ) && ( ! getVideoInput().isDeviceSetup( mUniqueId ) );
+	DirectShowCapture tempCapture;
+	return ( mUniqueId >=0 ) && ( mUniqueId < (int)CaptureImplDirectShow::getDevices().size() ) && tempCapture.isDeviceConnected( mUniqueId );
 }
 
 bool CaptureImplDirectShow::Device::isConnected() const
 {
-	return getVideoInput().isDeviceConnected( mUniqueId );
+	DirectShowCapture tempCapture;
+	return tempCapture.isDeviceConnected( mUniqueId );
 }
 
 const vector<Capture::DeviceRef>& CaptureImplDirectShow::getDevices( bool forceRefresh )
@@ -106,10 +108,10 @@ const vector<Capture::DeviceRef>& CaptureImplDirectShow::getDevices( bool forceR
 	static std::vector<Capture::DeviceRef>	devices;
 
 	if( firstCall || forceRefresh ) {
-		const int devCnt = getVideoInput().listDevices( true );
-		devices.resize( devCnt );
-		for ( int i = 0; i < devCnt; ++i ) {
-			devices[i] = std::make_shared<CaptureImplDirectShow::Device>( videoInput::getDeviceName( i ), i );
+		auto deviceNames = DirectShowCapture::getDeviceNames();
+		devices.resize( deviceNames.size() );
+		for ( int i = 0; i < (int)deviceNames.size(); ++i ) {
+			devices[i] = std::make_shared<CaptureImplDirectShow::Device>( deviceNames[i], i );
 		}
 
 		firstCall = false;
@@ -124,10 +126,13 @@ CaptureImplDirectShow::CaptureImplDirectShow( int32_t width, int32_t height, con
 	if( mDevice ) {
 		mDeviceID = device->getUniqueId();
 	}
-	if( ! getVideoInput().setupDevice( mDeviceID, mWidth, mHeight ) )
+	mDirectShowCapture = std::make_unique<DirectShowCapture>();
+	if( ! mDirectShowCapture->setupDevice( mDeviceID, mWidth, mHeight ) )
 		throw CaptureExcInitFail( "Failed to setup DirectShow video input device" );
-	mWidth = getVideoInput().getWidth( mDeviceID );
-	mHeight = getVideoInput().getHeight( mDeviceID );
+	if( ! mDirectShowCapture->start() )
+		throw CaptureExcInitFail( "Failed to start DirectShow video capture" );
+	mWidth = mDirectShowCapture->getWidth();
+	mHeight = mDirectShowCapture->getHeight();
 	mIsCapturing = true;
 	mSurfaceCache.reset( new SurfaceCache( mWidth, mHeight, SurfaceChannelOrder::BGR, 4 ) );
 }
@@ -168,30 +173,31 @@ CaptureImplDirectShow::CaptureImplDirectShow( const Capture::DeviceRef& device, 
 		mDeviceID = device->getUniqueId();
 	}
 
-	if( ! getVideoInput().setupDevice( mDeviceID, mWidth, mHeight, pixelFormatToGuid( mode.getPixelFormat() ) ) )
+	mDirectShowCapture = std::make_unique<DirectShowCapture>();
+	if( ! mDirectShowCapture->setupDevice( mDeviceID, mode ) )
 		throw CaptureExcInitFail( "Failed to setup DirectShow video input device with specified mode" );
+	if( ! mDirectShowCapture->start() )
+		throw CaptureExcInitFail( "Failed to start DirectShow video capture with specified mode" );
 
-	mWidth = getVideoInput().getWidth( mDeviceID );
-	mHeight = getVideoInput().getHeight( mDeviceID );
+	mWidth = mDirectShowCapture->getWidth();
+	mHeight = mDirectShowCapture->getHeight();
 	mIsCapturing = true;
 	mSurfaceCache.reset( new SurfaceCache( mWidth, mHeight, SurfaceChannelOrder::BGR, 4 ) );
 }
 
 CaptureImplDirectShow::~CaptureImplDirectShow()
 {
-	getVideoInput().stopDevice( mDeviceID );
+	if( mDirectShowCapture ) {
+		mDirectShowCapture->stop();
+	}
 }
 
 void CaptureImplDirectShow::start()
 {
 	if( mIsCapturing ) return;
 
-	if( ! getVideoInput().setupDevice( mDeviceID, mWidth, mHeight ) )
-		throw CaptureExcInitFail( "Failed to setup DirectShow video input device" );
-	if( ! getVideoInput().isDeviceSetup( mDeviceID ) )
-		throw CaptureExcInitFail( "DirectShow video input device not properly initialized" );
-	mWidth = getVideoInput().getWidth( mDeviceID );
-	mHeight = getVideoInput().getHeight( mDeviceID );
+	if( ! mDirectShowCapture || ! mDirectShowCapture->start() )
+		throw CaptureExcInitFail( "Failed to start DirectShow video capture" );
 	mIsCapturing = true;
 }
 
@@ -199,7 +205,9 @@ void CaptureImplDirectShow::stop()
 {
 	if( ! mIsCapturing ) return;
 
-	getVideoInput().stopDevice( mDeviceID );
+	if( mDirectShowCapture ) {
+		mDirectShowCapture->stop();
+	}
 	mIsCapturing = false;
 }
 
@@ -210,14 +218,14 @@ bool CaptureImplDirectShow::isCapturing()
 
 bool CaptureImplDirectShow::checkNewFrame() const
 {
-	return getVideoInput().isFrameNew( mDeviceID );
+	return mDirectShowCapture ? mDirectShowCapture->isFrameNew() : false;
 }
 
 Surface8uRef CaptureImplDirectShow::getSurface() const
 {
-	if( getVideoInput().isFrameNew( mDeviceID ) ) {
+	if( mDirectShowCapture && mDirectShowCapture->isFrameNew() ) {
 		mCurrentFrame = mSurfaceCache->getNewSurface();
-		getVideoInput().getPixels( mDeviceID, mCurrentFrame->getData(), false, true );
+		mDirectShowCapture->getPixels( mCurrentFrame->getData(), false, true );
 	}
 
 	return mCurrentFrame;
@@ -225,81 +233,9 @@ Surface8uRef CaptureImplDirectShow::getSurface() const
 
 std::vector<Capture::Mode> CaptureImplDirectShow::Device::getModes() const
 {
-	std::vector<Capture::Mode> modes;
-	
-	// Get actual device resolutions using DirectShow enumeration
-	auto resolutions = getVideoInput().getDeviceResolutions(mUniqueId);
-	
-	if (resolutions.empty()) {
-		// Fallback if enumeration fails
-		modes.push_back(Capture::Mode(640, 480, MediaTime(1.0/30.0), Capture::Mode::Codec::Uncompressed, Capture::Mode::PixelFormat::BGR24, "640x480 30fps BGR24 (fallback)"));
-		return modes;
-	}
-	
-	// Use a set to track unique combinations and avoid duplicates
-	std::set<std::tuple<int, int, Capture::Mode::PixelFormat>> uniqueModes;
-	
-	// For each resolution, get the supported pixel formats
-	for (const auto& res : resolutions) {
-		int width = res.first;
-		int height = res.second;
-		
-		auto formats = getVideoInput().getDeviceFormats(mUniqueId, width, height);
-		
-		if (formats.empty()) {
-			// Add with default format if no formats found
-			auto key = std::make_tuple(width, height, Capture::Mode::PixelFormat::BGR24);
-			if (uniqueModes.find(key) == uniqueModes.end()) {
-				uniqueModes.insert(key);
-				modes.push_back(Capture::Mode(width, height, MediaTime(1.0/30.0), Capture::Mode::Codec::Uncompressed, Capture::Mode::PixelFormat::BGR24, 
-					std::to_string(width) + "x" + std::to_string(height) + " 30fps BGR24"));
-			}
-		} else {
-			// Add mode for each supported format
-			for (const auto& guid : formats) {
-				Capture::Mode::PixelFormat pixelFormat = Capture::Mode::PixelFormat::BGR24; // default
-				std::string formatName = "Unknown";
-				
-				// Convert GUID to PixelFormat
-				if (IsEqualGUID(guid, MEDIASUBTYPE_RGB24)) {
-					pixelFormat = Capture::Mode::PixelFormat::RGB24;
-					formatName = "RGB24";
-				} else if (IsEqualGUID(guid, MEDIASUBTYPE_RGB32)) {
-					pixelFormat = Capture::Mode::PixelFormat::ARGB32;
-					formatName = "RGB32";
-				} else if (IsEqualGUID(guid, MEDIASUBTYPE_YUY2)) {
-					pixelFormat = Capture::Mode::PixelFormat::YUY2;
-					formatName = "YUY2";
-				} else if (IsEqualGUID(guid, MEDIASUBTYPE_UYVY)) {
-					pixelFormat = Capture::Mode::PixelFormat::UYVY;
-					formatName = "UYVY";
-				} else if (IsEqualGUID(guid, MEDIASUBTYPE_IYUV)) {
-					pixelFormat = Capture::Mode::PixelFormat::YUV420P;
-					formatName = "IYUV";
-				} else if (IsEqualGUID(guid, MEDIASUBTYPE_YV12)) {
-					pixelFormat = Capture::Mode::PixelFormat::YV12;
-					formatName = "YV12";
-				} else if (IsEqualGUID(guid, MEDIASUBTYPE_NV12)) {
-					pixelFormat = Capture::Mode::PixelFormat::NV12;
-					formatName = "NV12";
-				} else {
-					// Default to BGR24 for unknown formats
-					pixelFormat = Capture::Mode::PixelFormat::BGR24;
-					formatName = "BGR24";
-				}
-				
-				// Check for duplicates
-				auto key = std::make_tuple(width, height, pixelFormat);
-				if (uniqueModes.find(key) == uniqueModes.end()) {
-					uniqueModes.insert(key);
-					std::string description = std::to_string(width) + "x" + std::to_string(height) + " 30fps " + formatName;
-					modes.push_back(Capture::Mode(width, height, MediaTime(1.0/30.0), Capture::Mode::Codec::Uncompressed, pixelFormat, description));
-				}
-			}
-		}
-	}
-	
-	return modes;
+	// Use a temporary DirectShowCapture instance just for mode enumeration
+	DirectShowCapture tempCapture;
+	return tempCapture.getDeviceModes(mUniqueId);
 }
 
 } //namespace

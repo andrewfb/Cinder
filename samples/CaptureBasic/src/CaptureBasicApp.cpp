@@ -53,11 +53,15 @@ class CaptureBasicApp : public App {
 
 void CaptureBasicApp::setup()
 {
+	console() << "=== CaptureBasic starting ===" << endl;
+	
 	// Initialize ImGui
 	ImGui::Initialize();
 
 	// Get devices
 	mDevices = Capture::getDevices();
+	console() << "Found " << mDevices.size() << " capture devices" << endl;
+	
 	mSelectedDeviceIndex = 0;
 	mSelectedModeIndex = -1; // -1 means auto mode
 	mShowUI = true;
@@ -76,14 +80,28 @@ void CaptureBasicApp::setup()
 
 void CaptureBasicApp::update()
 {
+	static int frameCount = 0;
+	static bool firstFrame = true;
+	
 #if defined( USE_HW_TEXTURE )
 	if( mCapture && mCapture->checkNewFrame() ) {
 	    mTexture = mCapture->getTexture();
+		frameCount++;
+		if( firstFrame ) {
+			console() << "First frame received!" << endl;
+			firstFrame = false;
+		}
 	}
 #else
 	if( mCapture && mCapture->checkNewFrame() ) {
 		auto surface = mCapture->getSurface();
 		if( surface ) {
+			frameCount++;
+			if( firstFrame || frameCount % 100 == 0 ) {
+				console() << "Frame " << frameCount << " received - Surface size: " << surface->getWidth() << "x" << surface->getHeight() << endl;
+				firstFrame = false;
+			}
+			
 			if( ! mTexture ) {
 				// Capture images come back as top-down, and it's more efficient to keep them that way
 				mTexture = gl::Texture::create( *surface, gl::Texture::Format().loadTopDown() );
@@ -357,9 +375,11 @@ void CaptureBasicApp::keyDown( KeyEvent event )
 
 void CaptureBasicApp::setupCapture( Capture::DeviceRef device )
 {
+	console() << "\n=== Setting up capture with device: " << device->getName() << " (auto mode) ===" << endl;
 	try {
 		// Stop and fully release old capture
 		if( mCapture ) {
+			console() << "Stopping previous capture" << endl;
 			mCapture->stop();
 		}
 
@@ -367,11 +387,20 @@ void CaptureBasicApp::setupCapture( Capture::DeviceRef device )
 		mCapture = nullptr;
 		mTexture = nullptr;
 
-		mCapture = Capture::create( 640, 480, device );
+		// Use the first available mode instead of hardcoded 640x480
+		if( !mCurrentModes.empty() ) {
+			console() << "Creating capture with first available mode: " << toString( mCurrentModes[0] ) << endl;
+			mCapture = Capture::create( device, mCurrentModes[0] );
+		} else {
+			console() << "No modes available, trying default 640x480" << endl;
+			mCapture = Capture::create( 640, 480, device );
+		}
 		mCapture->start();
+		console() << "Capture started successfully - actual size: " << mCapture->getWidth() << "x" << mCapture->getHeight() << endl;
 	}
 	catch( ci::Exception &exc ) {
 		CI_LOG_EXCEPTION( "Failed to setup capture with device: " << device->getName(), exc );
+		console() << "ERROR: Failed to setup capture!" << endl;
 		// Leave mCapture as nullptr if setup fails
 		mCapture = nullptr;
 		mTexture = nullptr;
@@ -391,9 +420,14 @@ void CaptureBasicApp::printDevices()
 
 bool CaptureBasicApp::setupCaptureWithMode( Capture::DeviceRef device, const Capture::Mode& mode )
 {
+	console() << "\n=== Setting up capture with specific mode ===" << endl;
+	console() << "Device: " << device->getName() << endl;
+	console() << "Mode: " << toString( mode ) << endl;
+	
 	try {
 		// Stop and fully release old capture
 		if( mCapture ) {
+			console() << "Stopping previous capture" << endl;
 			mCapture->stop();
 		}
 
@@ -402,14 +436,19 @@ bool CaptureBasicApp::setupCaptureWithMode( Capture::DeviceRef device, const Cap
 		mTexture = nullptr;
 
 		// Create capture with specific mode
+		console() << "Creating capture with mode..." << endl;
 		mCapture = Capture::create( device, mode );
+		console() << "Starting capture..." << endl;
 		mCapture->start();
-
+		
+		console() << "Capture started successfully!" << endl;
+		console() << "Actual size: " << mCapture->getWidth() << "x" << mCapture->getHeight() << endl;
 		CI_LOG_I( "Created capture with mode: " << toString( mode ) );
 		return true;
 	}
 	catch( ci::Exception &exc ) {
 		CI_LOG_EXCEPTION( "Failed to setup capture with mode: " << toString( mode ) << " on device: " << device->getName(), exc );
+		console() << "ERROR: Failed to setup capture with mode! Falling back to auto mode." << endl;
 		// Fall back to regular capture
 		setupCapture( device );
 		return false;
@@ -515,11 +554,17 @@ void CaptureBasicApp::updateModes()
 	mSelectedModeIndex = -1; // Reset to auto mode
 
 	if( mSelectedDeviceIndex >= 0 && mSelectedDeviceIndex < (int)mDevices.size() ) {
+		console() << "\n=== Getting modes for device: " << mDevices[mSelectedDeviceIndex]->getName() << " ===" << endl;
 		try {
 			mCurrentModes = mDevices[mSelectedDeviceIndex]->getModes();
+			console() << "Found " << mCurrentModes.size() << " modes:" << endl;
+			for( size_t i = 0; i < mCurrentModes.size(); i++ ) {
+				console() << "  [" << i << "] " << toString( mCurrentModes[i] ) << endl;
+			}
 		}
 		catch( ci::Exception &exc ) {
 			CI_LOG_EXCEPTION( "Failed to get modes for device: " << mDevices[mSelectedDeviceIndex]->getName(), exc );
+			console() << "ERROR: Failed to get modes!" << endl;
 		}
 	}
 }
@@ -564,6 +609,11 @@ void prepareSettings( CaptureBasicApp::Settings* settings )
 {
 #if defined( CINDER_ANDROID )
 	settings->setKeepScreenOn( true );
+#endif
+
+#if defined( CINDER_MSW )
+	// Enable console window on Windows for debugging
+	settings->setConsoleWindowEnabled( true );
 #endif
 }
 

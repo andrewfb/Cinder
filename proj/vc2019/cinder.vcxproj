@@ -757,6 +757,7 @@
     <ClCompile Include="..\..\src\cinder\CanvasUi.cpp" />
     <ClCompile Include="..\..\src\cinder\Capture.cpp" />
     <ClCompile Include="..\..\src\cinder\CaptureImplDirectShow.cpp" />
+    <ClCompile Include="..\..\src\cinder\msw\DirectShowCapture.cpp" />
     <ClCompile Include="..\..\src\cinder\Channel.cpp" />
     <ClCompile Include="..\..\src\cinder\CinderAssert.cpp" />
     <ClCompile Include="..\..\src\cinder\CinderImGui.cpp" />
@@ -1328,6 +1329,7 @@
     <ClInclude Include="..\..\include\cinder\ip\Trim.h" />
     <ClInclude Include="..\..\include\cinder\msw\CinderMsw.h" />
     <ClInclude Include="..\..\include\cinder\msw\CinderMswGdiPlus.h" />
+    <ClInclude Include="..\..\include\cinder\msw\DirectShowCapture.h" />
     <ClInclude Include="..\..\include\cinder\msw\OutputDebugStringStream.h" />
     <ClInclude Include="..\..\include\cinder\params\Params.h" />
     <ClInclude Include="..\..\include\msw\videoInput\videoInput.h" />
