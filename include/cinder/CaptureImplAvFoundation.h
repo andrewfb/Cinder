@@ -26,6 +26,8 @@
 #include "cinder/Capture.h"
 #import <AVFoundation/AVFoundation.h>
 #include <vector>
+#include <memory>
+#include <set>
 
 namespace cinder {
 
@@ -62,6 +64,7 @@ class CaptureImplAvFoundationDevice : public Capture::Device {
 	int32_t							mExposedFrameBytesPerRow;
 	int32_t							mExposedFrameHeight;
 	int32_t							mExposedFrameWidth;
+	std::unique_ptr<cinder::Capture::Mode> mSelectedMode;
 }
 
 + (const std::vector<cinder::Capture::DeviceRef>&)getDevices:(BOOL)forceRefresh;

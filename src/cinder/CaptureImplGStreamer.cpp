@@ -33,6 +33,7 @@
 	#include "cinder/Filesystem.h"
 	#include <iostream>
 	#include <iterator>
+	#include <limits>
 
 using namespace std;
 
@@ -443,8 +444,32 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 
 						std::string description = std::string( mediaType );
 
-						Capture::Mode mode( res.first, res.second, frameRate,
-											formatCombo.first, formatCombo.second, description );
+						// Create frame rate range from the available framerates
+						// Find min and max frame rates from the framerates vector
+						double minFpsDouble = std::numeric_limits<double>::max();
+						double maxFpsDouble = 0.0;
+
+						for( const auto& r : framerates ) {
+							if( r.first > 0 && r.second > 0 ) {
+								double fps = (double)r.first / r.second;
+								minFpsDouble = std::min( minFpsDouble, fps );
+								maxFpsDouble = std::max( maxFpsDouble, fps );
+							}
+						}
+
+						Capture::Mode mode;
+						if( minFpsDouble != maxFpsDouble ) {
+							// Device supports variable frame rates - store the range
+							MediaTime minFrameRate( 1, (int)round( minFpsDouble ) ); // Min FPS
+							MediaTime maxFrameRate( 1, (int)round( maxFpsDouble ) ); // Max FPS
+							mode = Capture::Mode( res.first, res.second, frameRate,
+												  formatCombo.first, formatCombo.second, description,
+												  minFrameRate, maxFrameRate );
+						} else {
+							// Device has fixed frame rate - use simple constructor without range
+							mode = Capture::Mode( res.first, res.second, frameRate,
+												  formatCombo.first, formatCombo.second, description );
+						}
 
 						// Store platform-specific data for exact pipeline construction
 						// For raw formats, include the format in the caps
