@@ -600,10 +600,7 @@ STDMETHODIMP_(ULONG) SampleGrabberCallback::Release()
 
 STDMETHODIMP SampleGrabberCallback::SampleCB(double sampleTime, IMediaSample* sample)
 {
-    OutputDebugStringA("SampleCB called\n");
-    
     if (!mParent || !sample) {
-        OutputDebugStringA("SampleCB: No parent or sample\n");
         return S_OK;
     }
     
@@ -625,7 +622,6 @@ STDMETHODIMP SampleGrabberCallback::SampleCB(double sampleTime, IMediaSample* sa
             int expectedSize = actualWidth * actualHeight * 3;
             if (expectedSize != actualDataLength) {
                 // Dimensions are out of sync - try to calculate from common aspect ratios
-                OutputDebugStringA("SampleCB: Dimension mismatch detected, recalculating\n");
                 
                 // Try common aspect ratios to find actual dimensions
                 // Most likely it's one of the camera's supported modes
@@ -639,28 +635,18 @@ STDMETHODIMP SampleGrabberCallback::SampleCB(double sampleTime, IMediaSample* sa
                     actualWidth = 1280; actualHeight = 720;
                 } else if (actualDataLength == 640 * 480 * 3) {
                     actualWidth = 640; actualHeight = 480;
-                } else {
-                    // Unknown resolution - use stored values anyway
-                    OutputDebugStringA("SampleCB: Unknown resolution, using stored dimensions\n");
                 }
                 
                 // Update parent dimensions and reallocate buffer if needed
                 if (actualWidth != mParent->mWidth || actualHeight != mParent->mHeight) {
-                    OutputDebugStringA("SampleCB: Updating parent dimensions and reallocating buffer\n");
                     mParent->updateDimensions(actualWidth, actualHeight);
                 }
             }
             
-            char debugMsg[256];
-            sprintf_s(debugMsg, "SampleCB: actualDataLength=%ld, using %dx%d (%d bytes), stored=%dx%d\n", 
-                     actualDataLength, actualWidth, actualHeight, actualWidth * actualHeight * 3,
-                     mParent->mWidth, mParent->mHeight);
-            OutputDebugStringA(debugMsg);
             
             // Process RGB24 data with proper dimensions
             if (actualDataLength == actualWidth * actualHeight * 3) {
                 // RGB24 format - copy with format fixes using correct dimensions
-                OutputDebugStringA("SampleCB: Converting RGB24 with flip and channel swap\n");
                 const uint8_t* src = static_cast<const uint8_t*>(ptrBuffer);
                 uint8_t* dst = mParent->mPixelBuffer.get();
                 
@@ -674,16 +660,13 @@ STDMETHODIMP SampleGrabberCallback::SampleCB(double sampleTime, IMediaSample* sa
                     memcpy(dstLine, srcLine, actualWidth * 3);
                 }
                 mParent->mNewFrameAvailable = true;
-                OutputDebugStringA("SampleCB: Frame converted successfully\n");
             }
             else {
                 // Unknown format - copy what we can for debugging
-                OutputDebugStringA("SampleCB: Unknown format, copying raw data\n");
                 int maxCopySize = mParent->mWidth * mParent->mHeight * 3;
                 int copySize = (actualDataLength < maxCopySize) ? actualDataLength : maxCopySize;
                 memcpy(mParent->mPixelBuffer.get(), ptrBuffer, copySize);
                 mParent->mNewFrameAvailable = true;
-                OutputDebugStringA("SampleCB: Raw data copied\n");
             }
         }
     }
@@ -696,10 +679,7 @@ STDMETHODIMP SampleGrabberCallback::SampleCB(double sampleTime, IMediaSample* sa
 
 STDMETHODIMP SampleGrabberCallback::BufferCB(double sampleTime, BYTE* buffer, long bufferLen)
 {
-    OutputDebugStringA("BufferCB called\n");
-    
     if (!mParent || !buffer) {
-        OutputDebugStringA("BufferCB: No parent or buffer\n");
         return S_OK;
     }
     
@@ -709,21 +689,11 @@ STDMETHODIMP SampleGrabberCallback::BufferCB(double sampleTime, BYTE* buffer, lo
         if (mParent->mPixelBuffer) {
             int expectedSize = mParent->mWidth * mParent->mHeight * 3; // RGB24 is width * height * 3
             
-            char debugMsg[256];
-            sprintf_s(debugMsg, "BufferCB: bufferLen=%ld, expectedSize=%d, width=%d, height=%d\n", 
-                     bufferLen, expectedSize, mParent->mWidth, mParent->mHeight);
-            OutputDebugStringA(debugMsg);
-            
             // Handle DirectShow RGB24 data with proper stride and flipping
             if (bufferLen > 0) {
                 // Calculate actual stride from buffer size
                 int actualStride = bufferLen / mParent->mHeight;
                 int expectedStride = mParent->mWidth * 3;
-                
-                char strideMsg[256];
-                sprintf_s(strideMsg, "BufferCB: actualStride=%d, expectedStride=%d\n", 
-                         actualStride, expectedStride);
-                OutputDebugStringA(strideMsg);
                 
                 if (actualStride == expectedStride) {
                     // No padding, but might need to flip vertically (DirectShow is often bottom-up)
@@ -743,7 +713,6 @@ STDMETHODIMP SampleGrabberCallback::BufferCB(double sampleTime, BYTE* buffer, lo
                             dstLine[x * 3 + 2] = srcLine[x * 3 + 0]; // R = B
                         }
                     }
-                    OutputDebugStringA("BufferCB: Frame copied with vertical flip and RGB->BGR conversion\n");
                 } else {
                     // Handle stride padding
                     const uint8_t* src = static_cast<const uint8_t*>(buffer);
@@ -761,7 +730,6 @@ STDMETHODIMP SampleGrabberCallback::BufferCB(double sampleTime, BYTE* buffer, lo
                             dstLine[x * 3 + 2] = srcLine[x * 3 + 0]; // R = B
                         }
                     }
-                    OutputDebugStringA("BufferCB: Frame copied with stride handling, vertical flip and RGB->BGR conversion\n");
                 }
                 
                 mParent->mNewFrameAvailable = true;
@@ -769,7 +737,7 @@ STDMETHODIMP SampleGrabberCallback::BufferCB(double sampleTime, BYTE* buffer, lo
         }
     }
     catch (...) {
-        OutputDebugStringA("BufferCB: Exception caught\n");
+        // Ignore exceptions in callback
     }
     
     return S_OK;
@@ -881,7 +849,6 @@ CaptureImplDirectShow::CaptureImplDirectShow( const Capture::DeviceRef& device, 
 	mCallback = new SampleGrabberCallback(this);
 
 	// Try direct DirectShow setup first
-	OutputDebugStringA("Trying direct DirectShow setup\n");
 	if (!setupDeviceDirect(mDeviceID, mode.getWidth(), mode.getHeight())) {
 		throw CaptureExcInitFail( "Failed to setup DirectShow video input device with specified mode" );
 	}
@@ -1030,36 +997,25 @@ bool createCaptureGraph(DeviceContext* deviceContext) {
 
 // Helper method to connect the DirectShow filters
 bool connectFilters(DeviceContext* deviceContext) {
-	OutputDebugStringA("connectFilters: Starting filter connection\n");
 	HRESULT hr;
 	
 	// Create the sample grabber filter
 	deviceContext->grabberFilter = createGrabberFilter();
 	if (!deviceContext->grabberFilter) {
-		OutputDebugStringA("connectFilters: Failed to create grabber filter\n");
 		return false;
 	}
-	OutputDebugStringA("connectFilters: Created grabber filter\n");
 	
 	// Add the sample grabber to the graph
 	hr = deviceContext->graphBuilder->AddFilter(deviceContext->grabberFilter.get(), L"Sample Grabber");
 	if (FAILED(hr)) {
-		char debugMsg[128];
-		sprintf_s(debugMsg, "connectFilters: AddFilter grabber failed with hr=0x%08X\n", hr);
-		OutputDebugStringA(debugMsg);
 		return false;
 	}
-	OutputDebugStringA("connectFilters: Added grabber filter to graph\n");
 	
 	// Get the ISampleGrabber interface
 	hr = deviceContext->grabberFilter->QueryInterface(IID_ISampleGrabber, reinterpret_cast<void**>(&deviceContext->sampleGrabber));
 	if (FAILED(hr)) {
-		char debugMsg[128];
-		sprintf_s(debugMsg, "connectFilters: QueryInterface ISampleGrabber failed with hr=0x%08X\n", hr);
-		OutputDebugStringA(debugMsg);
 		return false;
 	}
-	OutputDebugStringA("connectFilters: Got ISampleGrabber interface\n");
 	
 	// Configure the sample grabber to force RGB24 format (like videoInput did)
 	// DirectShow will handle YUY2->RGB24 conversion automatically
@@ -1069,100 +1025,64 @@ bool connectFilters(DeviceContext* deviceContext) {
 	mt.subtype = MEDIASUBTYPE_RGB24;
 	hr = deviceContext->sampleGrabber->SetMediaType(&mt);
 	if (FAILED(hr)) {
-		char debugMsg[128];
-		sprintf_s(debugMsg, "connectFilters: SetMediaType RGB24 failed with hr=0x%08X\n", hr);
-		OutputDebugStringA(debugMsg);
 		return false;
 	}
-	OutputDebugStringA("connectFilters: Forced RGB24 format (DirectShow will convert)\n");
 	
 	// Create a null renderer to prevent video display window
 	IBaseFilter* nullRenderer = nullptr;
 	hr = CoCreateInstance(CLSID_NullRenderer, nullptr, CLSCTX_INPROC_SERVER,
 						  IID_IBaseFilter, reinterpret_cast<void**>(&nullRenderer));
 	if (FAILED(hr)) {
-		char debugMsg[128];
-		sprintf_s(debugMsg, "connectFilters: Create null renderer failed with hr=0x%08X\n", hr);
-		OutputDebugStringA(debugMsg);
 		return false;
 	}
-	OutputDebugStringA("connectFilters: Created null renderer\n");
 	
 	// Add null renderer to graph
 	hr = deviceContext->graphBuilder->AddFilter(nullRenderer, L"Null Renderer");
 	if (FAILED(hr)) {
-		char debugMsg[128];
-		sprintf_s(debugMsg, "connectFilters: AddFilter null renderer failed with hr=0x%08X\n", hr);
-		OutputDebugStringA(debugMsg);
 		nullRenderer->Release();
 		return false;
 	}
-	OutputDebugStringA("connectFilters: Added null renderer to graph\n");
 	
 	// Use RenderStream to connect: source -> sample grabber -> null renderer
-	OutputDebugStringA("connectFilters: Starting RenderStream connection\n");
 	hr = deviceContext->captureBuilder->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video,
 													deviceContext->sourceFilter.get(), 
 													deviceContext->grabberFilter.get(), nullRenderer);
 	nullRenderer->Release(); // Release our reference, graph holds its own
 	if (FAILED(hr)) {
-		char debugMsg[128];
-		sprintf_s(debugMsg, "connectFilters: RenderStream failed with hr=0x%08X\n", hr);
-		OutputDebugStringA(debugMsg);
 		return false;
 	}
-	OutputDebugStringA("connectFilters: RenderStream succeeded\n");
 	
 	return true;
 }
 
 // Helper method to set up the callback
 bool setupCallback(DeviceContext* deviceContext, ::cinder::SampleGrabberCallback* callback) {
-	OutputDebugStringA("setupCallback: Starting callback setup\n");
-	
 	if (!deviceContext->sampleGrabber || !callback) {
-		OutputDebugStringA("setupCallback: Missing sampleGrabber or callback\n");
 		return false;
 	}
 	
 	// Configure the sample grabber to use BufferCB callback mode (mode 0)
 	HRESULT hr = deviceContext->sampleGrabber->SetCallback(static_cast<ISampleGrabberCB*>(callback), 0);
 	if (FAILED(hr)) {
-		char debugMsg[128];
-		sprintf_s(debugMsg, "setupCallback: SetCallback failed with hr=0x%08X\n", hr);
-		OutputDebugStringA(debugMsg);
 		return false;
 	}
-	OutputDebugStringA("setupCallback: SetCallback succeeded (BufferCB mode)\n");
 	
 	// Set the sample grabber to not buffer samples (we'll handle them immediately)
 	hr = deviceContext->sampleGrabber->SetBufferSamples(FALSE);
 	if (FAILED(hr)) {
-		char debugMsg[128];
-		sprintf_s(debugMsg, "setupCallback: SetBufferSamples failed with hr=0x%08X\n", hr);
-		OutputDebugStringA(debugMsg);
 		return false;
 	}
-	OutputDebugStringA("setupCallback: SetBufferSamples succeeded\n");
 	
 	// Set to one shot mode (grab every frame)
 	hr = deviceContext->sampleGrabber->SetOneShot(FALSE);
 	if (FAILED(hr)) {
-		char debugMsg[128];
-		sprintf_s(debugMsg, "setupCallback: SetOneShot failed with hr=0x%08X\n", hr);
-		OutputDebugStringA(debugMsg);
 		return false;
 	}
-	OutputDebugStringA("setupCallback: SetOneShot succeeded\n");
 	
 	// Get the actual negotiated media type and extract actual dimensions
 	AM_MEDIA_TYPE mt;
 	hr = deviceContext->sampleGrabber->GetConnectedMediaType(&mt);
 	if (SUCCEEDED(hr)) {
-		char debugMsg[256];
-		sprintf_s(debugMsg, "setupCallback: Connected format major=%08X sub=%08X\n", 
-				 mt.majortype.Data1, mt.subtype.Data1);
-		OutputDebugStringA(debugMsg);
 		
 		// Extract actual width and height from video info header
 		if (mt.formattype == FORMAT_VideoInfo && mt.cbFormat >= sizeof(VIDEOINFOHEADER)) {
@@ -1171,12 +1091,6 @@ bool setupCallback(DeviceContext* deviceContext, ::cinder::SampleGrabberCallback
 			int actualHeight = abs(vih->bmiHeader.biHeight);
 			bool isBottomUp = vih->bmiHeader.biHeight > 0; // Positive height = bottom-up
 			
-			char sizeMsg[512];
-			sprintf_s(sizeMsg, "setupCallback: Actual negotiated size: %dx%d (requested %dx%d), stride=%ld, biHeight=%ld (%s)\n", 
-					 actualWidth, actualHeight, deviceContext->width, deviceContext->height,
-					 vih->bmiHeader.biSizeImage / actualHeight, vih->bmiHeader.biHeight,
-					 isBottomUp ? "bottom-up" : "top-down");
-			OutputDebugStringA(sizeMsg);
 			
 			// Update our stored dimensions to match what DirectShow actually negotiated
 			deviceContext->width = actualWidth;
@@ -1185,10 +1099,6 @@ bool setupCallback(DeviceContext* deviceContext, ::cinder::SampleGrabberCallback
 			// Update parent dimensions and allocate pixel buffer for actual size
 			callback->mParent->updateDimensions(actualWidth, actualHeight);
 			
-			char bufferMsg[256];
-			sprintf_s(bufferMsg, "setupCallback: Updated dimensions and allocated buffer for %dx%d RGB24\n", 
-					 actualWidth, actualHeight);
-			OutputDebugStringA(bufferMsg);
 		}
 		
 		if (mt.cbFormat != 0) {
@@ -1197,10 +1107,6 @@ bool setupCallback(DeviceContext* deviceContext, ::cinder::SampleGrabberCallback
 		if (mt.pUnk != nullptr) {
 			mt.pUnk->Release();
 		}
-	} else {
-		char debugMsg[128];
-		sprintf_s(debugMsg, "setupCallback: GetConnectedMediaType failed with hr=0x%08X\n", hr);
-		OutputDebugStringA(debugMsg);
 	}
 	
 	return true;
