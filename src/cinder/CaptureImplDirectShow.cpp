@@ -91,7 +91,7 @@ namespace {
     struct DeviceContext;
     template<typename T> class ComPtr;
     
-    // ComPtr helper template (moved from DirectShowCapture)
+    // ComPtr helper template for COM objects
     template<typename T>
     class ComPtr {
     public:
@@ -805,6 +805,7 @@ CaptureImplDirectShow::CaptureImplDirectShow( int32_t width, int32_t height, con
 CaptureImplDirectShow::CaptureImplDirectShow( const Capture::DeviceRef& device, const Capture::Mode& mode )
 	: mWidth( mode.getWidth() ), mHeight( mode.getHeight() ), mCurrentFrame( Surface8u::create( mode.getWidth(), mode.getHeight(), false, SurfaceChannelOrder::BGR ) ), mDeviceID( 0 ), mNewFrameAvailable( false )
 {
+	OutputDebugStringA("=== MODE CONSTRUCTOR CALLED ===\n");
 	mDevice = device;
 	if( mDevice ) {
 		mDeviceID = device->getUniqueId();
@@ -816,9 +817,17 @@ CaptureImplDirectShow::CaptureImplDirectShow( const Capture::DeviceRef& device, 
 	mCallback = new SampleGrabberCallback(this);
 
 	// Try direct DirectShow setup first
+	OutputDebugStringA("Mode constructor: Starting DirectShow setup\n");
+	char debugMsg[256];
+	sprintf_s(debugMsg, "Mode constructor: Requested mode %dx%d\n", mode.getWidth(), mode.getHeight());
+	OutputDebugStringA(debugMsg);
+	
 	if (!setupDeviceDirect(mDeviceID, mode.getWidth(), mode.getHeight())) {
 		throw CaptureExcInitFail( "Failed to setup DirectShow video input device with specified mode" );
 	}
+	
+	sprintf_s(debugMsg, "Mode constructor: Final dimensions %dx%d\n", mWidth, mHeight);
+	OutputDebugStringA(debugMsg);
 	
 	// Start capture
 	DeviceContext* deviceContext = static_cast<DeviceContext*>(mDeviceContext);
@@ -1007,8 +1016,17 @@ bool connectFilters(DeviceContext* deviceContext) {
 	
 	hr = deviceContext->sampleGrabber->SetMediaType(&mt);
 	if (FAILED(hr)) {
+		char debugMsg[128];
+		sprintf_s(debugMsg, "connectFilters: SetMediaType failed for %dx%d RGB24, hr=0x%08X\n", 
+				 deviceContext->width, deviceContext->height, hr);
+		OutputDebugStringA(debugMsg);
 		return false;
 	}
+	
+	char debugMsg[128];
+	sprintf_s(debugMsg, "connectFilters: SetMediaType succeeded for %dx%d RGB24\n", 
+			 deviceContext->width, deviceContext->height);
+	OutputDebugStringA(debugMsg);
 	
 	// Create a null renderer to prevent video display window
 	IBaseFilter* nullRenderer = nullptr;
@@ -1072,6 +1090,11 @@ bool setupCallback(DeviceContext* deviceContext, ::cinder::SampleGrabberCallback
 			int actualHeight = abs(vih->bmiHeader.biHeight);
 			bool isBottomUp = vih->bmiHeader.biHeight > 0; // Positive height = bottom-up
 			
+			char diagMsg[256];
+			sprintf_s(diagMsg, "setupCallback: Camera negotiated %dx%d (requested %dx%d)\n", 
+					 actualWidth, actualHeight, deviceContext->width, deviceContext->height);
+			OutputDebugStringA(diagMsg);
+			
 			// Update our stored dimensions to match what DirectShow actually negotiated
 			deviceContext->width = actualWidth;
 			deviceContext->height = actualHeight;
@@ -1091,9 +1114,113 @@ bool setupCallback(DeviceContext* deviceContext, ::cinder::SampleGrabberCallback
 	return true;
 }
 
+// Helper method to set camera format directly on source filter
+bool setCameraFormat(DeviceContext* deviceContext, int width, int height) {
+	OutputDebugStringA("setCameraFormat: Starting camera format configuration\n");
+	
+	// Get the camera's output pin
+	ComPtr<IEnumPins> enumPins;
+	HRESULT hr = deviceContext->sourceFilter->EnumPins(&enumPins);
+	if (FAILED(hr)) {
+		OutputDebugStringA("setCameraFormat: Failed to enumerate pins\n");
+		return false;
+	}
+	
+	ComPtr<IPin> outputPin;
+	IPin* pin = nullptr;
+	while (enumPins->Next(1, &pin, nullptr) == S_OK) {
+		PIN_DIRECTION direction;
+		hr = pin->QueryDirection(&direction);
+		
+		if (SUCCEEDED(hr) && direction == PINDIR_OUTPUT) {
+			outputPin.reset(pin);
+			break;
+		}
+		
+		pin->Release();
+	}
+	
+	if (!outputPin) {
+		OutputDebugStringA("setCameraFormat: No output pin found\n");
+		return false;
+	}
+	
+	// Get the stream config interface
+	ComPtr<IAMStreamConfig> streamConfig;
+	hr = outputPin->QueryInterface(IID_IAMStreamConfig, reinterpret_cast<void**>(&streamConfig));
+	if (FAILED(hr)) {
+		OutputDebugStringA("setCameraFormat: Failed to get IAMStreamConfig\n");
+		return false;
+	}
+	
+	// Find a matching format (prefer YUY2, but accept any that matches dimensions)
+	int count = 0, size = 0;
+	hr = streamConfig->GetNumberOfCapabilities(&count, &size);
+	if (FAILED(hr) || size != sizeof(VIDEO_STREAM_CONFIG_CAPS)) {
+		OutputDebugStringA("setCameraFormat: Failed to get capabilities\n");
+		return false;
+	}
+	
+	for (int i = 0; i < count; i++) {
+		AM_MEDIA_TYPE* mediaType = nullptr;
+		VIDEO_STREAM_CONFIG_CAPS caps;
+		
+		hr = streamConfig->GetStreamCaps(i, &mediaType, reinterpret_cast<BYTE*>(&caps));
+		if (SUCCEEDED(hr) && mediaType) {
+			if (mediaType->majortype == MEDIATYPE_Video && 
+				mediaType->formattype == FORMAT_VideoInfo && 
+				mediaType->cbFormat >= sizeof(VIDEOINFOHEADER)) {
+				
+				VIDEOINFOHEADER* vih = reinterpret_cast<VIDEOINFOHEADER*>(mediaType->pbFormat);
+				
+				if (vih->bmiHeader.biWidth == width && abs(vih->bmiHeader.biHeight) == height) {
+					// Found exact match - set this format on the camera
+					char debugMsg[256];
+					sprintf_s(debugMsg, "setCameraFormat: Setting camera to %dx%d, format=%08X\n", 
+							 width, height, mediaType->subtype.Data1);
+					OutputDebugStringA(debugMsg);
+					
+					hr = streamConfig->SetFormat(mediaType);
+					if (mediaType->cbFormat != 0) {
+						CoTaskMemFree(mediaType->pbFormat);
+					}
+					if (mediaType->pUnk != nullptr) {
+						mediaType->pUnk->Release();
+					}
+					CoTaskMemFree(mediaType);
+					
+					if (SUCCEEDED(hr)) {
+						OutputDebugStringA("setCameraFormat: Successfully set camera format\n");
+						return true;
+					} else {
+						char errorMsg[128];
+						sprintf_s(errorMsg, "setCameraFormat: SetFormat failed, hr=0x%08X\n", hr);
+						OutputDebugStringA(errorMsg);
+					}
+				}
+			}
+			
+			if (mediaType->cbFormat != 0) {
+				CoTaskMemFree(mediaType->pbFormat);
+			}
+			if (mediaType->pUnk != nullptr) {
+				mediaType->pUnk->Release();
+			}
+			CoTaskMemFree(mediaType);
+		}
+	}
+	
+	OutputDebugStringA("setCameraFormat: No matching format found\n");
+	return false;
+}
+
 // Direct DirectShow setup implementation
 bool CaptureImplDirectShow::setupDeviceDirect(int deviceId, int width, int height)
 {
+	char debugMsg[256];
+	sprintf_s(debugMsg, "setupDeviceDirect: Called with device %d, dimensions %dx%d\n", deviceId, width, height);
+	OutputDebugStringA(debugMsg);
+	
 	DeviceContext* deviceContext = static_cast<DeviceContext*>(mDeviceContext);
 	
 	// Store requested dimensions for negotiation
@@ -1114,6 +1241,12 @@ bool CaptureImplDirectShow::setupDeviceDirect(int deviceId, int width, int heigh
 	// Add source filter to graph
 	HRESULT hr = deviceContext->graphBuilder->AddFilter(deviceContext->sourceFilter.get(), L"Video Capture Source");
 	if (FAILED(hr)) {
+		return false;
+	}
+	
+	// CRITICAL: Set the camera format BEFORE connecting filters
+	if (!setCameraFormat(deviceContext, width, height)) {
+		OutputDebugStringA("setupDeviceDirect: Failed to set camera format\n");
 		return false;
 	}
 	
