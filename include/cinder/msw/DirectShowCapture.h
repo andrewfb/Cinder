@@ -108,6 +108,12 @@ public:
     bool showSettingsWindow();
     bool setVideoProperty(long property, long value, long flags = 0);
     bool getVideoProperty(long property, long& min, long& max, long& step, long& current, long& flags, long& defaultValue);
+    
+    // Format conversion methods
+    bool convertYUY2ToRGB24(const BYTE* yuy2Data, BYTE* rgb24Data, int width, int height);
+    bool convertBGR24ToRGB24(const BYTE* bgr24Data, BYTE* rgb24Data, int width, int height);
+    bool convertBGR24WithStride(const BYTE* bgr24Data, BYTE* rgb24Data, int width, int height, int stride);
+    void copyRGB24WithFlip(const BYTE* srcData, BYTE* dstData, int width, int height);
 
 private:
     // COM initialization management

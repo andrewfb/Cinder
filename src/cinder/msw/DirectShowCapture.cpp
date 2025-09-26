@@ -30,6 +30,7 @@
 #include <set>
 #include <tuple>
 #include <string>
+#include <cstdint>
 
 // DirectShow sample grabber interface definitions (qedit.h not available)
 static const GUID CLSID_SampleGrabber = { 0xC1F400A0, 0x3F08, 0x11d3, { 0x9F, 0x0B, 0x00, 0x60, 0x08, 0x03, 0x9E, 0x37 } };
@@ -149,41 +150,70 @@ STDMETHODIMP_(ULONG) DirectShowCapture::SampleGrabberCallback::Release() {
 }
 
 STDMETHODIMP DirectShowCapture::SampleGrabberCallback::SampleCB(double sampleTime, IMediaSample* sample) {
-    return S_OK;
-}
-
-STDMETHODIMP DirectShowCapture::SampleGrabberCallback::BufferCB(double sampleTime, BYTE* buffer, long bufferLen) {
-    if (!mParent || !buffer || bufferLen <= 0) {
+    if (!mParent || !sample) {
         return S_OK;
     }
     
     try {
         std::lock_guard<std::mutex> lock(mParent->mFrameMutex);
         
-        int expectedSize = mParent->getSize();
-        OutputDebugStringA(("BufferCB called: bufferLen=" + std::to_string(bufferLen) + ", expected=" + std::to_string(expectedSize) + "\n").c_str());
+        BYTE* ptrBuffer = nullptr;
+        HRESULT hr = sample->GetPointer(&ptrBuffer);
         
-        if (mParent->mPixelBuffer) {
-            // DirectShow has already converted to RGB24 format
-            int copySize = std::min(static_cast<int>(bufferLen), expectedSize);
-            memcpy(mParent->mPixelBuffer.get(), buffer, copySize);
+        if (SUCCEEDED(hr) && ptrBuffer && mParent->mPixelBuffer) {
+            long actualDataLength = sample->GetActualDataLength();
+            int expectedSize = mParent->getSize(); // width * height * 3
             
-            if (bufferLen < expectedSize) {
-                memset(mParent->mPixelBuffer.get() + bufferLen, 0, expectedSize - bufferLen);
-                OutputDebugStringA("BufferCB: Padding with zeros\n");
+            OutputDebugStringA(("SampleCB: actualDataLength=" + std::to_string(actualDataLength) + 
+                               " expectedSize=" + std::to_string(expectedSize) + 
+                               " dimensions=" + std::to_string(mParent->mWidth) + "x" + std::to_string(mParent->mHeight) + "\n").c_str());
+            
+            if (actualDataLength == expectedSize) {
+                // Handle format based on what DirectShow actually delivered
+                int width = mParent->mWidth;
+                int height = mParent->mHeight;
+                int widthInBytes = width * 3;
+                
+                // Check what format we actually received by looking at the connected media type
+                if (IsEqualGUID(mParent->mActualFormat, MEDIASUBTYPE_RGB24)) {
+                    // RGB24 format - copy without flip since DirectShow is delivering right-side up
+                    memcpy(mParent->mPixelBuffer.get(), ptrBuffer, expectedSize);
+                    OutputDebugStringA("SampleCB: RGB24 data copied without flip\n");
+                } else {
+                    // Assume BGR24 or other format - need to handle channel swapping, no flip
+                    for (int y = 0; y < height; y++) {
+                        for (int x = 0; x < width; x++) {
+                            int pixelIndex = (y * width + x) * 3;
+                            
+                            // Swap R and B channels (BGR -> RGB) 
+                            mParent->mPixelBuffer.get()[pixelIndex + 0] = ptrBuffer[pixelIndex + 2];  // R
+                            mParent->mPixelBuffer.get()[pixelIndex + 1] = ptrBuffer[pixelIndex + 1];  // G  
+                            mParent->mPixelBuffer.get()[pixelIndex + 2] = ptrBuffer[pixelIndex + 0];  // B
+                        }
+                    }
+                    OutputDebugStringA("SampleCB: BGR24 data converted to RGB24 without flip\n");
+                }
+                
+                mParent->mNewFrameAvailable = true;
+            } else if (actualDataLength > 0) {
+                // Size mismatch - copy what we can
+                int copySize = std::min(actualDataLength, (long)expectedSize);
+                memcpy(mParent->mPixelBuffer.get(), ptrBuffer, copySize);
+                mParent->mNewFrameAvailable = true;
+                OutputDebugStringA(("SampleCB: Size mismatch - copied " + std::to_string(copySize) + " bytes\n").c_str());
             }
-            
-            mParent->mNewFrameAvailable = true;
-            OutputDebugStringA("BufferCB: RGB24 data copied successfully\n");
-        } else {
-            OutputDebugStringA("BufferCB: No pixel buffer allocated\n");
         }
     } catch (...) {
-        // Ignore any exceptions to prevent crashes in DirectShow callback
-        OutputDebugStringA("BufferCB: Exception caught, ignoring\n");
+        OutputDebugStringA("SampleCB: Exception caught, ignoring\n");
     }
     
     return S_OK;
+}
+
+STDMETHODIMP DirectShowCapture::SampleGrabberCallback::BufferCB(double sampleTime, BYTE* buffer, long bufferLen) {
+    // Not used - we're using SampleCB like videoInput
+    OutputDebugStringA("BufferCB: Called but not used (using SampleCB instead)\n");
+    return E_NOTIMPL;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -365,6 +395,13 @@ std::vector<Capture::Mode> DirectShowCapture::getDeviceModes(int deviceId) {
         ));
     }
     
+    // Sort modes by area (width × height) in ascending order
+    std::sort(modes.begin(), modes.end(), [](const Capture::Mode& a, const Capture::Mode& b) {
+        int areaA = a.getWidth() * a.getHeight();
+        int areaB = b.getWidth() * b.getHeight();
+        return areaA < areaB;
+    });
+    
     return modes;
 }
 
@@ -523,7 +560,8 @@ GUID DirectShowCapture::pixelFormatToMediaSubtype(Capture::Mode::PixelFormat for
         case Capture::Mode::PixelFormat::RGB24:
             return MEDIASUBTYPE_RGB24;
         case Capture::Mode::PixelFormat::BGR24:
-            return MEDIASUBTYPE_RGB24;
+            // Request BGR24 directly from camera instead of forcing RGB24 conversion
+            return MEDIASUBTYPE_RGB24;  // DirectShow doesn't have MEDIASUBTYPE_BGR24, so we'll handle conversion
         case Capture::Mode::PixelFormat::ARGB32:
             return MEDIASUBTYPE_RGB32;
         case Capture::Mode::PixelFormat::BGRA32:
@@ -591,44 +629,108 @@ bool DirectShowCapture::setupDevice(int deviceId, int width, int height, const G
     mWidth = width;
     mHeight = height;
     
+    OutputDebugStringA(("DirectShow: setupDevice requesting " + std::to_string(width) + "x" + std::to_string(height) + " format=" + guidToString(mediaType) + "\n").c_str());
+    
     if (!createCaptureGraph()) {
+        OutputDebugStringA("DirectShow: createCaptureGraph failed\n");
         return false;
+    }
+    
+    // Create the source filter first so we can set format before connection
+    mDevice.sourceFilter = createSourceFilter(mDevice.deviceId);
+    if (!mDevice.sourceFilter) {
+        OutputDebugStringA("DirectShow: Failed to create source filter\n");
+        return false;
+    }
+    
+    HRESULT hr = mDevice.graphBuilder->AddFilter(mDevice.sourceFilter.get(), L"Video Capture Source");
+    if (FAILED(hr)) {
+        OutputDebugStringA("DirectShow: Failed to add source filter to graph\n");
+        return false;
+    }
+    
+    // Try to set the format BEFORE connecting filters, like videoInput
+    // First get the stream config interface from the source filter
+    ComPtr<IPin> sourcePin;
+    IEnumPins* enumPinsPtr = nullptr;
+    hr = mDevice.sourceFilter->EnumPins(&enumPinsPtr);
+    ComPtr<IEnumPins> enumPins(enumPinsPtr);
+    
+    if (SUCCEEDED(hr)) {
+        IPin* pin = nullptr;
+        while (enumPins->Next(1, &pin, nullptr) == S_OK) {
+            PIN_DIRECTION direction;
+            hr = pin->QueryDirection(&direction);
+            
+            if (SUCCEEDED(hr) && direction == PINDIR_OUTPUT) {
+                sourcePin.reset(pin);
+                break;
+            }
+            
+            pin->Release();
+        }
+        
+        if (sourcePin) {
+            hr = sourcePin->QueryInterface(IID_IAMStreamConfig, reinterpret_cast<void**>(&mDevice.streamConfig));
+            if (SUCCEEDED(hr)) {
+                OutputDebugStringA("DirectShow: Got stream config interface before connection\n");
+                
+                // Try to set the format before RenderStream
+                if (!setStreamFormat(width, height, mediaType)) {
+                    OutputDebugStringA("DirectShow: Requested format failed, trying to find closest format\n");
+                    
+                    // Try to find any workable format
+                    GUID fallbackType = MEDIASUBTYPE_RGB24;
+                    int fallbackWidth = width;
+                    int fallbackHeight = height;
+                    
+                    if (findClosestFormat(fallbackWidth, fallbackHeight, fallbackType)) {
+                        OutputDebugStringA(("DirectShow: Found closest format: " + std::to_string(fallbackWidth) + "x" + std::to_string(fallbackHeight) + " " + guidToString(fallbackType) + "\n").c_str());
+                        
+                        if (setStreamFormat(fallbackWidth, fallbackHeight, fallbackType)) {
+                            mWidth = fallbackWidth;
+                            mHeight = fallbackHeight;
+                            OutputDebugStringA("DirectShow: Fallback format set successfully\n");
+                        } else {
+                            OutputDebugStringA("DirectShow: Even fallback format failed - will let RenderStream negotiate\n");
+                        }
+                    } else {
+                        OutputDebugStringA("DirectShow: No suitable format found - will let RenderStream negotiate\n");
+                    }
+                } else {
+                    OutputDebugStringA("DirectShow: Requested format set successfully\n");
+                }
+            }
+        }
     }
     
     if (!connectFilters()) {
+        OutputDebugStringA("DirectShow: connectFilters failed\n");
         return false;
     }
     
-    if (!setStreamFormat(width, height, mediaType)) {
-        GUID fallbackType = mediaType;
-        int fallbackWidth = width;
-        int fallbackHeight = height;
-        
-        if (!findClosestFormat(fallbackWidth, fallbackHeight, fallbackType)) {
-            return false;
-        }
-        
-        if (!setStreamFormat(fallbackWidth, fallbackHeight, fallbackType)) {
-            return false;
-        }
-        
-        mWidth = fallbackWidth;
-        mHeight = fallbackHeight;
-    }
-    
     if (!configureSampleGrabber()) {
+        OutputDebugStringA("DirectShow: configureSampleGrabber failed\n");
         return false;
     }
     
     mPixelBuffer = std::make_unique<unsigned char[]>(getSize());
     mDevice.isSetup = true;
     
+    OutputDebugStringA(("DirectShow: setupDevice completed successfully, final size: " + std::to_string(mWidth) + "x" + std::to_string(mHeight) + "\n").c_str());
     return true;
 }
 
 bool DirectShowCapture::setupDevice(int deviceId, const Capture::Mode& mode) {
+    OutputDebugStringA(("DirectShow: setupDevice with mode - " + std::to_string(mode.getWidth()) + "x" + std::to_string(mode.getHeight()) + " format=" + std::to_string((int)mode.getPixelFormat()) + "\n").c_str());
+    
     GUID mediaType = pixelFormatToMediaSubtype(mode.getPixelFormat());
-    return setupDevice(deviceId, mode.getWidth(), mode.getHeight(), mediaType);
+    OutputDebugStringA(("DirectShow: Converted to GUID: " + guidToString(mediaType) + "\n").c_str());
+    
+    bool result = setupDevice(deviceId, mode.getWidth(), mode.getHeight(), mediaType);
+    OutputDebugStringA(("DirectShow: setupDevice result: " + std::string(result ? "SUCCESS" : "FAILED") + "\n").c_str());
+    
+    return result;
 }
 
 bool DirectShowCapture::createCaptureGraph() {
@@ -658,168 +760,81 @@ bool DirectShowCapture::createCaptureGraph() {
 }
 
 bool DirectShowCapture::connectFilters() {
-    mDevice.sourceFilter = createSourceFilter(mDevice.deviceId);
-    if (!mDevice.sourceFilter) {
-        return false;
-    }
-    
-    HRESULT hr = mDevice.graphBuilder->AddFilter(mDevice.sourceFilter.get(), L"Video Capture Source");
-    if (FAILED(hr)) {
-        return false;
-    }
-    
+    // Source filter was already created and added in setupDevice
+    // Create and add sample grabber filter
     mDevice.grabberFilter = createGrabberFilter();
+    HRESULT hr;
     if (!mDevice.grabberFilter) {
+        OutputDebugStringA("DirectShow: Failed to create grabber filter\n");
         return false;
     }
     
     hr = mDevice.graphBuilder->AddFilter(mDevice.grabberFilter.get(), L"Sample Grabber");
     if (FAILED(hr)) {
+        OutputDebugStringA("DirectShow: Failed to add grabber filter to graph\n");
         return false;
     }
     
     hr = mDevice.grabberFilter->QueryInterface(IID_ISampleGrabber, reinterpret_cast<void**>(&mDevice.sampleGrabber));
     if (FAILED(hr)) {
+        OutputDebugStringA("DirectShow: Failed to get ISampleGrabber interface\n");
         return false;
     }
     
-    // Configure SampleGrabber to convert to RGB24 BEFORE connecting filters
+    // Try to configure SampleGrabber like videoInput, but be more flexible for BGR24 cameras
     AM_MEDIA_TYPE mediaType;
     ZeroMemory(&mediaType, sizeof(mediaType));
     mediaType.majortype = MEDIATYPE_Video;
-    mediaType.subtype = MEDIASUBTYPE_RGB24;
-    mediaType.formattype = GUID_NULL;
+    mediaType.subtype = MEDIASUBTYPE_RGB24;  // Prefer RGB24 like videoInput
+    mediaType.formattype = FORMAT_VideoInfo;
     
     hr = mDevice.sampleGrabber->SetMediaType(&mediaType);
     if (FAILED(hr)) {
-        OutputDebugStringA("DirectShow: Failed to set RGB24 media type on SampleGrabber\n");
-        return false;
-    }
-    OutputDebugStringA("DirectShow: Set SampleGrabber to request RGB24 format\n");
-    
-    ComPtr<IPin> sourcePin;
-    IEnumPins* enumPinsPtr = nullptr;
-    hr = mDevice.sourceFilter->EnumPins(&enumPinsPtr);
-    ComPtr<IEnumPins> enumPins(enumPinsPtr);
-    
-    if (FAILED(hr)) {
-        return false;
-    }
-    
-    IPin* pin = nullptr;
-    while (enumPins->Next(1, &pin, nullptr) == S_OK) {
-        PIN_DIRECTION direction;
-        hr = pin->QueryDirection(&direction);
+        OutputDebugStringA("DirectShow: RGB24 request failed, trying more flexible approach\n");
+        // If RGB24 fails, try accepting any format
+        ZeroMemory(&mediaType, sizeof(mediaType));
+        mediaType.majortype = MEDIATYPE_Video;
+        mediaType.subtype = GUID_NULL;  // Accept any format
+        mediaType.formattype = GUID_NULL;
         
-        if (SUCCEEDED(hr) && direction == PINDIR_OUTPUT) {
-            sourcePin.reset(pin);
-            break;
+        hr = mDevice.sampleGrabber->SetMediaType(&mediaType);
+        if (FAILED(hr)) {
+            OutputDebugStringA("DirectShow: Failed to set any media type on SampleGrabber\n");
+            return false;
         }
-        
-        pin->Release();
+        OutputDebugStringA("DirectShow: SampleGrabber configured to accept any format\n");
+    } else {
+        OutputDebugStringA("DirectShow: SampleGrabber configured for RGB24 like videoInput\n");
     }
     
-    if (!sourcePin) {
-        return false;
-    }
-    
-    hr = sourcePin->QueryInterface(IID_IAMStreamConfig, reinterpret_cast<void**>(&mDevice.streamConfig));
-    if (FAILED(hr)) {
-        return false;
-    }
-    
-    // Now connect the source filter to the sample grabber
-    ComPtr<IPin> grabberInputPin;
-    IEnumPins* grabberEnumPinsPtr = nullptr;
-    hr = mDevice.grabberFilter->EnumPins(&grabberEnumPinsPtr);
-    ComPtr<IEnumPins> grabberEnumPins(grabberEnumPinsPtr);
-    
-    if (FAILED(hr)) {
-        return false;
-    }
-    
-    IPin* grabberPin = nullptr;
-    while (grabberEnumPins->Next(1, &grabberPin, nullptr) == S_OK) {
-        PIN_DIRECTION direction;
-        hr = grabberPin->QueryDirection(&direction);
-        
-        if (SUCCEEDED(hr) && direction == PINDIR_INPUT) {
-            grabberInputPin.reset(grabberPin);
-            break;
-        }
-        
-        grabberPin->Release();
-    }
-    
-    if (!grabberInputPin) {
-        return false;
-    }
-    
-    // Connect source output to grabber input
-    hr = mDevice.graphBuilder->Connect(sourcePin.get(), grabberInputPin.get());
-    if (FAILED(hr)) {
-        return false;
-    }
-    
-    // Add null renderer for the grabber output
+    // Create and add null renderer
     ComPtr<IBaseFilter> nullRenderer;
     hr = CoCreateInstance(CLSID_NullRenderer, nullptr, CLSCTX_INPROC,
                           IID_IBaseFilter, reinterpret_cast<void**>(&nullRenderer));
     if (FAILED(hr)) {
+        OutputDebugStringA("DirectShow: Failed to create null renderer\n");
         return false;
     }
     
     hr = mDevice.graphBuilder->AddFilter(nullRenderer.get(), L"Null Renderer");
     if (FAILED(hr)) {
+        OutputDebugStringA("DirectShow: Failed to add null renderer to graph\n");
         return false;
     }
     
-    // Find grabber output pin and null renderer input pin, then connect them
-    ComPtr<IPin> grabberOutputPin;
-    IEnumPins* grabberOutEnumPinsPtr = nullptr;
-    hr = mDevice.grabberFilter->EnumPins(&grabberOutEnumPinsPtr);
-    ComPtr<IEnumPins> grabberOutEnumPins(grabberOutEnumPinsPtr);
+    // Use RenderStream like videoInput - this handles all the format negotiation automatically
+    hr = mDevice.captureBuilder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, 
+                                              mDevice.sourceFilter.get(), 
+                                              mDevice.grabberFilter.get(), 
+                                              nullRenderer.get());
     
-    if (SUCCEEDED(hr)) {
-        IPin* outPin = nullptr;
-        while (grabberOutEnumPins->Next(1, &outPin, nullptr) == S_OK) {
-            PIN_DIRECTION direction;
-            hr = outPin->QueryDirection(&direction);
-            
-            if (SUCCEEDED(hr) && direction == PINDIR_OUTPUT) {
-                grabberOutputPin.reset(outPin);
-                break;
-            }
-            
-            outPin->Release();
-        }
+    if (FAILED(hr)) {
+        OutputDebugStringA(("DirectShow: RenderStream failed, hr=0x" + std::to_string(hr) + "\n").c_str());
+        return false;
     }
     
-    ComPtr<IPin> rendererInputPin;
-    IEnumPins* rendererEnumPinsPtr = nullptr;
-    hr = nullRenderer->EnumPins(&rendererEnumPinsPtr);
-    ComPtr<IEnumPins> rendererEnumPins(rendererEnumPinsPtr);
-    
-    if (SUCCEEDED(hr)) {
-        IPin* inPin = nullptr;
-        while (rendererEnumPins->Next(1, &inPin, nullptr) == S_OK) {
-            PIN_DIRECTION direction;
-            hr = inPin->QueryDirection(&direction);
-            
-            if (SUCCEEDED(hr) && direction == PINDIR_INPUT) {
-                rendererInputPin.reset(inPin);
-                break;
-            }
-            
-            inPin->Release();
-        }
-    }
-    
-    if (grabberOutputPin && rendererInputPin) {
-        hr = mDevice.graphBuilder->Connect(grabberOutputPin.get(), rendererInputPin.get());
-    }
-    
-    return SUCCEEDED(hr);
+    OutputDebugStringA("DirectShow: RenderStream succeeded - filters connected like videoInput\n");
+    return true;
 }
 
 DirectShowCapture::ComPtr<IBaseFilter> DirectShowCapture::createGrabberFilter() {
@@ -939,13 +954,21 @@ bool DirectShowCapture::configureSampleGrabber() {
         return false;
     }
     
-    hr = mDevice.sampleGrabber->SetBufferSamples(TRUE);
+    // Use SampleCB mode like videoInput - SetBufferSamples(FALSE) and callback mode 0
+    hr = mDevice.sampleGrabber->SetBufferSamples(FALSE);
     if (FAILED(hr)) {
         return false;
     }
     
     mCallback = std::make_unique<SampleGrabberCallback>(this);
-    hr = mDevice.sampleGrabber->SetCallback(mCallback.get(), 1);
+    // Use SampleCB (mode 0) like videoInput, not BufferCB (mode 1)
+    hr = mDevice.sampleGrabber->SetCallback(mCallback.get(), 0);
+    
+    if (SUCCEEDED(hr)) {
+        OutputDebugStringA("DirectShow: SampleGrabber callback set successfully\n");
+    } else {
+        OutputDebugStringA(("DirectShow: Failed to set SampleGrabber callback, hr=0x" + std::to_string(hr) + "\n").c_str());
+    }
     
     return SUCCEEDED(hr);
 }
@@ -1093,6 +1116,117 @@ bool DirectShowCapture::setVideoProperty(long property, long value, long flags) 
 
 bool DirectShowCapture::getVideoProperty(long property, long& min, long& max, long& step, long& current, long& flags, long& defaultValue) {
     return false;
+}
+
+bool DirectShowCapture::convertYUY2ToRGB24(const BYTE* yuy2Data, BYTE* rgb24Data, int width, int height) {
+    // YUY2 format: Y0 U0 Y1 V0 (4 bytes for 2 pixels)
+    // Convert to RGB24: R G B R G B (6 bytes for 2 pixels)
+    // Flip vertically since DirectShow delivers upside down
+    
+    for (int y = 0; y < height; y++) {
+        int flippedY = height - 1 - y;  // Flip vertically
+        for (int x = 0; x < width; x += 2) {
+            int yuy2Index = (y * width + x) * 2;
+            int rgb24Index = (flippedY * width + x) * 3;
+            
+            if (yuy2Index + 3 >= width * height * 2 || rgb24Index + 5 >= width * height * 3) {
+                break; // Prevent buffer overflow
+            }
+            
+            int Y0 = yuy2Data[yuy2Index + 0];
+            int U = yuy2Data[yuy2Index + 1];
+            int Y1 = yuy2Data[yuy2Index + 2];
+            int V = yuy2Data[yuy2Index + 3];
+            
+            // Convert first pixel (Y0, U, V)
+            int C0 = Y0 - 16;
+            int D = U - 128;
+            int E = V - 128;
+            
+            int R0 = (298 * C0 + 409 * E + 128) >> 8;
+            int G0 = (298 * C0 - 100 * D - 208 * E + 128) >> 8;
+            int B0 = (298 * C0 + 516 * D + 128) >> 8;
+            
+            // Clamp values
+            R0 = std::max(0, std::min(255, R0));
+            G0 = std::max(0, std::min(255, G0));
+            B0 = std::max(0, std::min(255, B0));
+            
+            rgb24Data[rgb24Index + 0] = (BYTE)B0;  // Cinder expects BGR order
+            rgb24Data[rgb24Index + 1] = (BYTE)G0;
+            rgb24Data[rgb24Index + 2] = (BYTE)R0;
+            
+            // Convert second pixel (Y1, U, V) if within bounds
+            if (x + 1 < width) {
+                int C1 = Y1 - 16;
+                
+                int R1 = (298 * C1 + 409 * E + 128) >> 8;
+                int G1 = (298 * C1 - 100 * D - 208 * E + 128) >> 8;
+                int B1 = (298 * C1 + 516 * D + 128) >> 8;
+                
+                // Clamp values
+                R1 = std::max(0, std::min(255, R1));
+                G1 = std::max(0, std::min(255, G1));
+                B1 = std::max(0, std::min(255, B1));
+                
+                rgb24Data[rgb24Index + 3] = (BYTE)B1;  // Cinder expects BGR order
+                rgb24Data[rgb24Index + 4] = (BYTE)G1;
+                rgb24Data[rgb24Index + 5] = (BYTE)R1;
+            }
+        }
+    }
+    
+    return true;
+}
+
+bool DirectShowCapture::convertBGR24ToRGB24(const BYTE* bgr24Data, BYTE* rgb24Data, int width, int height) {
+    // BGR24 camera format: B G R B G R...  
+    // Cinder expects: B G R B G R... (BGR order)
+    // Copy line by line and flip vertically since DirectShow delivers upside down
+    
+    OutputDebugStringA(("DirectShow: BGR24 conversion - width=" + std::to_string(width) + " height=" + std::to_string(height) + "\n").c_str());
+    
+    int rowBytes = width * 3;
+    for (int y = 0; y < height; y++) {
+        int flippedY = height - 1 - y;  // Flip vertically
+        const BYTE* srcRow = bgr24Data + (y * rowBytes);
+        BYTE* dstRow = rgb24Data + (flippedY * rowBytes);
+        memcpy(dstRow, srcRow, rowBytes);
+    }
+    
+    OutputDebugStringA("DirectShow: BGR24 copy with vertical flip completed\n");
+    return true;
+}
+
+bool DirectShowCapture::convertBGR24WithStride(const BYTE* bgr24Data, BYTE* rgb24Data, int width, int height, int stride) {
+    // Handle BGR24 data with stride/padding
+    // Copy line by line, skipping any padding, and flip vertically
+    
+    OutputDebugStringA(("DirectShow: BGR24 stride conversion - width=" + std::to_string(width) + " height=" + std::to_string(height) + " stride=" + std::to_string(stride) + "\n").c_str());
+    
+    int outputRowBytes = width * 3;  // Output has no padding
+    
+    for (int y = 0; y < height; y++) {
+        int flippedY = height - 1 - y;  // Flip vertically
+        const BYTE* srcRow = bgr24Data + (y * stride);  // Source has stride
+        BYTE* dstRow = rgb24Data + (flippedY * outputRowBytes);  // Output has no padding
+        memcpy(dstRow, srcRow, outputRowBytes);  // Copy only actual pixel data, skip padding
+    }
+    
+    OutputDebugStringA("DirectShow: BGR24 stride conversion with vertical flip completed\n");
+    return true;
+}
+
+void DirectShowCapture::copyRGB24WithFlip(const BYTE* srcData, BYTE* dstData, int width, int height) {
+    // Copy RGB24 data and flip vertically since DirectShow delivers upside down
+    int rowBytes = width * 3;
+    
+    for (int y = 0; y < height; y++) {
+        int flippedY = height - 1 - y;  // Flip vertically
+        const BYTE* srcRow = srcData + (y * rowBytes);
+        BYTE* dstRow = dstData + (flippedY * rowBytes);
+        memcpy(dstRow, srcRow, rowBytes);
+    }
 }
 
 

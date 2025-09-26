@@ -387,10 +387,18 @@ void CaptureBasicApp::setupCapture( Capture::DeviceRef device )
 		mCapture = nullptr;
 		mTexture = nullptr;
 
-		// Use the first available mode instead of hardcoded 640x480
+		// Use a working mode instead of the first one (which might be problematic)
 		if( !mCurrentModes.empty() ) {
-			console() << "Creating capture with first available mode: " << toString( mCurrentModes[0] ) << endl;
-			mCapture = Capture::create( device, mCurrentModes[0] );
+			// Try to find 2560x720 mode that we know works, otherwise use first mode
+			int modeIndex = 0;
+			for( size_t i = 0; i < mCurrentModes.size(); i++ ) {
+				if( mCurrentModes[i].getWidth() == 2560 && mCurrentModes[i].getHeight() == 720 ) {
+					modeIndex = i;
+					break;
+				}
+			}
+			console() << "Creating capture with mode [" << modeIndex << "]: " << toString( mCurrentModes[modeIndex] ) << endl;
+			mCapture = Capture::create( device, mCurrentModes[modeIndex] );
 		} else {
 			console() << "No modes available, trying default 640x480" << endl;
 			mCapture = Capture::create( 640, 480, device );
