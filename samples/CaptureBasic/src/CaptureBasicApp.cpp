@@ -97,14 +97,14 @@ void CaptureBasicApp::draw()
 	if( mShowUI ) {
 		ImGui::Begin( "Video Capture Control" );
 
-		// Device selection with refresh button
+		// Device selection or "No devices" message
 		if( ! mDevices.empty() ) {
 			// Ensure selected index is valid
 			if( mSelectedDeviceIndex >= (int)mDevices.size() ) {
 				mSelectedDeviceIndex = 0;
 			}
 
-			// Device dropdown and refresh button on same line
+			// Device dropdown
 			if( ImGui::BeginCombo( "Camera Device", mDevices[mSelectedDeviceIndex]->getName().c_str() ) ) {
 				for( int i = 0; i < mDevices.size(); i++ ) {
 					bool isSelected = ( mSelectedDeviceIndex == i );
@@ -123,10 +123,13 @@ void CaptureBasicApp::draw()
 				}
 				ImGui::EndCombo();
 			}
+		} else {
+			// Show message when no devices available
+			ImGui::TextColored( ImVec4(1.0f, 0.6f, 0.0f, 1.0f), "No Capture Devices Found" );
 		}
 
-		// Add refresh button on next line, flush right
-		if( ! mDevices.empty() ) {
+		// Add refresh button on next line, flush right (always show)
+		{
 			float buttonWidth = 120.0f;
 			float availableWidth = ImGui::GetContentRegionAvail().x;
 			ImGui::SetCursorPosX( ImGui::GetCursorPosX() + availableWidth - buttonWidth );
@@ -155,6 +158,9 @@ void CaptureBasicApp::draw()
 				// Handle device selection after refresh
 				if( mDevices.empty() ) {
 					mSelectedDeviceIndex = 0;
+					// Clear modes when no devices
+					mCurrentModes.clear();
+					mSelectedModeIndex = -1;
 					CI_LOG_W( "No capture devices found after refresh" );
 				} else {
 					// Try to maintain current device selection if possible
@@ -171,8 +177,8 @@ void CaptureBasicApp::draw()
 			}
 		}
 
-		// Mode selection dropdown
-		if( ! mCurrentModes.empty() ) {
+		// Mode selection dropdown - only show when we have devices
+		if( ! mDevices.empty() && ! mCurrentModes.empty() ) {
 			// Determine display text for current mode
 			string modeDescription;
 			if( mSelectedModeIndex == -1 ) {
@@ -237,8 +243,8 @@ void CaptureBasicApp::draw()
 			}
 		}
 
-		// Current mode details
-		if( mCapture ) {
+		// Current mode details - only show when we have devices
+		if( ! mDevices.empty() && mCapture ) {
 			ImGui::Separator();
 			ImGui::Text( "Current Mode Details:" );
 			ImGui::Text( "Resolution: %d x %dpx", mCapture->getWidth(), mCapture->getHeight() );
