@@ -21,6 +21,7 @@
 */
 
 #include "cinder/CaptureImplDirectShow.h"
+#include "cinder/CinderAssert.h"
 #include <dshow.h>
 #include <dvdmedia.h>  // For VIDEO_STREAM_CONFIG_CAPS
 #include <set>
@@ -600,9 +601,8 @@ STDMETHODIMP_(ULONG) SampleGrabberCallback::Release()
 
 STDMETHODIMP SampleGrabberCallback::SampleCB(double sampleTime, IMediaSample* sample)
 {
-    if (!mParent || !sample) {
-        return S_OK;
-    }
+    // These should never be null if setup worked correctly
+    CI_ASSERT(mParent && sample);
     
     try {
         std::lock_guard<std::mutex> lock(mParent->mFrameMutex);
@@ -610,65 +610,32 @@ STDMETHODIMP SampleGrabberCallback::SampleCB(double sampleTime, IMediaSample* sa
         BYTE* ptrBuffer = nullptr;
         HRESULT hr = sample->GetPointer(&ptrBuffer);
         
-        if (SUCCEEDED(hr) && ptrBuffer && mParent->mPixelBuffer) {
-            long actualDataLength = sample->GetActualDataLength();
+        // These should never fail if DirectShow setup worked correctly
+        CI_ASSERT(SUCCEEDED(hr));
+        CI_ASSERT(ptrBuffer);
+        CI_ASSERT(mParent->mPixelBuffer);
+        
+        long actualDataLength = sample->GetActualDataLength();
+        int expectedSize = mParent->mWidth * mParent->mHeight * 3;
+        
+        // Dimensions should match what was negotiated in setupCallback
+        CI_ASSERT(expectedSize == actualDataLength);
+        
+        // Process RGB24 data - simple copy with vertical flip
+        const uint8_t* src = static_cast<const uint8_t*>(ptrBuffer);
+        uint8_t* dst = mParent->mPixelBuffer.get();
+        
+        // Copy with vertical flip (DirectShow RGB is typically bottom-up)
+        for (int y = 0; y < mParent->mHeight; y++) {
+            int srcRow = (mParent->mHeight - 1 - y); // Flip vertically
+            const uint8_t* srcLine = src + srcRow * (mParent->mWidth * 3);
+            uint8_t* dstLine = dst + y * (mParent->mWidth * 3);
             
-            // Calculate actual dimensions from data size (RGB24 = width * height * 3)
-            int actualPixels = actualDataLength / 3;
-            int actualWidth = mParent->mWidth;
-            int actualHeight = mParent->mHeight;
-            
-            // Verify that our stored dimensions match the actual data
-            int expectedSize = actualWidth * actualHeight * 3;
-            if (expectedSize != actualDataLength) {
-                // Dimensions are out of sync - try to calculate from common aspect ratios
-                
-                // Try common aspect ratios to find actual dimensions
-                // Most likely it's one of the camera's supported modes
-                if (actualDataLength == 2560 * 720 * 3) {
-                    actualWidth = 2560; actualHeight = 720;
-                } else if (actualDataLength == 3840 * 2160 * 3) {
-                    actualWidth = 3840; actualHeight = 2160;
-                } else if (actualDataLength == 1920 * 1080 * 3) {
-                    actualWidth = 1920; actualHeight = 1080;
-                } else if (actualDataLength == 1280 * 720 * 3) {
-                    actualWidth = 1280; actualHeight = 720;
-                } else if (actualDataLength == 640 * 480 * 3) {
-                    actualWidth = 640; actualHeight = 480;
-                }
-                
-                // Update parent dimensions and reallocate buffer if needed
-                if (actualWidth != mParent->mWidth || actualHeight != mParent->mHeight) {
-                    mParent->updateDimensions(actualWidth, actualHeight);
-                }
-            }
-            
-            
-            // Process RGB24 data with proper dimensions
-            if (actualDataLength == actualWidth * actualHeight * 3) {
-                // RGB24 format - copy with format fixes using correct dimensions
-                const uint8_t* src = static_cast<const uint8_t*>(ptrBuffer);
-                uint8_t* dst = mParent->mPixelBuffer.get();
-                
-                // Copy with vertical flip only (no channel conversion needed)
-                for (int y = 0; y < actualHeight; y++) {
-                    int srcRow = (actualHeight - 1 - y); // Flip vertically
-                    const uint8_t* srcLine = src + srcRow * (actualWidth * 3);
-                    uint8_t* dstLine = dst + y * (actualWidth * 3);
-                    
-                    // Direct copy of the line (no channel swapping)
-                    memcpy(dstLine, srcLine, actualWidth * 3);
-                }
-                mParent->mNewFrameAvailable = true;
-            }
-            else {
-                // Unknown format - copy what we can for debugging
-                int maxCopySize = mParent->mWidth * mParent->mHeight * 3;
-                int copySize = (actualDataLength < maxCopySize) ? actualDataLength : maxCopySize;
-                memcpy(mParent->mPixelBuffer.get(), ptrBuffer, copySize);
-                mParent->mNewFrameAvailable = true;
-            }
+            // Direct copy (RGB24 format already matches what Cinder expects)
+            memcpy(dstLine, srcLine, mParent->mWidth * 3);
         }
+        
+        mParent->mNewFrameAvailable = true;
     }
     catch (...) {
         // Ignore exceptions in callback
@@ -864,13 +831,8 @@ CaptureImplDirectShow::CaptureImplDirectShow( const Capture::DeviceRef& device, 
 		Sleep(100);
 	}
 	
-	// Keep constructor width/height
-	mWidth = mode.getWidth();
-	mHeight = mode.getHeight();
-	
-	// Allocate pixel buffer for the actual size
-	int bufferSize = mWidth * mHeight * 3;
-	mPixelBuffer = std::make_unique<unsigned char[]>(bufferSize);
+	// Dimensions and pixel buffer are already set by setupCallback based on negotiated size
+	// Don't overwrite them here!
 	
 	mIsCapturing = true;
 	mSurfaceCache.reset( new SurfaceCache( mWidth, mHeight, SurfaceChannelOrder::BGR, 4 ) );
@@ -1017,12 +979,32 @@ bool connectFilters(DeviceContext* deviceContext) {
 		return false;
 	}
 	
-	// Configure the sample grabber to force RGB24 format (like videoInput did)
+	// Configure the sample grabber to force RGB24 format with requested dimensions
 	// DirectShow will handle YUY2->RGB24 conversion automatically
 	AM_MEDIA_TYPE mt;
+	VIDEOINFOHEADER vih;
+	
 	ZeroMemory(&mt, sizeof(mt));
+	ZeroMemory(&vih, sizeof(vih));
+	
+	// Set up the video info header with requested dimensions
+	vih.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	vih.bmiHeader.biWidth = deviceContext->width;
+	vih.bmiHeader.biHeight = deviceContext->height;
+	vih.bmiHeader.biPlanes = 1;
+	vih.bmiHeader.biBitCount = 24; // RGB24
+	vih.bmiHeader.biCompression = BI_RGB;
+	vih.bmiHeader.biSizeImage = deviceContext->width * deviceContext->height * 3;
+	
+	// Set up the media type
 	mt.majortype = MEDIATYPE_Video;
 	mt.subtype = MEDIASUBTYPE_RGB24;
+	mt.formattype = FORMAT_VideoInfo;
+	mt.cbFormat = sizeof(VIDEOINFOHEADER);
+	mt.pbFormat = reinterpret_cast<BYTE*>(&vih);
+	mt.bFixedSizeSamples = TRUE;
+	mt.lSampleSize = vih.bmiHeader.biSizeImage;
+	
 	hr = deviceContext->sampleGrabber->SetMediaType(&mt);
 	if (FAILED(hr)) {
 		return false;
@@ -1083,7 +1065,6 @@ bool setupCallback(DeviceContext* deviceContext, ::cinder::SampleGrabberCallback
 	AM_MEDIA_TYPE mt;
 	hr = deviceContext->sampleGrabber->GetConnectedMediaType(&mt);
 	if (SUCCEEDED(hr)) {
-		
 		// Extract actual width and height from video info header
 		if (mt.formattype == FORMAT_VideoInfo && mt.cbFormat >= sizeof(VIDEOINFOHEADER)) {
 			VIDEOINFOHEADER* vih = reinterpret_cast<VIDEOINFOHEADER*>(mt.pbFormat);
@@ -1091,14 +1072,12 @@ bool setupCallback(DeviceContext* deviceContext, ::cinder::SampleGrabberCallback
 			int actualHeight = abs(vih->bmiHeader.biHeight);
 			bool isBottomUp = vih->bmiHeader.biHeight > 0; // Positive height = bottom-up
 			
-			
 			// Update our stored dimensions to match what DirectShow actually negotiated
 			deviceContext->width = actualWidth;
 			deviceContext->height = actualHeight;
 			
 			// Update parent dimensions and allocate pixel buffer for actual size
 			callback->mParent->updateDimensions(actualWidth, actualHeight);
-			
 		}
 		
 		if (mt.cbFormat != 0) {
@@ -1116,6 +1095,10 @@ bool setupCallback(DeviceContext* deviceContext, ::cinder::SampleGrabberCallback
 bool CaptureImplDirectShow::setupDeviceDirect(int deviceId, int width, int height)
 {
 	DeviceContext* deviceContext = static_cast<DeviceContext*>(mDeviceContext);
+	
+	// Store requested dimensions for negotiation
+	deviceContext->width = width;
+	deviceContext->height = height;
 	
 	// Create the capture graph
 	if (!createCaptureGraph(deviceContext)) {
