@@ -36,11 +36,11 @@ class CaptureImplAvFoundationDevice : public Capture::Device {
 	CaptureImplAvFoundationDevice( AVCaptureDevice *device );
 	~CaptureImplAvFoundationDevice();
 	
-	bool						checkAvailable() const;
-	bool						isConnected() const;
-	Capture::DeviceIdentifier	getUniqueId() const { return mUniqueId; }
+	bool						checkAvailable() const override;
+	bool						isConnected() const override;
+	Capture::DeviceIdentifier	getUniqueId() const override { return mUniqueId; }
 	bool						isFrontFacing() const { return mFrontFacing; }
-	void*						getNative() const { return mNativeDevice; }
+	void*						getNative() const override { return mNativeDevice; }
 	std::vector<Capture::Mode>	getModes() const override;
   private:
 	Capture::DeviceIdentifier	mUniqueId;

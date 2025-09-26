@@ -93,24 +93,17 @@ std::vector<Capture::Mode> CaptureImplAvFoundationDevice::getModes() const
 		int minFps = (int)round( frameRateRange.minFrameRate );
 		int maxFps = (int)round( frameRateRange.maxFrameRate );
 
-
-
 		std::vector<int> framesToCreate;
-
-		if( minFps == maxFps ) {
-			// Device has fixed frame rate - just use that
+		if( minFps == maxFps ) { // Device has fixed frame rate - just use that
 			framesToCreate.push_back( minFps );
-		} else {
-			// Device supports variable frame rates - try practical rates first
-			for( int targetFps : practicalFrameRates ) {
-				if( targetFps >= minFps && targetFps <= maxFps ) {
+		} else { // Device supports variable frame rates - try practical rates first
+			for( int targetFps : practicalFrameRates )
+				if( targetFps >= minFps && targetFps <= maxFps )
 					framesToCreate.push_back( targetFps );
-				}
-			}
+			
 			// If no practical rates match, fall back to max frame rate
-			if( framesToCreate.empty() ) {
+			if( framesToCreate.empty() )
 				framesToCreate.push_back( maxFps );
-			}
 		}
 
 		// Create modes for each frame rate
@@ -121,31 +114,22 @@ std::vector<Capture::Mode> CaptureImplAvFoundationDevice::getModes() const
 								 "@" + std::to_string( targetFps ) + "fps_" + std::to_string( (int)pixelFormat );
 
 			// Skip if we've already seen this exact mode
-			if( seenModes.find( modeKey ) != seenModes.end() ) {
+			if( seenModes.find( modeKey ) != seenModes.end() )
 				continue;
-			}
 			seenModes.insert( modeKey );
 
 			// Create description - only show range if min != max
 			std::string description = std::to_string( dimensions.width ) + "x" + std::to_string( dimensions.height ) +
 									 " @ " + std::to_string( targetFps ) + "fps";
 
-			Capture::Mode mode;
 			if( minFps != maxFps ) {
 				// Device supports variable frame rates - store the range
 				description += " (range: " + std::to_string( minFps ) + "-" + std::to_string( maxFps ) + "fps)";
-				MediaTime deviceMinFrameRate( 1, minFps );
-				MediaTime deviceMaxFrameRate( 1, maxFps );
-				mode = Capture::Mode( dimensions.width, dimensions.height, frameRate,
-									 Capture::Mode::Codec::Uncompressed, pixelFormat, description,
-									 deviceMinFrameRate, deviceMaxFrameRate );
+				modes.emplace_back( Capture::Mode( dimensions.width, dimensions.height, frameRate, Capture::Mode::Codec::Uncompressed, pixelFormat, description ) );
 			} else {
 				// Device has fixed frame rate - use simple constructor without range
-				mode = Capture::Mode( dimensions.width, dimensions.height, frameRate,
-									 Capture::Mode::Codec::Uncompressed, pixelFormat, description );
+				modes.emplace_back( Capture::Mode( dimensions.width, dimensions.height, frameRate, Capture::Mode::Codec::Uncompressed, pixelFormat, description ) );
 			}
-
-			modes.push_back( mode );
 		}
 	}
 

@@ -263,15 +263,6 @@ void CaptureBasicApp::draw()
 					ImGui::Text( "Frame Rate: %.2f FPS", fps );
 				}
 
-				// Show frame rate range if available
-				if( mode.hasFrameRateRange() ) {
-					float minFps = mode.getMinFrameRateFloat();
-					float maxFps = mode.getMaxFrameRateFloat();
-					if( minFps != maxFps ) {
-						ImGui::Text( "Frame Rate Range: %.1f - %.1f FPS", minFps, maxFps );
-					}
-				}
-
 				ImGui::Text( "Codec: %s", mode.getCodecString().c_str() );
 				ImGui::Text( "Pixel Format: %s", mode.getPixelFormatString().c_str() );
 				ImGui::Text( "Aspect Ratio: %.3f", mode.getAspectRatio() );
