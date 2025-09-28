@@ -23,6 +23,7 @@
 
 #include "cinder/CaptureImplDirectShow.h"
 #include "cinder/CinderAssert.h"
+#include "cinder/msw/CinderMsw.h"
 #include <dshow.h>
 #include <dvdmedia.h>  // For VIDEO_STREAM_CONFIG_CAPS
 #include <set>
@@ -90,45 +91,10 @@ namespace {
     
     // Forward declarations for types
     struct DeviceContext;
-    template<typename T> class ComPtr;
     
-    // ComPtr helper template for COM objects
+    // Use Cinder's standard COM smart pointer (equivalent to ATL's CComPtr)
     template<typename T>
-    class ComPtr {
-    public:
-        ComPtr() : ptr(nullptr) {}
-        ComPtr(T* p) : ptr(p) { if (ptr) ptr->AddRef(); }
-        ComPtr(const ComPtr& other) : ptr(other.ptr) { if (ptr) ptr->AddRef(); }
-        ~ComPtr() { if (ptr) ptr->Release(); }
-        
-        ComPtr& operator=(T* p) {
-            if (ptr != p) {
-                if (ptr) ptr->Release();
-                ptr = p;
-                if (ptr) ptr->AddRef();
-            }
-            return *this;
-        }
-        
-        ComPtr& operator=(const ComPtr& other) {
-            return *this = other.ptr;
-        }
-        
-        T* get() const { return ptr; }
-        T** operator&() { return &ptr; }
-        T* operator->() const { return ptr; }
-        operator bool() const { return ptr != nullptr; }
-        
-        void reset(T* p = nullptr) {
-            if (ptr != p) {
-                if (ptr) ptr->Release();
-                ptr = p;
-            }
-        }
-        
-    private:
-        T* ptr;
-    };
+    using ComPtr = cinder::msw::ComPtr<T>;
     
     // Static device cache management (moved from DirectShowCapture)
     std::vector<DeviceInfo> sDeviceCache;
