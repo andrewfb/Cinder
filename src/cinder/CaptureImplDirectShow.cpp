@@ -1,14 +1,15 @@
 /*
- Copyright (c) 2010, The Barbarian Group
- All rights reserved.
+ Copyright (c) 2025, The Cinder Project
+
+ This code is intended to be used with the Cinder C++ library, http://libcinder.org
 
  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
  the following conditions are met:
 
-    * Redistributions of source code must retain the above copyright notice, this list of conditions and
-	the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-	the following disclaimer in the documentation and/or other materials provided with the distribution.
+ * Redistributions of source code must retain the above copyright notice, this list of conditions and
+ the following disclaimer.
+ * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
+ the following disclaimer in the documentation and/or other materials provided with the distribution.
 
  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -18,7 +19,7 @@
  HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
  NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  POSSIBILITY OF SUCH DAMAGE.
-*/
+ */
 
 #include "cinder/CaptureImplDirectShow.h"
 #include "cinder/CinderAssert.h"
@@ -163,7 +164,6 @@ namespace {
         
         IMoniker* moniker = nullptr;
         ULONG fetched = 0;
-        int deviceIndex = 0;
         
         while (enumMoniker->Next(1, &moniker, &fetched) == S_OK) {
             ComPtr<IPropertyBag> propertyBag;
@@ -203,7 +203,6 @@ namespace {
             }
             
             moniker->Release();
-            deviceIndex++;
         }
         
         // Clean up COM if we initialized it
@@ -250,33 +249,6 @@ namespace {
         return "Unknown";
     }
     
-    // Convert pixel format to DirectShow media subtype
-    GUID pixelFormatToMediaSubtype(Capture::Mode::PixelFormat format) {
-        switch (format) {
-            case Capture::Mode::PixelFormat::RGB24:
-                return MEDIASUBTYPE_RGB24;
-            case Capture::Mode::PixelFormat::BGR24:
-                return MEDIASUBTYPE_RGB24;
-            case Capture::Mode::PixelFormat::ARGB32:
-                return MEDIASUBTYPE_RGB32;
-            case Capture::Mode::PixelFormat::BGRA32:
-                return MEDIASUBTYPE_RGB32;
-            case Capture::Mode::PixelFormat::YUV420P:
-                return MEDIASUBTYPE_IYUV;
-            case Capture::Mode::PixelFormat::NV12:
-                return MEDIASUBTYPE_NV12;
-            case Capture::Mode::PixelFormat::YUY2:
-                return MEDIASUBTYPE_YUY2;
-            case Capture::Mode::PixelFormat::UYVY:
-                return MEDIASUBTYPE_UYVY;
-            case Capture::Mode::PixelFormat::I420:
-                return MEDIASUBTYPE_I420;
-            case Capture::Mode::PixelFormat::YV12:
-                return MEDIASUBTYPE_YV12;
-            default:
-                return MEDIASUBTYPE_RGB24;
-        }
-    }
     
     // Convert DirectShow media subtype to pixel format
     Capture::Mode::PixelFormat mediaSubtypeToPixelFormat(const GUID& subtype) {
@@ -523,9 +495,6 @@ namespace {
     
     // Static member for ComInitializer
     int ComInitializer::sRefCount = 0;
-    
-    // Forward declaration - we'll use CaptureImplDirectShow directly
-    // class CaptureDevice; // No longer needed
     
     // Internal device management structure
     struct DeviceContext {
