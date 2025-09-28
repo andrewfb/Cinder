@@ -5,7 +5,9 @@
 #include "cinder/Log.h"
 #include "cinder/CinderImGui.h"
 #include "cinder/Utilities.h"
+#include "cinder/Rand.h"
 #include <cmath>
+#include <algorithm>
 
 using namespace ci;
 using namespace ci::app;
@@ -25,8 +27,12 @@ class CaptureBasicApp : public App {
   private:
 	void printDevices();
 	void setupCapture( Capture::DeviceRef device );
-	void setupCaptureWithMode( Capture::DeviceRef device, const Capture::Mode& mode );
+	bool setupCaptureWithMode( Capture::DeviceRef device, const Capture::Mode& mode );
 	void updateModes();
+	void startStressTest();
+	void stopStressTest();
+	void performStressSwitch();
+	void scheduleNextStressSwitch();
 
 	CaptureRef								mCapture;
 	gl::TextureRef							mTexture;
@@ -37,6 +43,11 @@ class CaptureBasicApp : public App {
 	// Mode selection
 	std::vector<Capture::Mode>				mCurrentModes;
 	int										mSelectedModeIndex;
+
+	// Stress test controls
+	bool									mStressTestActive;
+	double									mNextStressSwitchTime;
+	double									mCurrentStressHoldDuration;
 };
 
 void CaptureBasicApp::setup()
@@ -49,6 +60,9 @@ void CaptureBasicApp::setup()
 	mSelectedDeviceIndex = 0;
 	mSelectedModeIndex = -1; // -1 means auto mode
 	mShowUI = true;
+	mStressTestActive = false;
+	mNextStressSwitchTime = -1.0;
+	mCurrentStressHoldDuration = 0.0;
 
 	printDevices();
 
@@ -80,6 +94,9 @@ void CaptureBasicApp::update()
 	}
 #endif
 
+	if( mStressTestActive && ( getElapsedSeconds() >= mNextStressSwitchTime ) ) {
+		performStressSwitch();
+	}
 }
 
 void CaptureBasicApp::draw()
@@ -231,8 +248,12 @@ void CaptureBasicApp::draw()
 					string description = toString( mCurrentModes[i] );
 					if( ImGui::Selectable( description.c_str(), isSelected ) ) {
 						if( mSelectedModeIndex != i ) {
-							mSelectedModeIndex = i;
-							setupCaptureWithMode( mDevices[mSelectedDeviceIndex], mCurrentModes[i] );
+							if( setupCaptureWithMode( mDevices[mSelectedDeviceIndex], mCurrentModes[i] ) ) {
+								mSelectedModeIndex = i;
+							}
+							else {
+								mSelectedModeIndex = -1;
+							}
 						}
 					}
 					if( isSelected ) {
@@ -278,6 +299,43 @@ void CaptureBasicApp::draw()
 					ImGui::Text( "Description: %s", mode.getDescription().c_str() );
 				}
 			}
+		}
+
+		ImGui::Separator();
+		ImGui::Text( "Stress Testing" );
+		std::string stressLabel = mStressTestActive ? "Stop Stress Test" : "Start Stress Test";
+		if( ImGui::Button( stressLabel.c_str() ) ) {
+			if( mStressTestActive ) {
+				stopStressTest();
+			}
+			else if( mDevices.empty() ) {
+				CI_LOG_W( "Cannot start stress test, no capture devices available" );
+			}
+			else {
+				startStressTest();
+			}
+		}
+
+		if( mDevices.empty() ) {
+			ImGui::TextColored( ImVec4(1.0f, 0.4f, 0.0f, 1.0f), "No capture devices detected." );
+		}
+		else if( mStressTestActive ) {
+			double remaining = std::max( 0.0, mNextStressSwitchTime - getElapsedSeconds() );
+			const auto &device = mDevices[std::min<int>( mSelectedDeviceIndex, (int)mDevices.size() - 1 )];
+			ImGui::Text( "Active device: %s", device->getName().c_str() );
+			if( mSelectedModeIndex >= 0 && mSelectedModeIndex < (int)mCurrentModes.size() ) {
+				ImGui::Text( "Active mode: %s", toString( mCurrentModes[mSelectedModeIndex] ).c_str() );
+			}
+			else {
+				ImGui::Text( "Active mode: Auto" );
+			}
+			ImGui::Text( "Next switch in %.1f s", remaining );
+			if( mCurrentStressHoldDuration > 0.0 ) {
+				ImGui::Text( "Current hold target: %.1f s", mCurrentStressHoldDuration );
+			}
+		}
+		else {
+			ImGui::Text( "Stress test idle" );
 		}
 
 		ImGui::End();
@@ -326,7 +384,7 @@ void CaptureBasicApp::printDevices()
 	}
 }
 
-void CaptureBasicApp::setupCaptureWithMode( Capture::DeviceRef device, const Capture::Mode& mode )
+bool CaptureBasicApp::setupCaptureWithMode( Capture::DeviceRef device, const Capture::Mode& mode )
 {
 	try {
 		// Stop and fully release old capture
@@ -343,12 +401,107 @@ void CaptureBasicApp::setupCaptureWithMode( Capture::DeviceRef device, const Cap
 		mCapture->start();
 
 		CI_LOG_I( "Created capture with mode: " << toString( mode ) );
+		return true;
 	}
 	catch( ci::Exception &exc ) {
 		CI_LOG_EXCEPTION( "Failed to setup capture with mode: " << toString( mode ) << " on device: " << device->getName(), exc );
 		// Fall back to regular capture
 		setupCapture( device );
+		return false;
 	}
+}
+
+void CaptureBasicApp::startStressTest()
+{
+	if( mStressTestActive )
+		return;
+
+	if( mDevices.empty() ) {
+		CI_LOG_W( "Stress test not started: no capture devices available." );
+		return;
+	}
+
+	CI_LOG_I( "Starting capture stress test" );
+	mStressTestActive = true;
+	performStressSwitch();
+}
+
+void CaptureBasicApp::stopStressTest()
+{
+	if( ! mStressTestActive )
+		return;
+
+	mStressTestActive = false;
+	mNextStressSwitchTime = -1.0;
+	mCurrentStressHoldDuration = 0.0;
+	CI_LOG_I( "Stopped capture stress test" );
+}
+
+void CaptureBasicApp::performStressSwitch()
+{
+	if( ! mStressTestActive )
+		return;
+
+	if( mDevices.empty() ) {
+		CI_LOG_W( "Stopping stress test: no capture devices available" );
+		stopStressTest();
+		return;
+	}
+
+	int deviceCount = (int)mDevices.size();
+	int nextDeviceIndex = ci::Rand::randInt( deviceCount );
+	if( nextDeviceIndex != mSelectedDeviceIndex ) {
+		mSelectedDeviceIndex = nextDeviceIndex;
+		updateModes();
+	}
+	else if( mCurrentModes.empty() ) {
+		updateModes();
+	}
+
+	if( mSelectedDeviceIndex >= deviceCount ) {
+		mSelectedDeviceIndex = 0;
+	}
+
+	auto device = mDevices[mSelectedDeviceIndex];
+
+	if( ! mCurrentModes.empty() ) {
+		int modeIndex = ci::Rand::randInt( (int)mCurrentModes.size() );
+		const auto &mode = mCurrentModes[modeIndex];
+		bool success = setupCaptureWithMode( device, mode );
+		if( success ) {
+			mSelectedModeIndex = modeIndex;
+			CI_LOG_I( "Stress test switched to device: " << device->getName() << ", mode: " << toString( mode ) );
+		}
+		else {
+			mSelectedModeIndex = -1;
+			CI_LOG_W( "Stress test falling back to auto mode on device: " << device->getName() );
+		}
+	}
+	else {
+		mSelectedModeIndex = -1;
+		setupCapture( device );
+		CI_LOG_I( "Stress test switched to device: " << device->getName() << " using auto mode" );
+	}
+
+	scheduleNextStressSwitch();
+}
+
+void CaptureBasicApp::scheduleNextStressSwitch()
+{
+	if( ! mStressTestActive )
+		return;
+
+	float holdSeconds = ci::Rand::randFloat( 2.0f, 6.0f );
+	const float longHoldChance = 0.05f;
+	bool longHold = ( ci::Rand::randFloat() < longHoldChance );
+	if( longHold ) {
+		holdSeconds = 10.0f * 60.0f; // 10 minutes
+		CI_LOG_I( "Stress test entering extended hold" );
+	}
+
+	mCurrentStressHoldDuration = holdSeconds;
+	mNextStressSwitchTime = getElapsedSeconds() + holdSeconds;
+	CI_LOG_I( "Next stress test switch scheduled in " << holdSeconds << " seconds" );
 }
 
 void CaptureBasicApp::updateModes()
