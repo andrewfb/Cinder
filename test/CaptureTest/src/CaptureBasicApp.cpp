@@ -33,13 +33,12 @@ class CaptureBasicApp : public App {
 	void stopStressTest();
 	void performStressSwitch();
 	void scheduleNextStressSwitch();
-	void diagnoseModeCapabilities(); // TEMPORARY: diagnostic function
 
 	CaptureRef								mCapture;
 	gl::TextureRef							mTexture;
 	std::vector<Capture::DeviceRef>			mDevices;
 	int										mSelectedDeviceIndex;
-	bool									mShowUI;
+	bool									mDrawGui;
 
 	// Mode selection
 	std::vector<Capture::Mode>				mCurrentModes;
@@ -64,7 +63,7 @@ void CaptureBasicApp::setup()
 	
 	mSelectedDeviceIndex = 0;
 	mSelectedModeIndex = -1; // -1 means auto mode
-	mShowUI = true;
+	mDrawGui = true;
 	mStressTestActive = false;
 	mNextStressSwitchTime = -1.0;
 	mCurrentStressHoldDuration = 0.0;
@@ -130,7 +129,7 @@ void CaptureBasicApp::draw()
 	}
 
 	// Draw ImGui
-	if( mShowUI ) {
+	if( mDrawGui ) {
 		ImGui::Begin( "Video Capture Control" );
 
 		// Device selection or "No devices" message
@@ -364,12 +363,8 @@ void CaptureBasicApp::draw()
 
 void CaptureBasicApp::keyDown( KeyEvent event )
 {
-	if( event.getCode() == KeyEvent::KEY_SPACE ) {
-		mShowUI = !mShowUI;
-	}
-	else if( event.getCode() == KeyEvent::KEY_d ) {
-		// TEMPORARY: Press 'D' to diagnose device capabilities
-		diagnoseModeCapabilities();
+	if( event.getCode() == KeyEvent::KEY_g ) {
+		mDrawGui = ! mDrawGui;
 	}
 }
 
@@ -575,42 +570,6 @@ void CaptureBasicApp::updateModes()
 			console() << "ERROR: Failed to get modes!" << endl;
 		}
 	}
-}
-
-// TEMPORARY: Diagnostic function to discover actual device capabilities
-void CaptureBasicApp::diagnoseModeCapabilities()
-{
-	if( mSelectedDeviceIndex < 0 || mSelectedDeviceIndex >= (int)mDevices.size() ) {
-		console() << "No valid device selected" << endl;
-		return;
-	}
-	
-	console() << "=== DIAGNOSTIC: Analyzing device capabilities ===" << endl;
-	console() << "Device: " << mDevices[mSelectedDeviceIndex]->getName() << endl;
-	
-	// Try different resolutions that are common for cameras and see which ones work
-	std::vector<std::pair<int, int>> testResolutions = {
-		{160, 120}, {320, 240}, {424, 240}, {640, 360}, {640, 480},
-		{672, 376}, {848, 480}, {960, 540}, {1024, 576}, {1280, 720},
-		{1344, 756}, {1920, 1080}, {2208, 1242}, {2560, 1440}, {3840, 2160},
-		// ZED camera specific resolutions
-		{672, 376}, {1344, 756}, {2208, 1242}, {2560, 720}, {1920, 1080}
-	};
-	
-	console() << "Testing resolutions..." << endl;
-	for( const auto& res : testResolutions ) {
-		try {
-			// Create a temporary capture to test this resolution
-			CaptureRef testCapture = Capture::create( res.first, res.second, mDevices[mSelectedDeviceIndex] );
-			console() << "✓ " << res.first << "x" << res.second << " - SUPPORTED (actual: " << testCapture->getWidth() << "x" << testCapture->getHeight() << ")" << endl;
-			testCapture->stop();
-		}
-		catch( ci::Exception &exc ) {
-			// Resolution not supported - this is expected for most
-		}
-	}
-	
-	console() << "=== End diagnostic ===" << endl;
 }
 
 void prepareSettings( CaptureBasicApp::Settings* settings )
