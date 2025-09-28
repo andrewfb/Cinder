@@ -79,6 +79,13 @@ namespace {
     struct DeviceInfo {
         std::string friendlyName;
         std::string devicePath;
+        std::vector<Capture::Mode> modes;
+        bool modesLoaded = false;
+        
+        // Device identity for smart refresh (use devicePath as unique identifier)
+        bool isSameDevice(const DeviceInfo& other) const {
+            return devicePath == other.devicePath;
+        }
     };
     
     struct StreamFormat {
@@ -106,6 +113,8 @@ namespace {
             return;
         }
         
+        // Store current cache for smart merging
+        std::vector<DeviceInfo> previousCache = std::move(sDeviceCache);
         sDeviceCache.clear();
         
         // Initialize COM for this thread if needed
@@ -163,6 +172,18 @@ namespace {
                         }
                     }
                     VariantClear(&variant);
+                }
+                
+                // Check if this device existed in the previous cache
+                auto existingDevice = std::find_if(previousCache.begin(), previousCache.end(),
+                    [&deviceInfo](const DeviceInfo& prev) {
+                        return deviceInfo.isSameDevice(prev);
+                    });
+                
+                if (existingDevice != previousCache.end()) {
+                    // Preserve existing device with its cached modes
+                    deviceInfo.modes = std::move(existingDevice->modes);
+                    deviceInfo.modesLoaded = existingDevice->modesLoaded;
                 }
                 
                 sDeviceCache.push_back(std::move(deviceInfo));
@@ -387,6 +408,14 @@ namespace {
             return {};
         }
         
+        DeviceInfo& deviceInfo = sDeviceCache[deviceId];
+        
+        // Return cached modes if already loaded
+        if (deviceInfo.modesLoaded) {
+            return deviceInfo.modes;
+        }
+        
+        // Load modes from DirectShow
         std::vector<Capture::Mode> modes;
         auto formats = getDeviceFormats(deviceId);
         
@@ -419,6 +448,10 @@ namespace {
             int areaB = b.getWidth() * b.getHeight();
             return areaA < areaB;
         });
+        
+        // Cache the modes in the device info
+        deviceInfo.modes = modes;
+        deviceInfo.modesLoaded = true;
         
         return modes;
     }
@@ -699,6 +732,11 @@ const vector<Capture::DeviceRef>& CaptureImplDirectShow::getDevices( bool forceR
 	static std::vector<Capture::DeviceRef>	devices;
 
 	if( firstCall || forceRefresh ) {
+		// Clear device cache if force refresh requested
+		if( forceRefresh ) {
+			sDeviceCacheValid = false;
+		}
+		
 		auto deviceNames = getDeviceNames();
 		devices.resize( deviceNames.size() );
 		for ( int i = 0; i < (int)deviceNames.size(); ++i ) {
