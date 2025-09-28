@@ -17,7 +17,7 @@ using namespace std;
     #define USE_HW_TEXTURE
 #endif
 
-class CaptureBasicApp : public App {
+class CaptureTestApp : public App {
   public:
 	void setup() override;
 	void update() override;
@@ -50,9 +50,9 @@ class CaptureBasicApp : public App {
 	double									mCurrentStressHoldDuration;
 };
 
-void CaptureBasicApp::setup()
+void CaptureTestApp::setup()
 {
-	console() << "=== CaptureBasic starting ===" << endl;
+	console() << "=== CaptureTest starting ===" << endl;
 	
 	// Initialize ImGui
 	ImGui::Initialize();
@@ -77,7 +77,7 @@ void CaptureBasicApp::setup()
 	}
 }
 
-void CaptureBasicApp::update()
+void CaptureTestApp::update()
 {
 	static int frameCount = 0;
 	static bool firstFrame = true;
@@ -117,7 +117,7 @@ void CaptureBasicApp::update()
 	}
 }
 
-void CaptureBasicApp::draw()
+void CaptureTestApp::draw()
 {
 	gl::clear( Color( 0.1f, 0.1f, 0.1f ) );
 	gl::enableAlphaBlending();
@@ -361,14 +361,14 @@ void CaptureBasicApp::draw()
 
 }
 
-void CaptureBasicApp::keyDown( KeyEvent event )
+void CaptureTestApp::keyDown( KeyEvent event )
 {
 	if( event.getCode() == KeyEvent::KEY_g ) {
 		mDrawGui = ! mDrawGui;
 	}
 }
 
-void CaptureBasicApp::setupCapture( Capture::DeviceRef device )
+void CaptureTestApp::setupCapture( Capture::DeviceRef device )
 {
 	console() << "\n=== Setting up capture with device: " << device->getName() << " (auto mode) ===" << endl;
 	try {
@@ -410,7 +410,7 @@ void CaptureBasicApp::setupCapture( Capture::DeviceRef device )
 	}
 }
 
-void CaptureBasicApp::printDevices()
+void CaptureTestApp::printDevices()
 {
 	for( const auto &device : Capture::getDevices() ) {
 		console() << "Device: " << device->getName() << " "
@@ -421,7 +421,7 @@ void CaptureBasicApp::printDevices()
 	}
 }
 
-bool CaptureBasicApp::setupCaptureWithMode( Capture::DeviceRef device, const Capture::Mode& mode )
+bool CaptureTestApp::setupCaptureWithMode( Capture::DeviceRef device, const Capture::Mode& mode )
 {
 	console() << "\n=== Setting up capture with specific mode ===" << endl;
 	console() << "Device: " << device->getName() << endl;
@@ -458,7 +458,7 @@ bool CaptureBasicApp::setupCaptureWithMode( Capture::DeviceRef device, const Cap
 	}
 }
 
-void CaptureBasicApp::startStressTest()
+void CaptureTestApp::startStressTest()
 {
 	if( mStressTestActive )
 		return;
@@ -473,7 +473,7 @@ void CaptureBasicApp::startStressTest()
 	performStressSwitch();
 }
 
-void CaptureBasicApp::stopStressTest()
+void CaptureTestApp::stopStressTest()
 {
 	if( ! mStressTestActive )
 		return;
@@ -484,7 +484,7 @@ void CaptureBasicApp::stopStressTest()
 	CI_LOG_I( "Stopped capture stress test" );
 }
 
-void CaptureBasicApp::performStressSwitch()
+void CaptureTestApp::performStressSwitch()
 {
 	if( ! mStressTestActive )
 		return;
@@ -533,7 +533,7 @@ void CaptureBasicApp::performStressSwitch()
 	scheduleNextStressSwitch();
 }
 
-void CaptureBasicApp::scheduleNextStressSwitch()
+void CaptureTestApp::scheduleNextStressSwitch()
 {
 	if( ! mStressTestActive )
 		return;
@@ -551,7 +551,7 @@ void CaptureBasicApp::scheduleNextStressSwitch()
 	CI_LOG_I( "Next stress test switch scheduled in " << holdSeconds << " seconds" );
 }
 
-void CaptureBasicApp::updateModes()
+void CaptureTestApp::updateModes()
 {
 	mCurrentModes.clear();
 	mSelectedModeIndex = -1; // Reset to auto mode
@@ -572,7 +572,7 @@ void CaptureBasicApp::updateModes()
 	}
 }
 
-void prepareSettings( CaptureBasicApp::Settings* settings )
+void prepareSettings( CaptureTestApp::Settings* settings )
 {
 #if defined( CINDER_ANDROID )
 	settings->setKeepScreenOn( true );
@@ -584,4 +584,4 @@ void prepareSettings( CaptureBasicApp::Settings* settings )
 #endif
 }
 
-CINDER_APP( CaptureBasicApp, RendererGl, prepareSettings )
+CINDER_APP( CaptureTestApp, RendererGl, prepareSettings )
