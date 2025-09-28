@@ -5,9 +5,6 @@
 #include "cinder/Log.h"
 #include "cinder/CinderImGui.h"
 #include "cinder/Utilities.h"
-#include "cinder/Rand.h"
-#include <cmath>
-#include <algorithm>
 
 using namespace ci;
 using namespace ci::app;
@@ -29,11 +26,6 @@ class CaptureBasicApp : public App {
 	void setupCapture( Capture::DeviceRef device );
 	bool setupCaptureWithMode( Capture::DeviceRef device, const Capture::Mode& mode );
 	void updateModes();
-	void startStressTest();
-	void stopStressTest();
-	void performStressSwitch();
-	void scheduleNextStressSwitch();
-	void diagnoseModeCapabilities(); // TEMPORARY: diagnostic function
 
 	CaptureRef								mCapture;
 	gl::TextureRef							mTexture;
@@ -44,11 +36,6 @@ class CaptureBasicApp : public App {
 	// Mode selection
 	std::vector<Capture::Mode>				mCurrentModes;
 	int										mSelectedModeIndex;
-
-	// Stress test controls
-	bool									mStressTestActive;
-	double									mNextStressSwitchTime;
-	double									mCurrentStressHoldDuration;
 };
 
 void CaptureBasicApp::setup()
@@ -65,9 +52,6 @@ void CaptureBasicApp::setup()
 	mSelectedDeviceIndex = 0;
 	mSelectedModeIndex = -1; // -1 means auto mode
 	mShowUI = true;
-	mStressTestActive = false;
-	mNextStressSwitchTime = -1.0;
-	mCurrentStressHoldDuration = 0.0;
 
 	printDevices();
 
@@ -113,9 +97,6 @@ void CaptureBasicApp::update()
 	}
 #endif
 
-	if( mStressTestActive && ( getElapsedSeconds() >= mNextStressSwitchTime ) ) {
-		performStressSwitch();
-	}
 }
 
 void CaptureBasicApp::draw()
@@ -164,54 +145,6 @@ void CaptureBasicApp::draw()
 			ImGui::TextColored( ImVec4(1.0f, 0.6f, 0.0f, 1.0f), "No Capture Devices Found" );
 		}
 
-		// Add refresh button on next line, flush right (always show)
-		{
-			float buttonWidth = 120.0f;
-			float availableWidth = ImGui::GetContentRegionAvail().x;
-			ImGui::SetCursorPosX( ImGui::GetCursorPosX() + availableWidth - buttonWidth );
-			if( ImGui::Button( "Refresh Devices", ImVec2(buttonWidth, 0) ) ) {
-				CI_LOG_I( "Refreshing device list..." );
-
-				// Stop current capture if running
-				if( mCapture ) {
-					mCapture->stop();
-					mCapture = nullptr;
-					mTexture = nullptr;
-				}
-
-				// Get the new device list - force refresh to ensure we get current state
-				auto newDevices = Capture::getDevices( true );
-
-				// Print changes for debugging
-				CI_LOG_I( "Previous device count: " << mDevices.size() << ", New device count: " << newDevices.size() );
-
-				// Update the device list
-				mDevices = newDevices;
-
-				// Print the refreshed device list
-				printDevices();
-
-				// Handle device selection after refresh
-				if( mDevices.empty() ) {
-					mSelectedDeviceIndex = 0;
-					// Clear modes when no devices
-					mCurrentModes.clear();
-					mSelectedModeIndex = -1;
-					CI_LOG_W( "No capture devices found after refresh" );
-				} else {
-					// Try to maintain current device selection if possible
-					if( mSelectedDeviceIndex >= (int)mDevices.size() ) {
-						mSelectedDeviceIndex = 0;
-					}
-
-					// Update modes for the selected device
-					updateModes();
-
-					// Restart capture with selected device
-					setupCapture( mDevices[mSelectedDeviceIndex] );
-				}
-			}
-		}
 
 		// Mode selection dropdown - only show when we have devices
 		if( ! mDevices.empty() && ! mCurrentModes.empty() ) {
@@ -320,42 +253,6 @@ void CaptureBasicApp::draw()
 			}
 		}
 
-		ImGui::Separator();
-		ImGui::Text( "Stress Testing" );
-		std::string stressLabel = mStressTestActive ? "Stop Stress Test" : "Start Stress Test";
-		if( ImGui::Button( stressLabel.c_str() ) ) {
-			if( mStressTestActive ) {
-				stopStressTest();
-			}
-			else if( mDevices.empty() ) {
-				CI_LOG_W( "Cannot start stress test, no capture devices available" );
-			}
-			else {
-				startStressTest();
-			}
-		}
-
-		if( mDevices.empty() ) {
-			ImGui::TextColored( ImVec4(1.0f, 0.4f, 0.0f, 1.0f), "No capture devices detected." );
-		}
-		else if( mStressTestActive ) {
-			double remaining = std::max( 0.0, mNextStressSwitchTime - getElapsedSeconds() );
-			const auto &device = mDevices[std::min<int>( mSelectedDeviceIndex, (int)mDevices.size() - 1 )];
-			ImGui::Text( "Active device: %s", device->getName().c_str() );
-			if( mSelectedModeIndex >= 0 && mSelectedModeIndex < (int)mCurrentModes.size() ) {
-				ImGui::Text( "Active mode: %s", toString( mCurrentModes[mSelectedModeIndex] ).c_str() );
-			}
-			else {
-				ImGui::Text( "Active mode: Auto" );
-			}
-			ImGui::Text( "Next switch in %.1f s", remaining );
-			if( mCurrentStressHoldDuration > 0.0 ) {
-				ImGui::Text( "Current hold target: %.1f s", mCurrentStressHoldDuration );
-			}
-		}
-		else {
-			ImGui::Text( "Stress test idle" );
-		}
 
 		ImGui::End();
 	}
@@ -366,10 +263,6 @@ void CaptureBasicApp::keyDown( KeyEvent event )
 {
 	if( event.getCode() == KeyEvent::KEY_SPACE ) {
 		mShowUI = !mShowUI;
-	}
-	else if( event.getCode() == KeyEvent::KEY_d ) {
-		// TEMPORARY: Press 'D' to diagnose device capabilities
-		diagnoseModeCapabilities();
 	}
 }
 
@@ -463,98 +356,6 @@ bool CaptureBasicApp::setupCaptureWithMode( Capture::DeviceRef device, const Cap
 	}
 }
 
-void CaptureBasicApp::startStressTest()
-{
-	if( mStressTestActive )
-		return;
-
-	if( mDevices.empty() ) {
-		CI_LOG_W( "Stress test not started: no capture devices available." );
-		return;
-	}
-
-	CI_LOG_I( "Starting capture stress test" );
-	mStressTestActive = true;
-	performStressSwitch();
-}
-
-void CaptureBasicApp::stopStressTest()
-{
-	if( ! mStressTestActive )
-		return;
-
-	mStressTestActive = false;
-	mNextStressSwitchTime = -1.0;
-	mCurrentStressHoldDuration = 0.0;
-	CI_LOG_I( "Stopped capture stress test" );
-}
-
-void CaptureBasicApp::performStressSwitch()
-{
-	if( ! mStressTestActive )
-		return;
-
-	if( mDevices.empty() ) {
-		CI_LOG_W( "Stopping stress test: no capture devices available" );
-		stopStressTest();
-		return;
-	}
-
-	int deviceCount = (int)mDevices.size();
-	int nextDeviceIndex = ci::Rand::randInt( deviceCount );
-	if( nextDeviceIndex != mSelectedDeviceIndex ) {
-		mSelectedDeviceIndex = nextDeviceIndex;
-		updateModes();
-	}
-	else if( mCurrentModes.empty() ) {
-		updateModes();
-	}
-
-	if( mSelectedDeviceIndex >= deviceCount ) {
-		mSelectedDeviceIndex = 0;
-	}
-
-	auto device = mDevices[mSelectedDeviceIndex];
-
-	if( ! mCurrentModes.empty() ) {
-		int modeIndex = ci::Rand::randInt( (int)mCurrentModes.size() );
-		const auto &mode = mCurrentModes[modeIndex];
-		bool success = setupCaptureWithMode( device, mode );
-		if( success ) {
-			mSelectedModeIndex = modeIndex;
-			CI_LOG_I( "Stress test switched to device: " << device->getName() << ", mode: " << toString( mode ) );
-		}
-		else {
-			mSelectedModeIndex = -1;
-			CI_LOG_W( "Stress test falling back to auto mode on device: " << device->getName() );
-		}
-	}
-	else {
-		mSelectedModeIndex = -1;
-		setupCapture( device );
-		CI_LOG_I( "Stress test switched to device: " << device->getName() << " using auto mode" );
-	}
-
-	scheduleNextStressSwitch();
-}
-
-void CaptureBasicApp::scheduleNextStressSwitch()
-{
-	if( ! mStressTestActive )
-		return;
-
-	float holdSeconds = ci::Rand::randFloat( 2.0f, 6.0f );
-	const float longHoldChance = 0.05f;
-	bool longHold = ( ci::Rand::randFloat() < longHoldChance );
-	if( longHold ) {
-		holdSeconds = 10.0f * 60.0f; // 10 minutes
-		CI_LOG_I( "Stress test entering extended hold" );
-	}
-
-	mCurrentStressHoldDuration = holdSeconds;
-	mNextStressSwitchTime = getElapsedSeconds() + holdSeconds;
-	CI_LOG_I( "Next stress test switch scheduled in " << holdSeconds << " seconds" );
-}
 
 void CaptureBasicApp::updateModes()
 {
@@ -577,41 +378,6 @@ void CaptureBasicApp::updateModes()
 	}
 }
 
-// TEMPORARY: Diagnostic function to discover actual device capabilities
-void CaptureBasicApp::diagnoseModeCapabilities()
-{
-	if( mSelectedDeviceIndex < 0 || mSelectedDeviceIndex >= (int)mDevices.size() ) {
-		console() << "No valid device selected" << endl;
-		return;
-	}
-	
-	console() << "=== DIAGNOSTIC: Analyzing device capabilities ===" << endl;
-	console() << "Device: " << mDevices[mSelectedDeviceIndex]->getName() << endl;
-	
-	// Try different resolutions that are common for cameras and see which ones work
-	std::vector<std::pair<int, int>> testResolutions = {
-		{160, 120}, {320, 240}, {424, 240}, {640, 360}, {640, 480},
-		{672, 376}, {848, 480}, {960, 540}, {1024, 576}, {1280, 720},
-		{1344, 756}, {1920, 1080}, {2208, 1242}, {2560, 1440}, {3840, 2160},
-		// ZED camera specific resolutions
-		{672, 376}, {1344, 756}, {2208, 1242}, {2560, 720}, {1920, 1080}
-	};
-	
-	console() << "Testing resolutions..." << endl;
-	for( const auto& res : testResolutions ) {
-		try {
-			// Create a temporary capture to test this resolution
-			CaptureRef testCapture = Capture::create( res.first, res.second, mDevices[mSelectedDeviceIndex] );
-			console() << "✓ " << res.first << "x" << res.second << " - SUPPORTED (actual: " << testCapture->getWidth() << "x" << testCapture->getHeight() << ")" << endl;
-			testCapture->stop();
-		}
-		catch( ci::Exception &exc ) {
-			// Resolution not supported - this is expected for most
-		}
-	}
-	
-	console() << "=== End diagnostic ===" << endl;
-}
 
 void prepareSettings( CaptureBasicApp::Settings* settings )
 {
