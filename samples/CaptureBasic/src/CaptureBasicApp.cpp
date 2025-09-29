@@ -11,7 +11,7 @@ using namespace ci::app;
 using namespace std;
 
 #if defined( CINDER_ANDROID )
-    #define USE_HW_TEXTURE
+	#define USE_HW_TEXTURE
 #endif
 
 class CaptureBasicApp : public App {
@@ -27,28 +27,28 @@ class CaptureBasicApp : public App {
 	bool setupCaptureWithMode( Capture::DeviceRef device, const Capture::Mode& mode );
 	void updateModes();
 
-	CaptureRef								mCapture;
-	gl::TextureRef							mTexture;
-	std::vector<Capture::DeviceRef>			mDevices;
-	int										mSelectedDeviceIndex;
-	bool									mShowUI;
+	CaptureRef						mCapture;
+	gl::TextureRef					mTexture;
+	std::vector<Capture::DeviceRef> mDevices;
+	int								mSelectedDeviceIndex;
+	bool							mShowUI;
 
 	// Mode selection
-	std::vector<Capture::Mode>				mCurrentModes;
-	int										mSelectedModeIndex;
+	std::vector<Capture::Mode> mCurrentModes;
+	int						   mSelectedModeIndex;
 };
 
 void CaptureBasicApp::setup()
 {
 	console() << "=== CaptureBasic starting ===" << endl;
-	
+
 	// Initialize ImGui
 	ImGui::Initialize();
 
 	// Get devices
 	mDevices = Capture::getDevices();
 	console() << "Found " << mDevices.size() << " capture devices" << endl;
-	
+
 	mSelectedDeviceIndex = 0;
 	mSelectedModeIndex = -1; // -1 means auto mode
 	mShowUI = true;
@@ -64,12 +64,12 @@ void CaptureBasicApp::setup()
 
 void CaptureBasicApp::update()
 {
-	static int frameCount = 0;
+	static int	frameCount = 0;
 	static bool firstFrame = true;
-	
+
 #if defined( USE_HW_TEXTURE )
 	if( mCapture && mCapture->checkNewFrame() ) {
-	    mTexture = mCapture->getTexture();
+		mTexture = mCapture->getTexture();
 		frameCount++;
 		if( firstFrame ) {
 			console() << "First frame received!" << endl;
@@ -85,7 +85,7 @@ void CaptureBasicApp::update()
 				console() << "Frame " << frameCount << " received - Surface size: " << surface->getWidth() << "x" << surface->getHeight() << endl;
 				firstFrame = false;
 			}
-			
+
 			if( ! mTexture ) {
 				// Capture images come back as top-down, and it's more efficient to keep them that way
 				mTexture = gl::Texture::create( *surface, gl::Texture::Format().loadTopDown() );
@@ -96,7 +96,6 @@ void CaptureBasicApp::update()
 		}
 	}
 #endif
-
 }
 
 void CaptureBasicApp::draw()
@@ -140,9 +139,10 @@ void CaptureBasicApp::draw()
 				}
 				ImGui::EndCombo();
 			}
-		} else {
+		}
+		else {
 			// Show message when no devices available
-			ImGui::TextColored( ImVec4(1.0f, 0.6f, 0.0f, 1.0f), "No Capture Devices Found" );
+			ImGui::TextColored( ImVec4( 1.0f, 0.6f, 0.0f, 1.0f ), "No Capture Devices Found" );
 		}
 
 
@@ -159,22 +159,24 @@ void CaptureBasicApp::draw()
 					// Find matching mode
 					bool foundMatch = false;
 					for( size_t i = 0; i < mCurrentModes.size(); i++ ) {
-						if( mCurrentModes[i].getWidth() == currentWidth &&
-							mCurrentModes[i].getHeight() == currentHeight ) {
+						if( mCurrentModes[i].getWidth() == currentWidth && mCurrentModes[i].getHeight() == currentHeight ) {
 							modeDescription = "Auto (" + toString( mCurrentModes[i] ) + ")";
 							foundMatch = true;
 							break;
 						}
 					}
 					if( ! foundMatch ) {
-						modeDescription = "Auto (" + std::to_string(currentWidth) + "x" + std::to_string(currentHeight) + ")";
+						modeDescription = "Auto (" + std::to_string( currentWidth ) + "x" + std::to_string( currentHeight ) + ")";
 					}
-				} else {
+				}
+				else {
 					modeDescription = "Auto";
 				}
-			} else if( mSelectedModeIndex >= 0 && mSelectedModeIndex < (int)mCurrentModes.size() ) {
+			}
+			else if( mSelectedModeIndex >= 0 && mSelectedModeIndex < (int)mCurrentModes.size() ) {
 				modeDescription = toString( mCurrentModes[mSelectedModeIndex] );
-			} else {
+			}
+			else {
 				modeDescription = "Invalid mode";
 			}
 
@@ -196,7 +198,7 @@ void CaptureBasicApp::draw()
 
 				// Specific mode options
 				for( int i = 0; i < mCurrentModes.size(); i++ ) {
-					bool isSelected = ( mSelectedModeIndex == i );
+					bool   isSelected = ( mSelectedModeIndex == i );
 					string description = toString( mCurrentModes[i] );
 					if( ImGui::Selectable( description.c_str(), isSelected ) ) {
 						if( mSelectedModeIndex != i ) {
@@ -224,9 +226,10 @@ void CaptureBasicApp::draw()
 
 			// Connection status
 			if( mCapture->isCapturing() ) {
-				ImGui::TextColored( ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "Status: Connected" );
-			} else {
-				ImGui::TextColored( ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Status: Disconnected" );
+				ImGui::TextColored( ImVec4( 0.0f, 1.0f, 0.0f, 1.0f ), "Status: Connected" );
+			}
+			else {
+				ImGui::TextColored( ImVec4( 1.0f, 0.0f, 0.0f, 1.0f ), "Status: Disconnected" );
 			}
 
 			// If we have a selected mode, show its details
@@ -236,9 +239,10 @@ void CaptureBasicApp::draw()
 
 				// Format frame rate - show whole numbers without decimals, keep decimals for non-whole numbers
 				float fps = mode.getFrameRateFloat();
-				if( fps == floor(fps) ) {
+				if( fps == floor( fps ) ) {
 					ImGui::Text( "Frame Rate: %.0f FPS", fps );
-				} else {
+				}
+				else {
 					ImGui::Text( "Frame Rate: %.2f FPS", fps );
 				}
 
@@ -246,8 +250,8 @@ void CaptureBasicApp::draw()
 				ImGui::Text( "Pixel Format: %s", mode.getPixelFormatString().c_str() );
 				ImGui::Text( "Aspect Ratio: %.3f", mode.getAspectRatio() );
 				ImGui::Text( "Compressed: %s", mode.isCompressed() ? "Yes" : "No" );
-				ImGui::Text( "Color Model: %s", mode.isRGBFormat() ? "RGB" : (mode.isYUVFormat() ? "YUV" : "Unknown") );
-				if( !mode.getDescription().empty() ) {
+				ImGui::Text( "Color Model: %s", mode.isRGBFormat() ? "RGB" : ( mode.isYUVFormat() ? "YUV" : "Unknown" ) );
+				if( ! mode.getDescription().empty() ) {
 					ImGui::Text( "Description: %s", mode.getDescription().c_str() );
 				}
 			}
@@ -256,13 +260,12 @@ void CaptureBasicApp::draw()
 
 		ImGui::End();
 	}
-
 }
 
 void CaptureBasicApp::keyDown( KeyEvent event )
 {
 	if( event.getCode() == KeyEvent::KEY_SPACE ) {
-		mShowUI = !mShowUI;
+		mShowUI = ! mShowUI;
 	}
 }
 
@@ -281,7 +284,7 @@ void CaptureBasicApp::setupCapture( Capture::DeviceRef device )
 		mTexture = nullptr;
 
 		// Use a working mode instead of the first one (which might be problematic)
-		if( !mCurrentModes.empty() ) {
+		if( ! mCurrentModes.empty() ) {
 			// Try to find 2560x720 mode that we know works, otherwise use first mode
 			int modeIndex = 0;
 			for( size_t i = 0; i < mCurrentModes.size(); i++ ) {
@@ -292,14 +295,15 @@ void CaptureBasicApp::setupCapture( Capture::DeviceRef device )
 			}
 			console() << "Creating capture with mode [" << modeIndex << "]: " << toString( mCurrentModes[modeIndex] ) << endl;
 			mCapture = Capture::create( device, mCurrentModes[modeIndex] );
-		} else {
+		}
+		else {
 			console() << "No modes available, trying default 640x480" << endl;
 			mCapture = Capture::create( 640, 480, device );
 		}
 		mCapture->start();
 		console() << "Capture started successfully - actual size: " << mCapture->getWidth() << "x" << mCapture->getHeight() << endl;
 	}
-	catch( ci::Exception &exc ) {
+	catch( ci::Exception& exc ) {
 		CI_LOG_EXCEPTION( "Failed to setup capture with device: " << device->getName(), exc );
 		console() << "ERROR: Failed to setup capture!" << endl;
 		// Leave mCapture as nullptr if setup fails
@@ -310,12 +314,12 @@ void CaptureBasicApp::setupCapture( Capture::DeviceRef device )
 
 void CaptureBasicApp::printDevices()
 {
-	for( const auto &device : Capture::getDevices() ) {
+	for( const auto& device : Capture::getDevices() ) {
 		console() << "Device: " << device->getName() << " "
 #if defined( CINDER_COCOA_TOUCH ) || defined( CINDER_ANDROID )
-		<< ( device->isFrontFacing() ? "Front" : "Rear" ) << "-facing"
+				  << ( device->isFrontFacing() ? "Front" : "Rear" ) << "-facing"
 #endif
-		<< endl;
+				  << endl;
 	}
 }
 
@@ -324,7 +328,7 @@ bool CaptureBasicApp::setupCaptureWithMode( Capture::DeviceRef device, const Cap
 	console() << "\n=== Setting up capture with specific mode ===" << endl;
 	console() << "Device: " << device->getName() << endl;
 	console() << "Mode: " << toString( mode ) << endl;
-	
+
 	try {
 		// Stop and fully release old capture
 		if( mCapture ) {
@@ -341,13 +345,13 @@ bool CaptureBasicApp::setupCaptureWithMode( Capture::DeviceRef device, const Cap
 		mCapture = Capture::create( device, mode );
 		console() << "Starting capture..." << endl;
 		mCapture->start();
-		
+
 		console() << "Capture started successfully!" << endl;
 		console() << "Actual size: " << mCapture->getWidth() << "x" << mCapture->getHeight() << endl;
 		CI_LOG_I( "Created capture with mode: " << toString( mode ) );
 		return true;
 	}
-	catch( ci::Exception &exc ) {
+	catch( ci::Exception& exc ) {
 		CI_LOG_EXCEPTION( "Failed to setup capture with mode: " << toString( mode ) << " on device: " << device->getName(), exc );
 		console() << "ERROR: Failed to setup capture with mode! Falling back to auto mode." << endl;
 		// Fall back to regular capture
@@ -371,7 +375,7 @@ void CaptureBasicApp::updateModes()
 				console() << "  [" << i << "] " << toString( mCurrentModes[i] ) << endl;
 			}
 		}
-		catch( ci::Exception &exc ) {
+		catch( ci::Exception& exc ) {
 			CI_LOG_EXCEPTION( "Failed to get modes for device: " << mDevices[mSelectedDeviceIndex]->getName(), exc );
 			console() << "ERROR: Failed to get modes!" << endl;
 		}

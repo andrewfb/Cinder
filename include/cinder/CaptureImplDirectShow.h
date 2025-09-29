@@ -34,7 +34,7 @@ namespace cinder {
 // Forward declarations for integrated DirectShow types (defined in implementation)
 
 class CaptureImplDirectShow {
- public:
+  public:
 	class Device;
 	friend class SampleGrabberCallback;
 
@@ -45,54 +45,59 @@ class CaptureImplDirectShow {
 	void start();
 	void stop();
 
-	bool		isCapturing();
-	bool		checkNewFrame() const;
+	bool isCapturing();
+	bool checkNewFrame() const;
 
-	int32_t		getWidth() const { return mWidth; }
-	int32_t		getHeight() const { return mHeight; }
+	int32_t getWidth() const { return mWidth; }
+	int32_t getHeight() const { return mHeight; }
 
-	Surface8uRef	getSurface() const;
+	Surface8uRef getSurface() const;
 
 	const Capture::DeviceRef getDevice() const { return mDevice; }
 
-	static const std::vector<Capture::DeviceRef>&	getDevices( bool forceRefresh = false );
-	
+	static const std::vector<Capture::DeviceRef>& getDevices( bool forceRefresh = false );
+
 	// Public method to update dimensions (used by DirectShow setup)
-	void updateDimensions(int width, int height);
+	void updateDimensions( int width, int height );
 
 	class Device : public Capture::Device {
- 	  public:
-		bool						checkAvailable() const;
-		bool						isConnected() const;
-		Capture::DeviceIdentifier	getUniqueId() const { return mUniqueId; }
-		std::vector<Capture::Mode>	getModes() const override;
+	  public:
+		bool					   checkAvailable() const;
+		bool					   isConnected() const;
+		Capture::DeviceIdentifier  getUniqueId() const { return mUniqueId; }
+		std::vector<Capture::Mode> getModes() const override;
 
-		Device( const std::string &name, int uniqueId ) : Capture::Device(), mUniqueId( uniqueId ) { mName = name; }
-	 protected:
-		int				mUniqueId;
+		Device( const std::string& name, int uniqueId )
+			: Capture::Device()
+			, mUniqueId( uniqueId )
+		{
+			mName = name;
+		}
+
+	  protected:
+		int mUniqueId;
 	};
 
- protected:
+  protected:
 	int									mDeviceID;
 	bool								mIsCapturing;
-	std::unique_ptr<class SurfaceCache>	mSurfaceCache;
+	std::unique_ptr<class SurfaceCache> mSurfaceCache;
 
-	int32_t					mWidth, mHeight;
-	mutable Surface8uRef	mCurrentFrame;
-	Capture::DeviceRef		mDevice;
-	
+	int32_t				 mWidth, mHeight;
+	mutable Surface8uRef mCurrentFrame;
+	Capture::DeviceRef	 mDevice;
+
 	// New integrated DirectShow members (using void* to avoid forward declaration issues)
-	void*								mComInit;
-	void*								mDeviceContext;
-	void*								mCallback;
-	std::unique_ptr<unsigned char[]>	mPixelBuffer;
-	
-	mutable bool						mNewFrameAvailable = false;
-	mutable std::mutex					mFrameMutex;
-	
+	void*							 mComInit;
+	void*							 mDeviceContext;
+	void*							 mCallback;
+	std::unique_ptr<unsigned char[]> mPixelBuffer;
+
+	mutable bool	   mNewFrameAvailable = false;
+	mutable std::mutex mFrameMutex;
+
 	// Direct DirectShow setup methods
-	bool setupDeviceDirect(int deviceId, int width, int height);
+	bool setupDeviceDirect( int deviceId, int width, int height );
 };
 
-} //namespace
-
+} // namespace cinder
