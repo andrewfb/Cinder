@@ -52,14 +52,14 @@ class CaptureTestApp : public App {
 
 void CaptureTestApp::setup()
 {
-	console() << "=== CaptureTest starting ===" << endl;
+	CI_LOG_I( "=== CaptureTest starting ===" );
 
 	// Initialize ImGui
 	ImGui::Initialize();
 
 	// Get devices
 	mDevices = Capture::getDevices();
-	console() << "Found " << mDevices.size() << " capture devices" << endl;
+	CI_LOG_I( "Found " << mDevices.size() << " capture devices" );
 
 	mSelectedDeviceIndex = 0;
 	mSelectedModeIndex = -1; // -1 means auto mode
@@ -87,7 +87,7 @@ void CaptureTestApp::update()
 		mTexture = mCapture->getTexture();
 		frameCount++;
 		if( firstFrame ) {
-			console() << "First frame received!" << endl;
+			CI_LOG_I( "First frame received!" );
 			firstFrame = false;
 		}
 	}
@@ -97,7 +97,7 @@ void CaptureTestApp::update()
 		if( surface ) {
 			frameCount++;
 			if( firstFrame || frameCount % 100 == 0 ) {
-				console() << "Frame " << frameCount << " received - Surface size: " << surface->getWidth() << "x" << surface->getHeight() << endl;
+				CI_LOG_I( "Frame " << frameCount << " received - Surface size: " << surface->getWidth() << "x" << surface->getHeight() );
 				firstFrame = false;
 			}
 
@@ -375,11 +375,11 @@ void CaptureTestApp::keyDown( KeyEvent event )
 
 void CaptureTestApp::setupCapture( Capture::DeviceRef device )
 {
-	console() << "\n=== Setting up capture with device: " << device->getName() << " (auto mode) ===" << endl;
+	CI_LOG_I( "\n=== Setting up capture with device: " << device->getName() << " (auto mode) ===" );
 	try {
 		// Stop and fully release old capture
 		if( mCapture ) {
-			console() << "Stopping previous capture" << endl;
+			CI_LOG_I( "Stopping previous capture" );
 			mCapture->stop();
 		}
 
@@ -397,19 +397,19 @@ void CaptureTestApp::setupCapture( Capture::DeviceRef device )
 					break;
 				}
 			}
-			console() << "Creating capture with mode [" << modeIndex << "]: " << toString( mCurrentModes[modeIndex] ) << endl;
+			CI_LOG_I( "Creating capture with mode [" << modeIndex << "]: " << toString( mCurrentModes[modeIndex] ) );
 			mCapture = Capture::create( device, mCurrentModes[modeIndex] );
 		}
 		else {
-			console() << "No modes available, trying default 640x480" << endl;
+			CI_LOG_I( "No modes available, trying default 640x480" );
 			mCapture = Capture::create( 640, 480, device );
 		}
 		mCapture->start();
-		console() << "Capture started successfully - actual size: " << mCapture->getWidth() << "x" << mCapture->getHeight() << endl;
+		CI_LOG_I( "Capture started successfully - actual size: " << mCapture->getWidth() << "x" << mCapture->getHeight() );
 	}
 	catch( ci::Exception& exc ) {
 		CI_LOG_EXCEPTION( "Failed to setup capture with device: " << device->getName(), exc );
-		console() << "ERROR: Failed to setup capture!" << endl;
+		CI_LOG_E( "ERROR: Failed to setup capture!" );
 		// Leave mCapture as nullptr if setup fails
 		mCapture = nullptr;
 		mTexture = nullptr;
@@ -419,24 +419,24 @@ void CaptureTestApp::setupCapture( Capture::DeviceRef device )
 void CaptureTestApp::printDevices()
 {
 	for( const auto& device : Capture::getDevices() ) {
-		console() << "Device: " << device->getName() << " "
+		CI_LOG_I( "Device: " << device->getName() << " "
 #if defined( CINDER_COCOA_TOUCH ) || defined( CINDER_ANDROID )
 				  << ( device->isFrontFacing() ? "Front" : "Rear" ) << "-facing"
 #endif
-				  << endl;
+		);
 	}
 }
 
 bool CaptureTestApp::setupCaptureWithMode( Capture::DeviceRef device, const Capture::Mode& mode )
 {
-	console() << "\n=== Setting up capture with specific mode ===" << endl;
-	console() << "Device: " << device->getName() << endl;
-	console() << "Mode: " << toString( mode ) << endl;
+	CI_LOG_I( "\n=== Setting up capture with specific mode ===" );
+	CI_LOG_I( "Device: " << device->getName() );
+	CI_LOG_I( "Mode: " << toString( mode ) );
 
 	try {
 		// Stop and fully release old capture
 		if( mCapture ) {
-			console() << "Stopping previous capture" << endl;
+			CI_LOG_I( "Stopping previous capture" );
 			mCapture->stop();
 		}
 
@@ -445,19 +445,19 @@ bool CaptureTestApp::setupCaptureWithMode( Capture::DeviceRef device, const Capt
 		mTexture = nullptr;
 
 		// Create capture with specific mode
-		console() << "Creating capture with mode..." << endl;
+		CI_LOG_I( "Creating capture with mode..." );
 		mCapture = Capture::create( device, mode );
-		console() << "Starting capture..." << endl;
+		CI_LOG_I( "Starting capture..." );
 		mCapture->start();
 
-		console() << "Capture started successfully!" << endl;
-		console() << "Actual size: " << mCapture->getWidth() << "x" << mCapture->getHeight() << endl;
+		CI_LOG_I( "Capture started successfully!" );
+		CI_LOG_I( "Actual size: " << mCapture->getWidth() << "x" << mCapture->getHeight() );
 		CI_LOG_I( "Created capture with mode: " << toString( mode ) );
 		return true;
 	}
 	catch( ci::Exception& exc ) {
 		CI_LOG_EXCEPTION( "Failed to setup capture with mode: " << toString( mode ) << " on device: " << device->getName(), exc );
-		console() << "ERROR: Failed to setup capture with mode! Falling back to auto mode." << endl;
+		CI_LOG_E( "ERROR: Failed to setup capture with mode! Falling back to auto mode." );
 		// Fall back to regular capture
 		setupCapture( device );
 		return false;
@@ -563,17 +563,17 @@ void CaptureTestApp::updateModes()
 	mSelectedModeIndex = -1; // Reset to auto mode
 
 	if( mSelectedDeviceIndex >= 0 && mSelectedDeviceIndex < (int)mDevices.size() ) {
-		console() << "\n=== Getting modes for device: " << mDevices[mSelectedDeviceIndex]->getName() << " ===" << endl;
+		CI_LOG_I( "\n=== Getting modes for device: " << mDevices[mSelectedDeviceIndex]->getName() << " ===" );
 		try {
 			mCurrentModes = mDevices[mSelectedDeviceIndex]->getModes();
-			console() << "Found " << mCurrentModes.size() << " modes:" << endl;
+			CI_LOG_I( "Found " << mCurrentModes.size() << " modes:" );
 			for( size_t i = 0; i < mCurrentModes.size(); i++ ) {
-				console() << "  [" << i << "] " << toString( mCurrentModes[i] ) << endl;
+				CI_LOG_I( "  [" << i << "] " << toString( mCurrentModes[i] ) );
 			}
 		}
 		catch( ci::Exception& exc ) {
 			CI_LOG_EXCEPTION( "Failed to get modes for device: " << mDevices[mSelectedDeviceIndex]->getName(), exc );
-			console() << "ERROR: Failed to get modes!" << endl;
+			CI_LOG_E( "ERROR: Failed to get modes!" );
 		}
 	}
 }
