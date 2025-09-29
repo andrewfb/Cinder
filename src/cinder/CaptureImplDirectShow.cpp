@@ -117,11 +117,11 @@ void refreshDeviceCache()
 	sDeviceCache.clear();
 
 	// Initialize COM for this thread if needed
-	HRESULT hrCom = CoInitializeEx( nullptr, COINIT_APARTMENTTHREADED );
+	HRESULT hrCom = ::CoInitializeEx( nullptr, COINIT_APARTMENTTHREADED );
 	bool	comInitialized = SUCCEEDED( hrCom );
 
 	ComPtr<ICreateDevEnum> deviceEnum;
-	HRESULT				   hr = CoCreateInstance( CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC, IID_ICreateDevEnum, reinterpret_cast<void**>( &deviceEnum ) );
+	HRESULT				   hr = ::CoCreateInstance( CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC, IID_ICreateDevEnum, reinterpret_cast<void**>( &deviceEnum ) );
 
 	if( FAILED( hr ) ) {
 		return;
@@ -189,7 +189,7 @@ void refreshDeviceCache()
 
 	// Clean up COM if we initialized it
 	if( comInitialized ) {
-		CoUninitialize();
+		::CoUninitialize();
 	}
 
 	sDeviceCacheValid = true;
@@ -217,51 +217,42 @@ std::vector<std::string> getDeviceNames()
 // Helper function for GUID to string conversion
 std::string guidToString( const GUID& guid )
 {
-	if( IsEqualGUID( guid, MEDIASUBTYPE_RGB24 ) )
+	if( ::IsEqualGUID( guid, MEDIASUBTYPE_RGB24 ) )
 		return "RGB24";
-	if( IsEqualGUID( guid, MEDIASUBTYPE_RGB32 ) )
+	else if( ::IsEqualGUID( guid, MEDIASUBTYPE_RGB32 ) )
 		return "RGB32";
-	if( IsEqualGUID( guid, MEDIASUBTYPE_YUY2 ) )
+	else if( ::IsEqualGUID( guid, MEDIASUBTYPE_YUY2 ) )
 		return "YUY2";
-	if( IsEqualGUID( guid, MEDIASUBTYPE_UYVY ) )
+	else if( ::IsEqualGUID( guid, MEDIASUBTYPE_UYVY ) )
 		return "UYVY";
-	if( IsEqualGUID( guid, MEDIASUBTYPE_IYUV ) )
+	else if( ::IsEqualGUID( guid, MEDIASUBTYPE_IYUV ) )
 		return "IYUV";
-	if( IsEqualGUID( guid, MEDIASUBTYPE_YV12 ) )
+	else if( ::IsEqualGUID( guid, MEDIASUBTYPE_YV12 ) )
 		return "YV12";
-	if( IsEqualGUID( guid, MEDIASUBTYPE_NV12 ) )
+	else if( ::IsEqualGUID( guid, MEDIASUBTYPE_NV12 ) )
 		return "NV12";
 	return "Unknown";
 }
 
-
 // Convert DirectShow media subtype to pixel format
 Capture::Mode::PixelFormat mediaSubtypeToPixelFormat( const GUID& subtype )
 {
-	if( IsEqualGUID( subtype, MEDIASUBTYPE_RGB24 ) ) {
+	if( ::IsEqualGUID( subtype, MEDIASUBTYPE_RGB24 ) )
 		return Capture::Mode::PixelFormat::RGB24;
-	}
-	else if( IsEqualGUID( subtype, MEDIASUBTYPE_RGB32 ) ) {
+	else if( ::IsEqualGUID( subtype, MEDIASUBTYPE_RGB32 ) )
 		return Capture::Mode::PixelFormat::ARGB32;
-	}
-	else if( IsEqualGUID( subtype, MEDIASUBTYPE_YUY2 ) ) {
+	else if( ::IsEqualGUID( subtype, MEDIASUBTYPE_YUY2 ) )
 		return Capture::Mode::PixelFormat::YUY2;
-	}
-	else if( IsEqualGUID( subtype, MEDIASUBTYPE_UYVY ) ) {
+	else if( ::IsEqualGUID( subtype, MEDIASUBTYPE_UYVY ) )
 		return Capture::Mode::PixelFormat::UYVY;
-	}
-	else if( IsEqualGUID( subtype, MEDIASUBTYPE_IYUV ) ) {
+	else if( ::IsEqualGUID( subtype, MEDIASUBTYPE_IYUV ) )
 		return Capture::Mode::PixelFormat::YUV420P;
-	}
-	else if( IsEqualGUID( subtype, MEDIASUBTYPE_YV12 ) ) {
+	else if( ::IsEqualGUID( subtype, MEDIASUBTYPE_YV12 ) )
 		return Capture::Mode::PixelFormat::YV12;
-	}
-	else if( IsEqualGUID( subtype, MEDIASUBTYPE_NV12 ) ) {
+	else if( ::IsEqualGUID( subtype, MEDIASUBTYPE_NV12 ) )
 		return Capture::Mode::PixelFormat::NV12;
-	}
-	else {
+	else
 		return Capture::Mode::PixelFormat::BGR24;
-	}
 }
 
 // Create a DirectShow source filter for the specified device
@@ -273,7 +264,7 @@ ComPtr<IBaseFilter> createSourceFilter( int deviceId )
 	}
 
 	ComPtr<ICreateDevEnum> deviceEnum;
-	HRESULT				   hr = CoCreateInstance( CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC, IID_ICreateDevEnum, reinterpret_cast<void**>( &deviceEnum ) );
+	HRESULT				   hr = ::CoCreateInstance( CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC, IID_ICreateDevEnum, reinterpret_cast<void**>( &deviceEnum ) );
 
 	if( FAILED( hr ) ) {
 		return ComPtr<IBaseFilter>();
@@ -316,18 +307,16 @@ std::vector<StreamFormat> getDeviceFormats( int deviceId )
 	std::vector<StreamFormat> formats;
 
 	auto sourceFilter = createSourceFilter( deviceId );
-	if( ! sourceFilter ) {
+	if( ! sourceFilter )
 		return formats;
-	}
 
 	ComPtr<IPin>	  outputPin;
 	IEnumPins*		  enumPinsPtr = nullptr;
 	HRESULT			  hr = sourceFilter->EnumPins( &enumPinsPtr );
 	ComPtr<IEnumPins> enumPins( enumPinsPtr );
 
-	if( FAILED( hr ) ) {
+	if( FAILED( hr ) )
 		return formats;
-	}
 
 	IPin* pin = nullptr;
 	while( enumPins->Next( 1, &pin, nullptr ) == S_OK ) {
@@ -342,23 +331,20 @@ std::vector<StreamFormat> getDeviceFormats( int deviceId )
 		pin->Release();
 	}
 
-	if( ! outputPin ) {
+	if( ! outputPin )
 		return formats;
-	}
 
 	ComPtr<IAMStreamConfig> streamConfig;
 	hr = outputPin->QueryInterface( IID_IAMStreamConfig, reinterpret_cast<void**>( &streamConfig ) );
 
-	if( FAILED( hr ) ) {
+	if( FAILED( hr ) )
 		return formats;
-	}
 
 	int count = 0, size = 0;
 	hr = streamConfig->GetNumberOfCapabilities( &count, &size );
 
-	if( FAILED( hr ) || size != sizeof( VIDEO_STREAM_CONFIG_CAPS ) ) {
+	if( FAILED( hr ) || size != sizeof( VIDEO_STREAM_CONFIG_CAPS ) )
 		return formats;
-	}
 
 	for( int i = 0; i < count; i++ ) {
 		AM_MEDIA_TYPE*			 mediaType = nullptr;
@@ -390,12 +376,12 @@ std::vector<StreamFormat> getDeviceFormats( int deviceId )
 			}
 
 			if( mediaType->cbFormat != 0 ) {
-				CoTaskMemFree( mediaType->pbFormat );
+				::CoTaskMemFree( mediaType->pbFormat );
 			}
 			if( mediaType->pUnk != nullptr ) {
 				mediaType->pUnk->Release();
 			}
-			CoTaskMemFree( mediaType );
+			::CoTaskMemFree( mediaType );
 		}
 	}
 
@@ -472,7 +458,7 @@ class ComInitializer {
 		: mInitialized( false )
 	{
 		if( sRefCount == 0 ) {
-			HRESULT hr = CoInitializeEx( nullptr, COINIT_APARTMENTTHREADED );
+			HRESULT hr = ::CoInitializeEx( nullptr, COINIT_APARTMENTTHREADED );
 			if( SUCCEEDED( hr ) ) {
 				mInitialized = true;
 			}
@@ -487,7 +473,7 @@ class ComInitializer {
 	{
 		sRefCount--;
 		if( sRefCount == 0 && mInitialized ) {
-			CoUninitialize();
+			::CoUninitialize();
 		}
 	}
 
@@ -580,8 +566,6 @@ STDMETHODIMP SampleGrabberCallback::SampleCB( double sampleTime, IMediaSample* s
 	CI_ASSERT( mParent && sample );
 
 	try {
-		std::lock_guard<std::mutex> lock( mParent->mFrameMutex );
-
 		BYTE*	ptrBuffer = nullptr;
 		HRESULT hr = sample->GetPointer( &ptrBuffer );
 
@@ -591,10 +575,13 @@ STDMETHODIMP SampleGrabberCallback::SampleCB( double sampleTime, IMediaSample* s
 		CI_ASSERT( mParent->mPixelBuffer );
 
 		long actualDataLength = sample->GetActualDataLength();
-		int	 expectedSize = mParent->mWidth * mParent->mHeight * 3;
+		int	 expectedDataLength = mParent->mWidth * mParent->mHeight * 3;
 
 		// Dimensions should match what was negotiated in setupCallback
-		CI_ASSERT( expectedSize == actualDataLength );
+		CI_ASSERT( expectedDataLength == actualDataLength );
+
+		// Enter critical section only for buffer access
+		::EnterCriticalSection( &mParent->mCriticalSection );
 
 		// Process RGB24 data - simple copy with vertical flip
 		const uint8_t* src = static_cast<const uint8_t*>( ptrBuffer );
@@ -610,7 +597,10 @@ STDMETHODIMP SampleGrabberCallback::SampleCB( double sampleTime, IMediaSample* s
 			memcpy( dstLine, srcLine, mParent->mWidth * 3 );
 		}
 
-		mParent->mNewFrameAvailable = true;
+		::LeaveCriticalSection( &mParent->mCriticalSection );
+
+		// Set atomic flag outside critical section
+		mParent->mNewFrameAvailable.store( true, std::memory_order_release );
 	}
 	catch( ... ) {
 		// Ignore exceptions in callback
@@ -621,69 +611,8 @@ STDMETHODIMP SampleGrabberCallback::SampleCB( double sampleTime, IMediaSample* s
 
 STDMETHODIMP SampleGrabberCallback::BufferCB( double sampleTime, BYTE* buffer, long bufferLen )
 {
-	if( ! mParent || ! buffer ) {
-		return S_OK;
-	}
-
-	try {
-		std::lock_guard<std::mutex> lock( mParent->mFrameMutex );
-
-		if( mParent->mPixelBuffer ) {
-			int expectedSize = mParent->mWidth * mParent->mHeight * 3; // RGB24 is width * height * 3
-
-			// Handle DirectShow RGB24 data with proper stride and flipping
-			if( bufferLen > 0 ) {
-				// Calculate actual stride from buffer size
-				int actualStride = bufferLen / mParent->mHeight;
-				int expectedStride = mParent->mWidth * 3;
-
-				if( actualStride == expectedStride ) {
-					// No padding, but might need to flip vertically (DirectShow is often bottom-up)
-					const uint8_t* src = static_cast<const uint8_t*>( buffer );
-					uint8_t*	   dst = mParent->mPixelBuffer.get();
-
-					// Copy and flip vertically (DirectShow RGB is typically bottom-up)
-					for( int y = 0; y < mParent->mHeight; y++ ) {
-						int			   srcRow = ( mParent->mHeight - 1 - y ); // Flip vertically
-						const uint8_t* srcLine = src + srcRow * actualStride;
-						uint8_t*	   dstLine = dst + y * expectedStride;
-
-						// Copy and convert RGB->BGR for Cinder
-						for( int x = 0; x < mParent->mWidth; x++ ) {
-							dstLine[x * 3 + 0] = srcLine[x * 3 + 2]; // B = R
-							dstLine[x * 3 + 1] = srcLine[x * 3 + 1]; // G = G
-							dstLine[x * 3 + 2] = srcLine[x * 3 + 0]; // R = B
-						}
-					}
-				}
-				else {
-					// Handle stride padding
-					const uint8_t* src = static_cast<const uint8_t*>( buffer );
-					uint8_t*	   dst = mParent->mPixelBuffer.get();
-
-					for( int y = 0; y < mParent->mHeight; y++ ) {
-						int			   srcRow = ( mParent->mHeight - 1 - y ); // Flip vertically
-						const uint8_t* srcLine = src + srcRow * actualStride;
-						uint8_t*	   dstLine = dst + y * expectedStride;
-
-						// Copy only the actual width, handle padding
-						for( int x = 0; x < mParent->mWidth; x++ ) {
-							dstLine[x * 3 + 0] = srcLine[x * 3 + 2]; // B = R
-							dstLine[x * 3 + 1] = srcLine[x * 3 + 1]; // G = G
-							dstLine[x * 3 + 2] = srcLine[x * 3 + 0]; // R = B
-						}
-					}
-				}
-
-				mParent->mNewFrameAvailable = true;
-			}
-		}
-	}
-	catch( ... ) {
-		// Ignore exceptions in callback
-	}
-
-	return S_OK;
+	// Not used - we use SampleCB instead (SetCallback mode 0)
+	return E_NOTIMPL;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -766,6 +695,9 @@ CaptureImplDirectShow::CaptureImplDirectShow( int32_t width, int32_t height, con
 	, mDeviceID( 0 )
 	, mNewFrameAvailable( false )
 {
+	// Initialize critical section
+	::InitializeCriticalSection( &mCriticalSection );
+
 	mDevice = device;
 	if( mDevice ) {
 		mDeviceID = device->getUniqueId();
@@ -797,6 +729,9 @@ CaptureImplDirectShow::CaptureImplDirectShow( const Capture::DeviceRef& device, 
 	, mDeviceID( 0 )
 	, mNewFrameAvailable( false )
 {
+	// Initialize critical section
+	::InitializeCriticalSection( &mCriticalSection );
+
 	mDevice = device;
 	if( mDevice ) {
 		mDeviceID = device->getUniqueId();
@@ -819,7 +754,7 @@ CaptureImplDirectShow::CaptureImplDirectShow( const Capture::DeviceRef& device, 
 			throw CaptureExcInitFail( "Failed to start DirectShow media control" );
 		}
 		// Give the graph a moment to start streaming
-		Sleep( 100 );
+		::Sleep( 100 );
 	}
 
 	// Dimensions and pixel buffer are already set by setupCallback based on negotiated size
@@ -846,6 +781,9 @@ CaptureImplDirectShow::~CaptureImplDirectShow()
 		delete static_cast<ComInitializer*>( mComInit );
 		mComInit = nullptr;
 	}
+
+	// Delete critical section
+	::DeleteCriticalSection( &mCriticalSection );
 }
 
 void CaptureImplDirectShow::start()
@@ -884,19 +822,25 @@ bool CaptureImplDirectShow::isCapturing()
 
 bool CaptureImplDirectShow::checkNewFrame() const
 {
-	std::lock_guard<std::mutex> lock( mFrameMutex );
-	return mNewFrameAvailable;
+	return mNewFrameAvailable.load( std::memory_order_acquire );
 }
 
 Surface8uRef CaptureImplDirectShow::getSurface() const
 {
-	std::lock_guard<std::mutex> lock( mFrameMutex );
-	if( mNewFrameAvailable && mPixelBuffer ) {
-		mCurrentFrame = mSurfaceCache->getNewSurface();
-		// Direct copy - conversion already done in BufferCB
-		int bufferSize = mWidth * mHeight * 3;
-		memcpy( mCurrentFrame->getData(), mPixelBuffer.get(), bufferSize );
-		mNewFrameAvailable = false;
+	// Check atomic flag first (fast path)
+	if( mNewFrameAvailable.load( std::memory_order_acquire ) && mPixelBuffer ) {
+		::EnterCriticalSection( &mCriticalSection );
+
+		// Double-check inside critical section
+		if( mNewFrameAvailable.load( std::memory_order_relaxed ) ) {
+			mCurrentFrame = mSurfaceCache->getNewSurface();
+			// Direct copy - conversion already done in SampleCB
+			int bufferSize = mWidth * mHeight * 3;
+			memcpy( mCurrentFrame->getData(), mPixelBuffer.get(), bufferSize );
+			mNewFrameAvailable.store( false, std::memory_order_release );
+		}
+
+		::LeaveCriticalSection( &mCriticalSection );
 	}
 	return mCurrentFrame;
 }
@@ -910,7 +854,7 @@ std::vector<Capture::Mode> CaptureImplDirectShow::Device::getModes() const
 ComPtr<IBaseFilter> createGrabberFilter()
 {
 	IBaseFilter* filter = nullptr;
-	HRESULT		 hr = CoCreateInstance( CLSID_SampleGrabber, nullptr, CLSCTX_INPROC_SERVER, IID_IBaseFilter, reinterpret_cast<void**>( &filter ) );
+	HRESULT		 hr = ::CoCreateInstance( CLSID_SampleGrabber, nullptr, CLSCTX_INPROC_SERVER, IID_IBaseFilter, reinterpret_cast<void**>( &filter ) );
 	if( FAILED( hr ) ) {
 		return ComPtr<IBaseFilter>( nullptr );
 	}
@@ -923,13 +867,13 @@ bool createCaptureGraph( DeviceContext* deviceContext )
 	HRESULT hr;
 
 	// Create the capture graph builder
-	hr = CoCreateInstance( CLSID_CaptureGraphBuilder2, nullptr, CLSCTX_INPROC_SERVER, IID_ICaptureGraphBuilder2, reinterpret_cast<void**>( &deviceContext->captureBuilder ) );
+	hr = ::CoCreateInstance( CLSID_CaptureGraphBuilder2, nullptr, CLSCTX_INPROC_SERVER, IID_ICaptureGraphBuilder2, reinterpret_cast<void**>( &deviceContext->captureBuilder ) );
 	if( FAILED( hr ) ) {
 		return false;
 	}
 
 	// Create the filter graph
-	hr = CoCreateInstance( CLSID_FilterGraph, nullptr, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, reinterpret_cast<void**>( &deviceContext->graphBuilder ) );
+	hr = ::CoCreateInstance( CLSID_FilterGraph, nullptr, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, reinterpret_cast<void**>( &deviceContext->graphBuilder ) );
 	if( FAILED( hr ) ) {
 		return false;
 	}
@@ -1005,7 +949,7 @@ bool connectFilters( DeviceContext* deviceContext )
 
 	// Create a null renderer to prevent video display window
 	IBaseFilter* nullRenderer = nullptr;
-	hr = CoCreateInstance( CLSID_NullRenderer, nullptr, CLSCTX_INPROC_SERVER, IID_IBaseFilter, reinterpret_cast<void**>( &nullRenderer ) );
+	hr = ::CoCreateInstance( CLSID_NullRenderer, nullptr, CLSCTX_INPROC_SERVER, IID_IBaseFilter, reinterpret_cast<void**>( &nullRenderer ) );
 	if( FAILED( hr ) ) {
 		return false;
 	}
@@ -1034,7 +978,7 @@ bool setupCallback( DeviceContext* deviceContext, ::cinder::SampleGrabberCallbac
 		return false;
 	}
 
-	// Configure the sample grabber to use BufferCB callback mode (mode 0)
+	// Configure the sample grabber to use SampleCB callback mode (mode 0)
 	HRESULT hr = deviceContext->sampleGrabber->SetCallback( static_cast<ISampleGrabberCB*>( callback ), 0 );
 	if( FAILED( hr ) ) {
 		return false;
@@ -1071,7 +1015,7 @@ bool setupCallback( DeviceContext* deviceContext, ::cinder::SampleGrabberCallbac
 		}
 
 		if( mt.cbFormat != 0 ) {
-			CoTaskMemFree( mt.pbFormat );
+			::CoTaskMemFree( mt.pbFormat );
 		}
 		if( mt.pUnk != nullptr ) {
 			mt.pUnk->Release();
@@ -1105,23 +1049,20 @@ bool setCameraFormat( DeviceContext* deviceContext, int width, int height )
 		pin->Release();
 	}
 
-	if( ! outputPin ) {
+	if( ! outputPin )
 		return false;
-	}
 
 	// Get the stream config interface
 	ComPtr<IAMStreamConfig> streamConfig;
 	hr = outputPin->QueryInterface( IID_IAMStreamConfig, reinterpret_cast<void**>( &streamConfig ) );
-	if( FAILED( hr ) ) {
+	if( FAILED( hr ) )
 		return false;
-	}
 
 	// Find a matching format (prefer YUY2, but accept any that matches dimensions)
 	int count = 0, size = 0;
 	hr = streamConfig->GetNumberOfCapabilities( &count, &size );
-	if( FAILED( hr ) || size != sizeof( VIDEO_STREAM_CONFIG_CAPS ) ) {
+	if( FAILED( hr ) || size != sizeof( VIDEO_STREAM_CONFIG_CAPS ) )
 		return false;
-	}
 
 	for( int i = 0; i < count; i++ ) {
 		AM_MEDIA_TYPE*			 mediaType = nullptr;
@@ -1136,27 +1077,22 @@ bool setCameraFormat( DeviceContext* deviceContext, int width, int height )
 				if( vih->bmiHeader.biWidth == width && abs( vih->bmiHeader.biHeight ) == height ) {
 					// Found exact match - set this format on the camera
 					hr = streamConfig->SetFormat( mediaType );
-					if( mediaType->cbFormat != 0 ) {
-						CoTaskMemFree( mediaType->pbFormat );
-					}
-					if( mediaType->pUnk != nullptr ) {
+					if( mediaType->cbFormat != 0 )
+						::CoTaskMemFree( mediaType->pbFormat );
+					if( mediaType->pUnk != nullptr )
 						mediaType->pUnk->Release();
-					}
-					CoTaskMemFree( mediaType );
+					::CoTaskMemFree( mediaType );
 
-					if( SUCCEEDED( hr ) ) {
+					if( SUCCEEDED( hr ) )
 						return true;
-					}
 				}
 			}
 
-			if( mediaType->cbFormat != 0 ) {
-				CoTaskMemFree( mediaType->pbFormat );
-			}
-			if( mediaType->pUnk != nullptr ) {
+			if( mediaType->cbFormat != 0 )
+				::CoTaskMemFree( mediaType->pbFormat );
+			if( mediaType->pUnk != nullptr )
 				mediaType->pUnk->Release();
-			}
-			CoTaskMemFree( mediaType );
+			::CoTaskMemFree( mediaType );
 		}
 	}
 

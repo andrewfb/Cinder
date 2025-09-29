@@ -27,11 +27,10 @@
 #include "cinder/Capture.h"
 #include "cinder/Surface.h"
 #include <memory>
-#include <mutex>
+#include <atomic>
+#include <Windows.h>
 
 namespace cinder {
-
-// Forward declarations for integrated DirectShow types (defined in implementation)
 
 class CaptureImplDirectShow {
   public:
@@ -93,8 +92,8 @@ class CaptureImplDirectShow {
 	void*							 mCallback;
 	std::unique_ptr<unsigned char[]> mPixelBuffer;
 
-	mutable bool	   mNewFrameAvailable = false;
-	mutable std::mutex mFrameMutex;
+	mutable std::atomic<bool> mNewFrameAvailable;
+	mutable CRITICAL_SECTION  mCriticalSection;
 
 	// Direct DirectShow setup methods
 	bool setupDeviceDirect( int deviceId, int width, int height );
