@@ -1,7 +1,7 @@
 cmake_minimum_required( VERSION 3.10 FATAL_ERROR )
 set( CMAKE_VERBOSE_MAKEFILE ON )
 
-project( CapturetTest )
+project( CaptureTest )
 
 get_filename_component( CINDER_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE )
 get_filename_component( APP_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../" ABSOLUTE )
