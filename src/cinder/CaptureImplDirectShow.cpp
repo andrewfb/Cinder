@@ -74,7 +74,6 @@ using namespace std;
 
 namespace cinder {
 
-// Forward declarations for types that will be moved from DirectShowCapture
 namespace {
 struct DeviceInfo {
 	std::string				   friendlyName;
@@ -572,15 +571,12 @@ STDMETHODIMP SampleGrabberCallback::SampleCB( double sampleTime, IMediaSample* s
 		// Dimensions should match what was negotiated in setupCallback
 		CI_ASSERT( expectedDataLength == actualDataLength );
 
-		// Enter critical section only for buffer copy - minimal work in callback
+		// Copy frame data to internal buffer
 		::EnterCriticalSection( &mParent->mCriticalSection );
-
-		// Simple memcpy - no processing. Flip will happen on main thread.
 		memcpy( mParent->mPixelBuffer.get(), ptrBuffer, actualDataLength );
-
 		::LeaveCriticalSection( &mParent->mCriticalSection );
 
-		// Set atomic flag outside critical section
+		// Signal new frame available
 		mParent->mNewFrameAvailable.store( true, std::memory_order_release );
 	}
 	catch( ... ) {
@@ -592,7 +588,7 @@ STDMETHODIMP SampleGrabberCallback::SampleCB( double sampleTime, IMediaSample* s
 
 STDMETHODIMP SampleGrabberCallback::BufferCB( double sampleTime, BYTE* buffer, long bufferLen )
 {
-	// Not used - we use SampleCB instead (SetCallback mode 0)
+	// Not used - SampleCB is used instead
 	return E_NOTIMPL;
 }
 
@@ -815,8 +811,8 @@ Surface8uRef CaptureImplDirectShow::getSurface() const
 		if( mNewFrameAvailable.load( std::memory_order_relaxed ) ) {
 			mCurrentFrame = mSurfaceCache->getNewSurface();
 
-			// Fast flip with memcpy - MEDIASUBTYPE_RGB24 is already BGR in memory
-			// DirectShow RGB24 is bottom-up, flip to top-down for Cinder
+			// Copy with vertical flip (DirectShow uses bottom-up orientation)
+			// Note: MEDIASUBTYPE_RGB24 is stored as BGR in memory (Windows convention)
 			const uint8_t* src = mPixelBuffer.get();
 			uint8_t*	   dst = mCurrentFrame->getData();
 			int			   rowBytes = mWidth * 3;
@@ -971,7 +967,7 @@ bool setupCallback( DeviceContext* deviceContext, ::cinder::SampleGrabberCallbac
 		return false;
 	}
 
-	// Configure the sample grabber to use SampleCB callback mode (mode 0)
+	// Configure the sample grabber callback (0 = SampleCB method)
 	HRESULT hr = deviceContext->sampleGrabber->SetCallback( static_cast<ISampleGrabberCB*>( callback ), 0 );
 	if( FAILED( hr ) ) {
 		return false;
