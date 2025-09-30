@@ -222,27 +222,16 @@ class CaptureImplGStreamer {
   private:
 	class SurfaceCache;
 
-	/**
-	 * @brief Initialize GStreamer pipeline based on device capabilities
-	 * @param width Target width for pipeline
-	 * @param height Target height for pipeline
-	 * @return true if pipeline was created successfully
-	 *
-	 * This is where the magic happens - the method:
-	 * 1. Analyzes device capabilities using analyzeDeviceFormat()
-	 * 2. Selects optimal pipeline type based on format and efficiency
-	 * 3. Creates appropriate GStreamer elements
-	 * 4. Links elements into working pipeline
-	 * 5. Sets up callbacks for frame delivery
-	 */
+	// Initialize pipeline based on device capabilities and target dimensions
 	bool initializePipeline( int32_t width, int32_t height );
 
-	/**
-	 * @brief Clean up GStreamer pipeline resources
-	 *
-	 * Safely destroys all GStreamer objects and resets state.
-	 * Called from destructor and when pipeline recreation is needed.
-	 */
+	// Initialize pipeline with exact caps string from Mode's platformData
+	bool initializePipelineWithCaps( const std::string& capsString );
+
+	// Build pipeline from format info
+	bool buildPipeline( const struct DeviceFormatInfo& formatInfo );
+
+	// Clean up GStreamer pipeline resources
 	void cleanupPipeline();
 
 	/**

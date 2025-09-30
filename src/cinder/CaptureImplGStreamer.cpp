@@ -569,10 +569,18 @@ CaptureImplGStreamer::CaptureImplGStreamer( const Capture::DeviceRef& device, co
 	if( ! device )
 		throw CaptureExcInitFail( "Device cannot be null for Mode-based capture" );
 
-	// TODO: Use mode-specific pipeline initialization
-	// For now, use the existing pipeline initialization
-	if( ! initializePipeline( mBestWidth, mBestHeight ) )
-		throw CaptureExcInitFail( "Failed to initialize capture pipeline with specified mode" );
+	// If mode has platformData (caps string from enumeration), use it directly
+	// This ensures we request the EXACT format that was enumerated, avoiding re-selection
+	const std::string& platformData = mode.getPlatformData();
+	if( ! platformData.empty() ) {
+		if( ! initializePipelineWithCaps( platformData ) )
+			throw CaptureExcInitFail( "Failed to initialize capture pipeline with specified mode" );
+	}
+	else {
+		// Fallback: no platformData, use width/height-based selection
+		if( ! initializePipeline( mBestWidth, mBestHeight ) )
+			throw CaptureExcInitFail( "Failed to initialize capture pipeline" );
+	}
 }
 
 CaptureImplGStreamer::~CaptureImplGStreamer()
@@ -629,11 +637,13 @@ void CaptureImplGStreamer::stop()
 	if( ! mIsCapturing )
 		return;
 
-	if( mPipeline )
-		gst_element_set_state( mPipeline, GST_STATE_NULL );
-
 	mIsCapturing = false;
 	stopBusWatch();
+
+	// Fully cleanup the pipeline to ensure v4l2 device is released
+	// This is critical for rapid mode switching - we must wait for the device
+	// to be completely released before creating a new pipeline
+	cleanupPipeline();
 }
 
 bool CaptureImplGStreamer::isCapturing()
@@ -678,8 +688,7 @@ Surface8uRef CaptureImplGStreamer::getSurface() const
 	return mCurrentFrame;
 }
 
-namespace {
-
+// Pipeline configuration types (used by buildPipeline)
 enum class PipelineType {
 	RAW_DIRECT,      // v4l2src -> videoconvert -> appsink (for video/x-raw)
 	JPEG_DECODE,     // v4l2src -> jpegdec -> videoconvert -> appsink (for image/jpeg)
@@ -691,8 +700,10 @@ enum class PipelineType {
 struct DeviceFormatInfo {
 	PipelineType pipelineType;
 	std::string mediaType;
-	GstStructure* bestFormat;
+	mutable GstStructure* bestFormat;  // mutable allows modification for ownership transfer
 };
+
+namespace {
 
 DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, int32_t targetHeight ) {
 	DeviceFormatInfo info = { PipelineType::DECODEBIN_FALLBACK, "", nullptr };
@@ -801,6 +812,65 @@ DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, in
 
 } // anonymous namespace
 
+bool CaptureImplGStreamer::initializePipelineWithCaps( const std::string& capsString )
+{
+	if( mPipeline )
+		return true;
+
+	// Parse the caps string from platformData
+	GstCapsPtr requestedCaps( gst_caps_from_string( capsString.c_str() ), gstCapsDeleter );
+	if( ! requestedCaps || gst_caps_is_empty( requestedCaps.get() ) ) {
+		CI_LOG_E( "Failed to parse caps string: " << capsString );
+		return false;
+	}
+
+	// Extract media type and dimensions from the caps
+	GstStructure* structure = gst_caps_get_structure( requestedCaps.get(), 0 );
+	if( ! structure ) {
+		CI_LOG_E( "Caps structure is invalid" );
+		return false;
+	}
+
+	const gchar* mediaTypeName = gst_structure_get_name( structure );
+	if( ! mediaTypeName ) {
+		CI_LOG_E( "Cannot determine media type from caps" );
+		return false;
+	}
+
+	std::string mediaType( mediaTypeName );
+	int width, height;
+	if( ! gst_structure_get_int( structure, "width", &width ) ||
+		! gst_structure_get_int( structure, "height", &height ) ) {
+		CI_LOG_E( "Cannot extract width/height from caps" );
+		return false;
+	}
+
+	// Update dimensions
+	mBestWidth = width;
+	mBestHeight = height;
+	mWidth = width;
+	mHeight = height;
+
+	// Determine pipeline type from media type
+	PipelineType pipelineType = PipelineType::DECODEBIN_FALLBACK;
+	if( mediaType == "video/x-raw" )
+		pipelineType = PipelineType::RAW_DIRECT;
+	else if( mediaType == "image/jpeg" )
+		pipelineType = PipelineType::JPEG_DECODE;
+	else if( mediaType == "video/x-h264" )
+		pipelineType = PipelineType::H264_DECODE;
+	else if( mediaType == "video/x-h265" || mediaType == "video/x-hevc" )
+		pipelineType = PipelineType::HEVC_DECODE;
+
+	// Build pipeline with the exact caps
+	DeviceFormatInfo formatInfo;
+	formatInfo.pipelineType = pipelineType;
+	formatInfo.mediaType = mediaType;
+	formatInfo.bestFormat = gst_structure_copy( structure );
+
+	return buildPipeline( formatInfo );
+}
+
 bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 {
 	if( mPipeline )
@@ -815,8 +885,11 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 		}
 	}
 
-	CI_LOG_I( "Using pipeline type: " << (int)formatInfo.pipelineType << " for media type: " << formatInfo.mediaType );
+	return buildPipeline( formatInfo );
+}
 
+bool CaptureImplGStreamer::buildPipeline( const DeviceFormatInfo& formatInfo )
+{
 	// Create v4l2src
 	GstElementPtr source( gst_element_factory_make( "v4l2src", "camera-source" ), gstElementDeleter );
 	if( ! source ) {
@@ -824,6 +897,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 	}
 
 	// Set device path
+	std::string devicePath;
 	if( mDevice ) {
 		auto gstDevice = std::dynamic_pointer_cast<CaptureImplGStreamer::Device>( mDevice );
 		if( gstDevice && gstDevice->getGstDevice() ) {
@@ -835,6 +909,7 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 					device_path = gst_structure_get_string( props, "device.path" );
 				}
 				if( device_path ) {
+					devicePath = device_path;
 					g_object_set( source.get(), "device", device_path, nullptr );
 				}
 				else {
@@ -1044,10 +1119,21 @@ bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 
 void CaptureImplGStreamer::cleanupPipeline()
 {
+	// Guard against multiple calls (from stop() and destructor)
+	if( ! mPipeline && ! mBus )
+		return; // Already cleaned up
+
 	stopBusWatch();
 
 	if( mPipeline ) {
+		// Set to NULL state and wait for completion before unreferencing
 		gst_element_set_state( mPipeline, GST_STATE_NULL );
+
+		// Wait for state change to complete - use longer timeout for complex pipelines
+		// v4l2 devices with decoders/converters need time to fully release resources
+		GstState state;
+		gst_element_get_state( mPipeline, &state, nullptr, 5 * GST_SECOND );
+
 		gst_object_unref( mPipeline );
 	}
 
