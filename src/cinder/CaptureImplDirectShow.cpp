@@ -151,11 +151,7 @@ void refreshDeviceCache()
 			hr = propertyBag->Read( L"FriendlyName", &variant, 0 );
 			if( SUCCEEDED( hr ) ) {
 				if( variant.vt == VT_BSTR ) {
-					int len = WideCharToMultiByte( CP_UTF8, 0, variant.bstrVal, -1, nullptr, 0, nullptr, nullptr );
-					if( len > 0 ) {
-						deviceInfo.friendlyName.resize( len - 1 );
-						WideCharToMultiByte( CP_UTF8, 0, variant.bstrVal, -1, &deviceInfo.friendlyName[0], len, nullptr, nullptr );
-					}
+					deviceInfo.friendlyName = msw::toUtf8String( variant.bstrVal );
 				}
 				VariantClear( &variant );
 			}
@@ -163,11 +159,7 @@ void refreshDeviceCache()
 			hr = propertyBag->Read( L"DevicePath", &variant, 0 );
 			if( SUCCEEDED( hr ) ) {
 				if( variant.vt == VT_BSTR ) {
-					int len = WideCharToMultiByte( CP_UTF8, 0, variant.bstrVal, -1, nullptr, 0, nullptr, nullptr );
-					if( len > 0 ) {
-						deviceInfo.devicePath.resize( len - 1 );
-						WideCharToMultiByte( CP_UTF8, 0, variant.bstrVal, -1, &deviceInfo.devicePath[0], len, nullptr, nullptr );
-					}
+					deviceInfo.devicePath = msw::toUtf8String( variant.bstrVal );
 				}
 				VariantClear( &variant );
 			}
@@ -580,22 +572,11 @@ STDMETHODIMP SampleGrabberCallback::SampleCB( double sampleTime, IMediaSample* s
 		// Dimensions should match what was negotiated in setupCallback
 		CI_ASSERT( expectedDataLength == actualDataLength );
 
-		// Enter critical section only for buffer access
+		// Enter critical section only for buffer copy - minimal work in callback
 		::EnterCriticalSection( &mParent->mCriticalSection );
 
-		// Process RGB24 data - simple copy with vertical flip
-		const uint8_t* src = static_cast<const uint8_t*>( ptrBuffer );
-		uint8_t*	   dst = mParent->mPixelBuffer.get();
-
-		// Copy with vertical flip (DirectShow RGB is typically bottom-up)
-		for( int y = 0; y < mParent->mHeight; y++ ) {
-			int			   srcRow = ( mParent->mHeight - 1 - y ); // Flip vertically
-			const uint8_t* srcLine = src + srcRow * ( mParent->mWidth * 3 );
-			uint8_t*	   dstLine = dst + y * ( mParent->mWidth * 3 );
-
-			// Direct copy (RGB24 format already matches what Cinder expects)
-			memcpy( dstLine, srcLine, mParent->mWidth * 3 );
-		}
+		// Simple memcpy - no processing. Flip will happen on main thread.
+		memcpy( mParent->mPixelBuffer.get(), ptrBuffer, actualDataLength );
 
 		::LeaveCriticalSection( &mParent->mCriticalSection );
 
@@ -626,9 +607,8 @@ class SurfaceCache {
 		, mHeight( height )
 		, mSCO( sco )
 	{
-		for( auto& surf : mSurfaces ) {
+		for( auto& surf : mSurfaces )
 			surf = Surface8u::create( mWidth, mHeight, mSCO.hasAlpha(), mSCO );
-		}
 	}
 
 	Surface8uRef getNewSurface()
@@ -834,14 +814,27 @@ Surface8uRef CaptureImplDirectShow::getSurface() const
 		// Double-check inside critical section
 		if( mNewFrameAvailable.load( std::memory_order_relaxed ) ) {
 			mCurrentFrame = mSurfaceCache->getNewSurface();
-			// Direct copy - conversion already done in SampleCB
-			int bufferSize = mWidth * mHeight * 3;
-			memcpy( mCurrentFrame->getData(), mPixelBuffer.get(), bufferSize );
+
+			// Fast flip with memcpy - MEDIASUBTYPE_RGB24 is already BGR in memory
+			// DirectShow RGB24 is bottom-up, flip to top-down for Cinder
+			const uint8_t* src = mPixelBuffer.get();
+			uint8_t*	   dst = mCurrentFrame->getData();
+			int			   rowBytes = mWidth * 3;
+
+			for( int y = 0; y < mHeight; y++ ) {
+				memcpy( dst + y * rowBytes,
+						src + ( mHeight - 1 - y ) * rowBytes,
+						rowBytes );
+			}
+
 			mNewFrameAvailable.store( false, std::memory_order_release );
 		}
 
 		::LeaveCriticalSection( &mCriticalSection );
+
+		return mCurrentFrame;
 	}
+
 	return mCurrentFrame;
 }
 
