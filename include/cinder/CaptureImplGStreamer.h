@@ -124,8 +124,8 @@ class CaptureImplGStreamer {
 	// Initialize pipeline based on device capabilities and target dimensions
 	bool initializePipeline( int32_t width, int32_t height );
 
-	// Build pipeline from format info
-	bool buildPipeline( const struct DeviceFormatInfo& formatInfo );
+	// Build pipeline from mode
+	bool buildPipeline( const Capture::Mode& mode );
 
 	// Clean up GStreamer pipeline resources
 	void cleanupPipeline();

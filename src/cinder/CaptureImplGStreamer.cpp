@@ -187,12 +187,6 @@ enum class PipelineType {
 	DECODEBIN_FALLBACK // v4l2src -> decodebin -> videoconvert -> appsink (for unknown compressed formats)
 };
 
-struct DeviceFormatInfo {
-	PipelineType		  pipelineType;
-	std::string			  mediaType;
-	mutable GstStructure* bestFormat; // mutable allows modification for ownership transfer
-};
-
 // static
 void CaptureImplGStreamer::ensureGStreamerInitialized()
 {
@@ -262,6 +256,9 @@ bool CaptureImplGStreamer::Device::isConnected() const
 	return ci::fs::exists( path );
 }
 
+// Enumerates all supported camera modes by parsing GStreamer caps (capabilities).
+// Caps describe supported resolutions, framerates, and formats (YUV, JPEG, H.264, etc).
+// Results are cached since device capabilities don't change during runtime.
 std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 {
 	if( mModesQueried )
@@ -743,133 +740,91 @@ Surface8uRef CaptureImplGStreamer::getSurface() const
 
 namespace {
 
-DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, int32_t targetHeight )
+// Finds closest matching mode from available options. Prioritizes: 1) smallest area difference, 2) highest framerate, 3) most efficient pipeline.
+Capture::Mode findBestMode( const std::vector<Capture::Mode>& modes, int32_t targetWidth, int32_t targetHeight )
 {
-	DeviceFormatInfo info = { PipelineType::DECODEBIN_FALLBACK, "", nullptr };
+	if( modes.empty() )
+		return Capture::Mode();
 
-	if( ! device ) {
-		return info;
-	}
+	int32_t targetArea = targetWidth * targetHeight;
 
-	GstCapsPtr deviceCaps( gst_device_get_caps( device ), gstCapsDeleter );
-	if( ! deviceCaps ) {
-		return info;
-	}
+	// Best match tracking: prioritize area, then framerate, then pipeline type
+	const Capture::Mode* bestMode = nullptr;
+	int32_t bestAreaDiff = INT32_MAX;
+	double bestFrameRate = 0.0;
+	int bestPipelinePriority = -1;
 
-	// Look for the best matching format, prioritizing efficiency
-	int			  numStructures = gst_caps_get_size( deviceCaps.get() );
-	int32_t		  bestScore = -1;
-	GstStructure* bestStructure = nullptr;
-	PipelineType  bestPipelineType = PipelineType::DECODEBIN_FALLBACK;
-	std::string	  bestMediaType;
+	for( const auto& mode : modes ) {
+		int32_t currentArea = mode.getWidth() * mode.getHeight();
+		int32_t areaDiff = std::abs( currentArea - targetArea );
+		double frameRate = mode.getFrameRateFloat();
 
-	for( int i = 0; i < numStructures; ++i ) {
-		GstStructure* structure = gst_caps_get_structure( deviceCaps.get(), i );
-		if( ! structure )
-			continue;
-
-		const gchar* mediaTypeName = gst_structure_get_name( structure );
-		if( ! mediaTypeName )
-			continue;
-
-		std::string mediaType( mediaTypeName );
-
-		int width, height;
-		if( ! gst_structure_get_int( structure, "width", &width ) || ! gst_structure_get_int( structure, "height", &height ) ) {
-			continue;
+		// Determine pipeline priority from codec
+		int pipelinePriority;
+		switch( mode.getCodec() ) {
+			case Capture::Mode::Codec::Uncompressed:
+				pipelinePriority = 4;
+				break;
+			case Capture::Mode::Codec::JPEG:
+				pipelinePriority = 3;
+				break;
+			case Capture::Mode::Codec::H264:
+				pipelinePriority = 2;
+				break;
+			case Capture::Mode::Codec::HEVC:
+				pipelinePriority = 1;
+				break;
+			default:
+				pipelinePriority = 0;
+				break;
 		}
 
-		// Calculate score for this format (same as existing resolution matching)
-		double targetAspect = (double)targetWidth / targetHeight;
-		double currentAspect = (double)width / height;
-		bool   aspectMatch = std::abs( currentAspect - targetAspect ) < 0.05;
-
-		int32_t score = 0;
-		if( width == targetWidth && height == targetHeight ) {
-			score = 1000000;
+		// Compare: area first, then framerate, then pipeline priority
+		bool isBetter = false;
+		if( areaDiff < bestAreaDiff ) {
+			isBetter = true;
 		}
-		else if( aspectMatch && width <= targetWidth && height <= targetHeight ) {
-			score = 500000 + width + height;
-		}
-		else if( aspectMatch && width >= targetWidth && height >= targetHeight ) {
-			score = 300000 - ( width - targetWidth ) - ( height - targetHeight );
-		}
-		else if( width <= targetWidth && height <= targetHeight ) {
-			score = 200000 + width + height;
-		}
-		else {
-			int32_t excess = std::max( 0, width - targetWidth ) + std::max( 0, height - targetHeight );
-			score = 100000 - excess;
-		}
-
-		// Apply pipeline efficiency bonus (prefer simpler pipelines)
-		PipelineType pipelineType = PipelineType::DECODEBIN_FALLBACK;
-		int32_t		 efficiencyBonus = 0;
-
-		if( mediaType == "video/x-raw" ) {
-			pipelineType = PipelineType::RAW_DIRECT;
-			efficiencyBonus = 50000; // Highest efficiency - no decoding needed
-		}
-		else if( mediaType == "image/jpeg" ) {
-			pipelineType = PipelineType::JPEG_DECODE;
-			efficiencyBonus = 30000; // Good efficiency - hardware JPEG decode
-		}
-		else if( mediaType == "video/x-h264" ) {
-			pipelineType = PipelineType::H264_DECODE;
-			efficiencyBonus = 20000; // Moderate efficiency - H.264 decode
-		}
-		else if( mediaType == "video/x-h265" || mediaType == "video/x-hevc" ) {
-			pipelineType = PipelineType::HEVC_DECODE;
-			efficiencyBonus = 15000; // HEVC decode - slightly more complex than H.264
-		}
-		else {
-			pipelineType = PipelineType::DECODEBIN_FALLBACK;
-			efficiencyBonus = 0; // Lowest efficiency - generic decoding
-		}
-
-		score += efficiencyBonus;
-
-		if( score > bestScore ) {
-			bestScore = score;
-			if( bestStructure && bestStructure != structure ) {
-				// Don't free - structures are owned by the caps
+		else if( areaDiff == bestAreaDiff ) {
+			if( frameRate > bestFrameRate ) {
+				isBetter = true;
 			}
-			bestStructure = structure;
-			bestPipelineType = pipelineType;
-			bestMediaType = mediaType;
+			else if( frameRate == bestFrameRate && pipelinePriority > bestPipelinePriority ) {
+				isBetter = true;
+			}
+		}
+
+		if( isBetter ) {
+			bestMode = &mode;
+			bestAreaDiff = areaDiff;
+			bestFrameRate = frameRate;
+			bestPipelinePriority = pipelinePriority;
 		}
 	}
 
-	if( bestStructure ) {
-		info.pipelineType = bestPipelineType;
-		info.mediaType = bestMediaType;
-		info.bestFormat = gst_structure_copy( bestStructure );
-	}
-
-	// deviceCaps automatically cleaned up by unique_ptr
-	return info;
+	return bestMode ? *bestMode : Capture::Mode();
 }
 
 } // anonymous namespace
 
+// Selects best camera mode matching target resolution and initializes GStreamer pipeline.
+// Prioritizes closest resolution, then highest framerate, then most efficient pipeline type.
 bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 {
 	if( mPipeline )
 		return true;
 
-	// Analyze device capabilities to choose optimal pipeline
-	DeviceFormatInfo formatInfo = { PipelineType::DECODEBIN_FALLBACK, "", nullptr };
-	if( mDevice ) {
-		auto gstDevice = std::dynamic_pointer_cast<CaptureImplGStreamer::Device>( mDevice );
-		if( gstDevice && gstDevice->getGstDevice() ) {
-			formatInfo = analyzeDeviceFormat( gstDevice->getGstDevice(), width, height );
-		}
-	}
+	CI_ASSERT( mDevice );
 
-	return buildPipeline( formatInfo );
+	// Find best matching mode from device capabilities
+	std::vector<Capture::Mode> modes = mDevice->getModes();
+	Capture::Mode bestMode = findBestMode( modes, width, height );
+
+	return buildPipeline( bestMode );
 }
 
-bool CaptureImplGStreamer::buildPipeline( const DeviceFormatInfo& formatInfo )
+// Constructs GStreamer processing pipeline from camera → decoder (if needed) → color conversion → output.
+// Pipeline structure varies by codec: raw video is direct, JPEG/H.264/HEVC add appropriate decoder elements.
+bool CaptureImplGStreamer::buildPipeline( const Capture::Mode& mode )
 {
 	// Create v4l2src
 	GstElementPtr source( gst_element_factory_make( "v4l2src", "camera-source" ), gstElementDeleter );
@@ -904,16 +859,15 @@ bool CaptureImplGStreamer::buildPipeline( const DeviceFormatInfo& formatInfo )
 		}
 	}
 
-	// Set source format if we found a specific one
+	// Set source format from Mode's platform data (caps string)
 	GstElementPtr sourceCapsFilter( nullptr, gstElementDeleter );
-	if( formatInfo.bestFormat ) {
+	const std::string& capsString = mode.getPlatformData();
+	if( ! capsString.empty() ) {
 		sourceCapsFilter.reset( gst_element_factory_make( "capsfilter", "source-capsfilter" ) );
 		if( sourceCapsFilter ) {
-			GstCapsPtr sourceCaps( gst_caps_new_empty(), gstCapsDeleter );
-			gst_caps_append_structure( sourceCaps.get(), formatInfo.bestFormat ); // Takes ownership
+			GstCapsPtr sourceCaps( gst_caps_from_string( capsString.c_str() ), gstCapsDeleter );
 			g_object_set( sourceCapsFilter.get(), "caps", sourceCaps.get(), nullptr );
 		}
-		formatInfo.bestFormat = nullptr; // Ownership transferred
 	}
 
 	// Create common elements
@@ -925,11 +879,31 @@ bool CaptureImplGStreamer::buildPipeline( const DeviceFormatInfo& formatInfo )
 		throw CaptureExcInitFail( "Failed to create common GStreamer elements" );
 	}
 
+	// Determine pipeline type from codec
+	PipelineType pipelineType;
+	switch( mode.getCodec() ) {
+		case Capture::Mode::Codec::Uncompressed:
+			pipelineType = PipelineType::RAW_DIRECT;
+			break;
+		case Capture::Mode::Codec::JPEG:
+			pipelineType = PipelineType::JPEG_DECODE;
+			break;
+		case Capture::Mode::Codec::H264:
+			pipelineType = PipelineType::H264_DECODE;
+			break;
+		case Capture::Mode::Codec::HEVC:
+			pipelineType = PipelineType::HEVC_DECODE;
+			break;
+		default:
+			pipelineType = PipelineType::DECODEBIN_FALLBACK;
+			break;
+	}
+
 	// Create pipeline-specific decoder elements
 	GstElementPtr decoder( nullptr, gstElementDeleter );
 	GstElementPtr parser( nullptr, gstElementDeleter );
 
-	switch( formatInfo.pipelineType ) {
+	switch( pipelineType ) {
 		case PipelineType::RAW_DIRECT:
 			// No decoder needed for raw video
 			break;
@@ -1103,6 +1077,7 @@ bool CaptureImplGStreamer::buildPipeline( const DeviceFormatInfo& formatInfo )
 	return true;
 }
 
+// Safely tears down GStreamer pipeline and releases all resources. Waits for pipeline to reach NULL state.
 void CaptureImplGStreamer::cleanupPipeline()
 {
 	// Guard against multiple calls (from stop() and destructor)
@@ -1134,6 +1109,7 @@ void CaptureImplGStreamer::cleanupPipeline()
 	mBus = nullptr;
 }
 
+// Starts background thread to monitor pipeline messages. GStreamer "bus" is the message system for errors, state changes, etc.
 void CaptureImplGStreamer::startBusWatch()
 {
 	if( ! mBus || mRunBusWatch )
@@ -1184,6 +1160,7 @@ void CaptureImplGStreamer::startBusWatch()
 	} );
 }
 
+// Stops bus monitoring thread and waits for it to finish.
 void CaptureImplGStreamer::stopBusWatch()
 {
 	mRunBusWatch = false;
@@ -1191,10 +1168,11 @@ void CaptureImplGStreamer::stopBusWatch()
 		mBusWatchThread.join();
 }
 
+// Callback for when decodebin creates output pads dynamically. "Pad" is GStreamer's term for element connection points.
+// Decodebin inspects compressed data and creates appropriate output pads once it knows the format.
 // static
 void CaptureImplGStreamer::onDecoderPadAdded( GstElement* decoder, GstPad* pad, gpointer userData )
 {
-
 	GstElement* videoConvert = static_cast<GstElement*>( userData );
 	GstPad*		sinkPad = gst_element_get_static_pad( videoConvert, "sink" );
 
@@ -1227,6 +1205,8 @@ GstFlowReturn CaptureImplGStreamer::onNewSample( GstAppSink* sink, gpointer user
 	return impl->handleSample( gst_app_sink_pull_sample( sink ) );
 }
 
+// Processes incoming video frame from GStreamer. "Sample" is GStreamer's container for a video frame plus metadata.
+// Extracts pixel data and copies to Cinder surface format.
 GstFlowReturn CaptureImplGStreamer::handleSample( GstSample* sample )
 {
 	if( ! sample ) {
