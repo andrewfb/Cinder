@@ -467,13 +467,14 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 							}
 
 							if( gstFormat ) {
-								gchar* capsStr = gst_caps_to_string( gst_caps_new_simple( mediaType,
+								GstCapsPtr caps( gst_caps_new_simple( mediaType,
 									"width", G_TYPE_INT, res.first,
 									"height", G_TYPE_INT, res.second,
 									"framerate", GST_TYPE_FRACTION, rate.first, rate.second,
 									"format", G_TYPE_STRING, gstFormat,
-									nullptr ) );
+									nullptr ), gstCapsDeleter );
 
+								gchar* capsStr = gst_caps_to_string( caps.get() );
 								if( capsStr ) {
 									mode.setPlatformData( std::string( capsStr ) );
 									g_free( capsStr );
@@ -481,12 +482,13 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 							}
 						} else {
 							// For compressed formats, don't include format
-							gchar* capsStr = gst_caps_to_string( gst_caps_new_simple( mediaType,
+							GstCapsPtr caps( gst_caps_new_simple( mediaType,
 								"width", G_TYPE_INT, res.first,
 								"height", G_TYPE_INT, res.second,
 								"framerate", GST_TYPE_FRACTION, rate.first, rate.second,
-								nullptr ) );
+								nullptr ), gstCapsDeleter );
 
+							gchar* capsStr = gst_caps_to_string( caps.get() );
 							if( capsStr ) {
 								mode.setPlatformData( std::string( capsStr ) );
 								g_free( capsStr );
