@@ -124,9 +124,6 @@ class CaptureImplGStreamer {
 	// Initialize pipeline based on device capabilities and target dimensions
 	bool initializePipeline( int32_t width, int32_t height );
 
-	// Initialize pipeline with exact caps string from Mode's platformData
-	bool initializePipelineWithCaps( const std::string& capsString );
-
 	// Build pipeline from format info
 	bool buildPipeline( const struct DeviceFormatInfo& formatInfo );
 

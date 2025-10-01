@@ -103,12 +103,31 @@ static string deriveUniqueId( GstDevice* device )
 	return identifier;
 }
 
-static bool pathExists( const string& path )
+static Capture::Mode::PixelFormat gstFormatToPixelFormat( const gchar* format )
 {
-	if( path.empty() )
-		return true;
+	if( ! format )
+		return Capture::Mode::PixelFormat::Unknown;
 
-	return ci::fs::exists( path );
+	if( g_str_equal( format, "RGB" ) )
+		return Capture::Mode::PixelFormat::RGB24;
+	else if( g_str_equal( format, "BGR" ) )
+		return Capture::Mode::PixelFormat::BGR24;
+	else if( g_str_equal( format, "RGBA" ) )
+		return Capture::Mode::PixelFormat::ARGB32;
+	else if( g_str_equal( format, "BGRA" ) )
+		return Capture::Mode::PixelFormat::BGRA32;
+	else if( g_str_equal( format, "I420" ) )
+		return Capture::Mode::PixelFormat::I420;
+	else if( g_str_equal( format, "YV12" ) )
+		return Capture::Mode::PixelFormat::YV12;
+	else if( g_str_equal( format, "NV12" ) )
+		return Capture::Mode::PixelFormat::NV12;
+	else if( g_str_equal( format, "YUY2" ) )
+		return Capture::Mode::PixelFormat::YUY2;
+	else if( g_str_equal( format, "UYVY" ) )
+		return Capture::Mode::PixelFormat::UYVY;
+
+	return Capture::Mode::PixelFormat::Unknown;
 }
 
 } // namespace
@@ -157,6 +176,21 @@ class CaptureImplGStreamer::SurfaceCache {
 	int32_t				 mWidth = 0;
 	int32_t				 mHeight = 0;
 	SurfaceChannelOrder	 mSCO;
+};
+
+// Pipeline configuration types (used by buildPipeline)
+enum class PipelineType {
+	RAW_DIRECT,		   // v4l2src -> videoconvert -> appsink (for video/x-raw)
+	JPEG_DECODE,	   // v4l2src -> jpegdec -> videoconvert -> appsink (for image/jpeg)
+	H264_DECODE,	   // v4l2src -> h264parse -> avdec_h264 -> videoconvert -> appsink (for video/x-h264)
+	HEVC_DECODE,	   // v4l2src -> h265parse -> avdec_h265 -> videoconvert -> appsink (for video/x-h265)
+	DECODEBIN_FALLBACK // v4l2src -> decodebin -> videoconvert -> appsink (for unknown compressed formats)
+};
+
+struct DeviceFormatInfo {
+	PipelineType		  pipelineType;
+	std::string			  mediaType;
+	mutable GstStructure* bestFormat; // mutable allows modification for ownership transfer
 };
 
 // static
@@ -225,7 +259,7 @@ bool CaptureImplGStreamer::Device::isConnected() const
 	if( path.empty() )
 		return true;
 
-	return pathExists( path );
+	return ci::fs::exists( path );
 }
 
 std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
@@ -250,7 +284,6 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 
 	// Parse each capability structure
 	guint numStructures = gst_caps_get_size( caps.get() );
-	CI_LOG_I( "Device " << mName << " reports " << numStructures << " capability structures" );
 
 	for( guint i = 0; i < numStructures; ++i ) {
 		GstStructure* structure = gst_caps_get_structure( caps.get(), i );
@@ -261,13 +294,6 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 		if( ! mediaType )
 			continue;
 
-		// Debug: print the structure
-		gchar* structStr = gst_structure_to_string( structure );
-		if( structStr ) {
-			CI_LOG_I( "  Structure " << i << ": " << structStr );
-			g_free( structStr );
-		}
-
 		// Parse resolution (could be fixed values or ranges)
 		std::vector<std::pair<gint, gint>> resolutions;
 		const GValue*					   widthValue = gst_structure_get_value( structure, "width" );
@@ -277,35 +303,23 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 			continue;
 
 		if( G_VALUE_TYPE( widthValue ) == G_TYPE_INT && G_VALUE_TYPE( heightValue ) == G_TYPE_INT ) {
-			// Fixed resolution
+			// Fixed resolution (typical for consumer webcams)
 			gint width = g_value_get_int( widthValue );
 			gint height = g_value_get_int( heightValue );
 			resolutions.emplace_back( width, height );
 		}
 		else if( GST_VALUE_HOLDS_INT_RANGE( widthValue ) && GST_VALUE_HOLDS_INT_RANGE( heightValue ) ) {
-			// Resolution ranges - sample common resolutions
+			// Resolution range (rare - typically industrial cameras)
 			gint minWidth = gst_value_get_int_range_min( widthValue );
 			gint maxWidth = gst_value_get_int_range_max( widthValue );
 			gint minHeight = gst_value_get_int_range_min( heightValue );
 			gint maxHeight = gst_value_get_int_range_max( heightValue );
 
-			// Common resolutions to check within the range
-			std::vector<std::pair<gint, gint>> commonResolutions
-				= { { 320, 240 }, { 640, 360 }, { 640, 480 }, { 800, 600 }, { 1024, 768 }, { 1280, 720 }, { 1280, 960 }, { 1280, 1024 }, { 1920, 1080 }, { 1920, 1440 }, { 2560, 1440 }, { 3840, 2160 } };
+			CI_LOG_W( "Device " << mName << " reports resolution range " << minWidth << "x" << minHeight << " to " << maxWidth << "x" << maxHeight << " (using min/max only)" );
 
-			for( const auto& res : commonResolutions ) {
-				if( res.first >= minWidth && res.first <= maxWidth && res.second >= minHeight && res.second <= maxHeight ) {
-					resolutions.push_back( res );
-				}
-			}
-
-			// If no common resolutions matched, at least add the min and max
-			if( resolutions.empty() ) {
-				resolutions.emplace_back( minWidth, minHeight );
-				if( maxWidth != minWidth || maxHeight != minHeight ) {
-					resolutions.emplace_back( maxWidth, maxHeight );
-				}
-			}
+			resolutions.emplace_back( minWidth, minHeight );
+			if( maxWidth != minWidth || maxHeight != minHeight )
+				resolutions.emplace_back( maxWidth, maxHeight );
 		}
 
 		// If we couldn't parse resolutions, skip this structure
@@ -321,33 +335,28 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 		std::vector<std::pair<gint, gint>> framerates;
 
 		if( GST_VALUE_HOLDS_FRACTION( framerateValue ) ) {
-			// Single framerate
+			// Single framerate (typical)
 			gint num = gst_value_get_fraction_numerator( framerateValue );
 			gint denom = gst_value_get_fraction_denominator( framerateValue );
 			framerates.emplace_back( num, denom );
 		}
 		else if( GST_VALUE_HOLDS_FRACTION_RANGE( framerateValue ) ) {
-			// Framerate range - sample at common framerates
+			// Framerate range (rare - typically industrial cameras)
 			const GValue* minValue = gst_value_get_fraction_range_min( framerateValue );
 			const GValue* maxValue = gst_value_get_fraction_range_max( framerateValue );
 
-			gint minNum = gst_value_get_fraction_numerator( minValue );
-			gint minDenom = gst_value_get_fraction_denominator( minValue );
-			gint maxNum = gst_value_get_fraction_numerator( maxValue );
-			gint maxDenom = gst_value_get_fraction_denominator( maxValue );
-
+			gint   minNum = gst_value_get_fraction_numerator( minValue );
+			gint   minDenom = gst_value_get_fraction_denominator( minValue );
+			gint   maxNum = gst_value_get_fraction_numerator( maxValue );
+			gint   maxDenom = gst_value_get_fraction_denominator( maxValue );
 			double minFps = (double)minNum / minDenom;
 			double maxFps = (double)maxNum / maxDenom;
 
-			// Sample common framerates within the range
-			std::vector<std::pair<gint, gint>> commonRates = { { 15, 1 }, { 24, 1 }, { 25, 1 }, { 30, 1 }, { 60, 1 }, { 120, 1 } };
+			CI_LOG_W( "Device " << mName << " reports framerate range " << minFps << " to " << maxFps << " fps (using min/max only)" );
 
-			for( const auto& rate : commonRates ) {
-				double fps = (double)rate.first / rate.second;
-				if( fps >= minFps && fps <= maxFps ) {
-					framerates.push_back( rate );
-				}
-			}
+			framerates.emplace_back( minNum, minDenom );
+			if( minNum != maxNum || minDenom != maxDenom )
+				framerates.emplace_back( maxNum, maxDenom );
 		}
 		else if( GST_VALUE_HOLDS_LIST( framerateValue ) ) {
 			// List of framerates
@@ -374,32 +383,10 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 			if( formatValue ) {
 				if( G_VALUE_TYPE( formatValue ) == G_TYPE_STRING ) {
 					// Single format
-					const gchar* format = g_value_get_string( formatValue );
-					if( format ) {
-						Capture::Mode::PixelFormat pf = Capture::Mode::PixelFormat::Unknown;
-						if( g_str_equal( format, "RGB" ) )
-							pf = Capture::Mode::PixelFormat::RGB24;
-						else if( g_str_equal( format, "BGR" ) )
-							pf = Capture::Mode::PixelFormat::BGR24;
-						else if( g_str_equal( format, "RGBA" ) )
-							pf = Capture::Mode::PixelFormat::ARGB32;
-						else if( g_str_equal( format, "BGRA" ) )
-							pf = Capture::Mode::PixelFormat::BGRA32;
-						else if( g_str_equal( format, "I420" ) )
-							pf = Capture::Mode::PixelFormat::I420;
-						else if( g_str_equal( format, "YV12" ) )
-							pf = Capture::Mode::PixelFormat::YV12;
-						else if( g_str_equal( format, "NV12" ) )
-							pf = Capture::Mode::PixelFormat::NV12;
-						else if( g_str_equal( format, "YUY2" ) )
-							pf = Capture::Mode::PixelFormat::YUY2;
-						else if( g_str_equal( format, "UYVY" ) )
-							pf = Capture::Mode::PixelFormat::UYVY;
-
-						if( pf != Capture::Mode::PixelFormat::Unknown ) {
-							pixelFormats.push_back( pf );
-						}
-					}
+					const gchar*				format = g_value_get_string( formatValue );
+					Capture::Mode::PixelFormat pf = gstFormatToPixelFormat( format );
+					if( pf != Capture::Mode::PixelFormat::Unknown )
+						pixelFormats.push_back( pf );
 				}
 				else if( GST_VALUE_HOLDS_LIST( formatValue ) ) {
 					// List of formats
@@ -407,32 +394,10 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 					for( guint j = 0; j < numFormats; ++j ) {
 						const GValue* fmtValue = gst_value_list_get_value( formatValue, j );
 						if( G_VALUE_TYPE( fmtValue ) == G_TYPE_STRING ) {
-							const gchar* format = g_value_get_string( fmtValue );
-							if( format ) {
-								Capture::Mode::PixelFormat pf = Capture::Mode::PixelFormat::Unknown;
-								if( g_str_equal( format, "RGB" ) )
-									pf = Capture::Mode::PixelFormat::RGB24;
-								else if( g_str_equal( format, "BGR" ) )
-									pf = Capture::Mode::PixelFormat::BGR24;
-								else if( g_str_equal( format, "RGBA" ) )
-									pf = Capture::Mode::PixelFormat::ARGB32;
-								else if( g_str_equal( format, "BGRA" ) )
-									pf = Capture::Mode::PixelFormat::BGRA32;
-								else if( g_str_equal( format, "I420" ) )
-									pf = Capture::Mode::PixelFormat::I420;
-								else if( g_str_equal( format, "YV12" ) )
-									pf = Capture::Mode::PixelFormat::YV12;
-								else if( g_str_equal( format, "NV12" ) )
-									pf = Capture::Mode::PixelFormat::NV12;
-								else if( g_str_equal( format, "YUY2" ) )
-									pf = Capture::Mode::PixelFormat::YUY2;
-								else if( g_str_equal( format, "UYVY" ) )
-									pf = Capture::Mode::PixelFormat::UYVY;
-
-								if( pf != Capture::Mode::PixelFormat::Unknown ) {
-									pixelFormats.push_back( pf );
-								}
-							}
+							const gchar*				format = g_value_get_string( fmtValue );
+							Capture::Mode::PixelFormat pf = gstFormatToPixelFormat( format );
+							if( pf != Capture::Mode::PixelFormat::Unknown )
+								pixelFormats.push_back( pf );
 						}
 					}
 				}
@@ -616,10 +581,53 @@ CaptureImplGStreamer::CaptureImplGStreamer( const Capture::DeviceRef& device, co
 		throw CaptureExcInitFail( "Device cannot be null for Mode-based capture" );
 
 	// If mode has platformData (caps string from enumeration), use it directly
-	// This ensures we request the EXACT format that was enumerated, avoiding re-selection
 	const std::string& platformData = mode.getPlatformData();
 	if( ! platformData.empty() ) {
-		if( ! initializePipelineWithCaps( platformData ) )
+		if( mPipeline )
+			return;
+
+		// Map codec to pipeline type
+		PipelineType pipelineType = PipelineType::DECODEBIN_FALLBACK;
+		switch( mode.getCodec() ) {
+			case Capture::Mode::Codec::Uncompressed:
+				pipelineType = PipelineType::RAW_DIRECT;
+				break;
+			case Capture::Mode::Codec::JPEG:
+				pipelineType = PipelineType::JPEG_DECODE;
+				break;
+			case Capture::Mode::Codec::H264:
+				pipelineType = PipelineType::H264_DECODE;
+				break;
+			case Capture::Mode::Codec::HEVC:
+				pipelineType = PipelineType::HEVC_DECODE;
+				break;
+			default:
+				pipelineType = PipelineType::DECODEBIN_FALLBACK;
+				break;
+		}
+
+		// Parse caps string to get structure
+		GstCapsPtr requestedCaps( gst_caps_from_string( platformData.c_str() ), gstCapsDeleter );
+		if( ! requestedCaps || gst_caps_is_empty( requestedCaps.get() ) )
+			throw CaptureExcInitFail( "Failed to parse caps string from mode" );
+
+		GstStructure* structure = gst_caps_get_structure( requestedCaps.get(), 0 );
+		if( ! structure )
+			throw CaptureExcInitFail( "Invalid caps structure from mode" );
+
+		// Use Mode dimensions
+		mBestWidth = mode.getWidth();
+		mBestHeight = mode.getHeight();
+		mWidth = mode.getWidth();
+		mHeight = mode.getHeight();
+
+		// Build pipeline with exact caps
+		DeviceFormatInfo formatInfo;
+		formatInfo.pipelineType = pipelineType;
+		formatInfo.mediaType = gst_structure_get_name( structure );
+		formatInfo.bestFormat = gst_structure_copy( structure );
+
+		if( ! buildPipeline( formatInfo ) )
 			throw CaptureExcInitFail( "Failed to initialize capture pipeline with specified mode" );
 	}
 	else {
@@ -733,21 +741,6 @@ Surface8uRef CaptureImplGStreamer::getSurface() const
 	return mCurrentFrame;
 }
 
-// Pipeline configuration types (used by buildPipeline)
-enum class PipelineType {
-	RAW_DIRECT,		   // v4l2src -> videoconvert -> appsink (for video/x-raw)
-	JPEG_DECODE,	   // v4l2src -> jpegdec -> videoconvert -> appsink (for image/jpeg)
-	H264_DECODE,	   // v4l2src -> h264parse -> avdec_h264 -> videoconvert -> appsink (for video/x-h264)
-	HEVC_DECODE,	   // v4l2src -> h265parse -> avdec_h265 -> videoconvert -> appsink (for video/x-h265)
-	DECODEBIN_FALLBACK // v4l2src -> decodebin -> videoconvert -> appsink (for unknown compressed formats)
-};
-
-struct DeviceFormatInfo {
-	PipelineType		  pipelineType;
-	std::string			  mediaType;
-	mutable GstStructure* bestFormat; // mutable allows modification for ownership transfer
-};
-
 namespace {
 
 DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, int32_t targetHeight )
@@ -858,64 +851,6 @@ DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, in
 }
 
 } // anonymous namespace
-
-bool CaptureImplGStreamer::initializePipelineWithCaps( const std::string& capsString )
-{
-	if( mPipeline )
-		return true;
-
-	// Parse the caps string from platformData
-	GstCapsPtr requestedCaps( gst_caps_from_string( capsString.c_str() ), gstCapsDeleter );
-	if( ! requestedCaps || gst_caps_is_empty( requestedCaps.get() ) ) {
-		CI_LOG_E( "Failed to parse caps string: " << capsString );
-		return false;
-	}
-
-	// Extract media type and dimensions from the caps
-	GstStructure* structure = gst_caps_get_structure( requestedCaps.get(), 0 );
-	if( ! structure ) {
-		CI_LOG_E( "Caps structure is invalid" );
-		return false;
-	}
-
-	const gchar* mediaTypeName = gst_structure_get_name( structure );
-	if( ! mediaTypeName ) {
-		CI_LOG_E( "Cannot determine media type from caps" );
-		return false;
-	}
-
-	std::string mediaType( mediaTypeName );
-	int			width, height;
-	if( ! gst_structure_get_int( structure, "width", &width ) || ! gst_structure_get_int( structure, "height", &height ) ) {
-		CI_LOG_E( "Cannot extract width/height from caps" );
-		return false;
-	}
-
-	// Update dimensions
-	mBestWidth = width;
-	mBestHeight = height;
-	mWidth = width;
-	mHeight = height;
-
-	// Determine pipeline type from media type
-	PipelineType pipelineType = PipelineType::DECODEBIN_FALLBACK;
-	if( mediaType == "video/x-raw" )
-		pipelineType = PipelineType::RAW_DIRECT;
-	else if( mediaType == "image/jpeg" )
-		pipelineType = PipelineType::JPEG_DECODE;
-	else if( mediaType == "video/x-h264" )
-		pipelineType = PipelineType::H264_DECODE;
-	else if( mediaType == "video/x-h265" || mediaType == "video/x-hevc" )
-		pipelineType = PipelineType::HEVC_DECODE;
-
-	// Build pipeline with the exact caps
-	DeviceFormatInfo formatInfo;
-	formatInfo.pipelineType = pipelineType;
-	formatInfo.mediaType = mediaType;
-	formatInfo.bestFormat = gst_structure_copy( structure );
-
-	return buildPipeline( formatInfo );
-}
 
 bool CaptureImplGStreamer::initializePipeline( int32_t width, int32_t height )
 {
