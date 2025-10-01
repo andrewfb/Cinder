@@ -1,6 +1,6 @@
 /*
- Copyright (c) 2024
- All rights reserved.
+ Copyright (c) 2010, The Cinder Project, All rights reserved.
+ This code is intended for use with the Cinder C++ library: http://libcinder.org
 
  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
  the following conditions are met:
@@ -44,18 +44,38 @@ namespace {
 static const SurfaceChannelOrder kCaptureChannelOrder = SurfaceChannelOrder::RGB;
 
 // Custom deleters as inline functions
-inline void gstElementDeleter( GstElement* elem ) { if( elem ) gst_object_unref( GST_OBJECT( elem ) ); }
-inline void gstCapsDeleter( GstCaps* caps ) { if( caps ) gst_caps_unref( caps ); }
-inline void gstSampleDeleter( GstSample* sample ) { if( sample ) gst_sample_unref( sample ); }
-inline void gstMessageDeleter( GstMessage* msg ) { if( msg ) gst_message_unref( msg ); }
-inline void gstBusDeleter( GstBus* bus ) { if( bus ) gst_object_unref( GST_OBJECT( bus ) ); }
+inline void gstElementDeleter( GstElement* elem )
+{
+	if( elem )
+		gst_object_unref( GST_OBJECT( elem ) );
+}
+inline void gstCapsDeleter( GstCaps* caps )
+{
+	if( caps )
+		gst_caps_unref( caps );
+}
+inline void gstSampleDeleter( GstSample* sample )
+{
+	if( sample )
+		gst_sample_unref( sample );
+}
+inline void gstMessageDeleter( GstMessage* msg )
+{
+	if( msg )
+		gst_message_unref( msg );
+}
+inline void gstBusDeleter( GstBus* bus )
+{
+	if( bus )
+		gst_object_unref( GST_OBJECT( bus ) );
+}
 
 // Type aliases for smart pointers using function pointer deleters
-using GstElementPtr = std::unique_ptr<GstElement, decltype(&gstElementDeleter)>;
-using GstCapsPtr = std::unique_ptr<GstCaps, decltype(&gstCapsDeleter)>;
-using GstSamplePtr = std::unique_ptr<GstSample, decltype(&gstSampleDeleter)>;
-using GstMessagePtr = std::unique_ptr<GstMessage, decltype(&gstMessageDeleter)>;
-using GstBusPtr = std::unique_ptr<GstBus, decltype(&gstBusDeleter)>;
+using GstElementPtr = std::unique_ptr<GstElement, decltype( &gstElementDeleter )>;
+using GstCapsPtr = std::unique_ptr<GstCaps, decltype( &gstCapsDeleter )>;
+using GstSamplePtr = std::unique_ptr<GstSample, decltype( &gstSampleDeleter )>;
+using GstMessagePtr = std::unique_ptr<GstMessage, decltype( &gstMessageDeleter )>;
+using GstBusPtr = std::unique_ptr<GstBus, decltype( &gstBusDeleter )>;
 
 static string deriveUniqueId( GstDevice* device )
 {
@@ -250,8 +270,8 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 
 		// Parse resolution (could be fixed values or ranges)
 		std::vector<std::pair<gint, gint>> resolutions;
-		const GValue* widthValue = gst_structure_get_value( structure, "width" );
-		const GValue* heightValue = gst_structure_get_value( structure, "height" );
+		const GValue*					   widthValue = gst_structure_get_value( structure, "width" );
+		const GValue*					   heightValue = gst_structure_get_value( structure, "height" );
 
 		if( ! widthValue || ! heightValue )
 			continue;
@@ -270,16 +290,11 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 			gint maxHeight = gst_value_get_int_range_max( heightValue );
 
 			// Common resolutions to check within the range
-			std::vector<std::pair<gint, gint>> commonResolutions = {
-				{320, 240},   {640, 360},   {640, 480},
-				{800, 600},   {1024, 768},  {1280, 720},
-				{1280, 960},  {1280, 1024}, {1920, 1080},
-				{1920, 1440}, {2560, 1440}, {3840, 2160}
-			};
+			std::vector<std::pair<gint, gint>> commonResolutions
+				= { { 320, 240 }, { 640, 360 }, { 640, 480 }, { 800, 600 }, { 1024, 768 }, { 1280, 720 }, { 1280, 960 }, { 1280, 1024 }, { 1920, 1080 }, { 1920, 1440 }, { 2560, 1440 }, { 3840, 2160 } };
 
 			for( const auto& res : commonResolutions ) {
-				if( res.first >= minWidth && res.first <= maxWidth &&
-					res.second >= minHeight && res.second <= maxHeight ) {
+				if( res.first >= minWidth && res.first <= maxWidth && res.second >= minHeight && res.second <= maxHeight ) {
 					resolutions.push_back( res );
 				}
 			}
@@ -325,9 +340,7 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 			double maxFps = (double)maxNum / maxDenom;
 
 			// Sample common framerates within the range
-			std::vector<std::pair<gint, gint>> commonRates = {
-				{15, 1}, {24, 1}, {25, 1}, {30, 1}, {60, 1}, {120, 1}
-			};
+			std::vector<std::pair<gint, gint>> commonRates = { { 15, 1 }, { 24, 1 }, { 25, 1 }, { 30, 1 }, { 60, 1 }, { 120, 1 } };
 
 			for( const auto& rate : commonRates ) {
 				double fps = (double)rate.first / rate.second;
@@ -364,15 +377,24 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 					const gchar* format = g_value_get_string( formatValue );
 					if( format ) {
 						Capture::Mode::PixelFormat pf = Capture::Mode::PixelFormat::Unknown;
-						if( g_str_equal( format, "RGB" ) ) pf = Capture::Mode::PixelFormat::RGB24;
-						else if( g_str_equal( format, "BGR" ) ) pf = Capture::Mode::PixelFormat::BGR24;
-						else if( g_str_equal( format, "RGBA" ) ) pf = Capture::Mode::PixelFormat::ARGB32;
-						else if( g_str_equal( format, "BGRA" ) ) pf = Capture::Mode::PixelFormat::BGRA32;
-						else if( g_str_equal( format, "I420" ) ) pf = Capture::Mode::PixelFormat::I420;
-						else if( g_str_equal( format, "YV12" ) ) pf = Capture::Mode::PixelFormat::YV12;
-						else if( g_str_equal( format, "NV12" ) ) pf = Capture::Mode::PixelFormat::NV12;
-						else if( g_str_equal( format, "YUY2" ) ) pf = Capture::Mode::PixelFormat::YUY2;
-						else if( g_str_equal( format, "UYVY" ) ) pf = Capture::Mode::PixelFormat::UYVY;
+						if( g_str_equal( format, "RGB" ) )
+							pf = Capture::Mode::PixelFormat::RGB24;
+						else if( g_str_equal( format, "BGR" ) )
+							pf = Capture::Mode::PixelFormat::BGR24;
+						else if( g_str_equal( format, "RGBA" ) )
+							pf = Capture::Mode::PixelFormat::ARGB32;
+						else if( g_str_equal( format, "BGRA" ) )
+							pf = Capture::Mode::PixelFormat::BGRA32;
+						else if( g_str_equal( format, "I420" ) )
+							pf = Capture::Mode::PixelFormat::I420;
+						else if( g_str_equal( format, "YV12" ) )
+							pf = Capture::Mode::PixelFormat::YV12;
+						else if( g_str_equal( format, "NV12" ) )
+							pf = Capture::Mode::PixelFormat::NV12;
+						else if( g_str_equal( format, "YUY2" ) )
+							pf = Capture::Mode::PixelFormat::YUY2;
+						else if( g_str_equal( format, "UYVY" ) )
+							pf = Capture::Mode::PixelFormat::UYVY;
 
 						if( pf != Capture::Mode::PixelFormat::Unknown ) {
 							pixelFormats.push_back( pf );
@@ -388,15 +410,24 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 							const gchar* format = g_value_get_string( fmtValue );
 							if( format ) {
 								Capture::Mode::PixelFormat pf = Capture::Mode::PixelFormat::Unknown;
-								if( g_str_equal( format, "RGB" ) ) pf = Capture::Mode::PixelFormat::RGB24;
-								else if( g_str_equal( format, "BGR" ) ) pf = Capture::Mode::PixelFormat::BGR24;
-								else if( g_str_equal( format, "RGBA" ) ) pf = Capture::Mode::PixelFormat::ARGB32;
-								else if( g_str_equal( format, "BGRA" ) ) pf = Capture::Mode::PixelFormat::BGRA32;
-								else if( g_str_equal( format, "I420" ) ) pf = Capture::Mode::PixelFormat::I420;
-								else if( g_str_equal( format, "YV12" ) ) pf = Capture::Mode::PixelFormat::YV12;
-								else if( g_str_equal( format, "NV12" ) ) pf = Capture::Mode::PixelFormat::NV12;
-								else if( g_str_equal( format, "YUY2" ) ) pf = Capture::Mode::PixelFormat::YUY2;
-								else if( g_str_equal( format, "UYVY" ) ) pf = Capture::Mode::PixelFormat::UYVY;
+								if( g_str_equal( format, "RGB" ) )
+									pf = Capture::Mode::PixelFormat::RGB24;
+								else if( g_str_equal( format, "BGR" ) )
+									pf = Capture::Mode::PixelFormat::BGR24;
+								else if( g_str_equal( format, "RGBA" ) )
+									pf = Capture::Mode::PixelFormat::ARGB32;
+								else if( g_str_equal( format, "BGRA" ) )
+									pf = Capture::Mode::PixelFormat::BGRA32;
+								else if( g_str_equal( format, "I420" ) )
+									pf = Capture::Mode::PixelFormat::I420;
+								else if( g_str_equal( format, "YV12" ) )
+									pf = Capture::Mode::PixelFormat::YV12;
+								else if( g_str_equal( format, "NV12" ) )
+									pf = Capture::Mode::PixelFormat::NV12;
+								else if( g_str_equal( format, "YUY2" ) )
+									pf = Capture::Mode::PixelFormat::YUY2;
+								else if( g_str_equal( format, "UYVY" ) )
+									pf = Capture::Mode::PixelFormat::UYVY;
 
 								if( pf != Capture::Mode::PixelFormat::Unknown ) {
 									pixelFormats.push_back( pf );
@@ -445,8 +476,7 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 						std::string description = std::string( mediaType );
 
 						// Create mode with single frame rate
-						Capture::Mode mode( res.first, res.second, frameRate,
-											formatCombo.first, formatCombo.second, description );
+						Capture::Mode mode( res.first, res.second, frameRate, formatCombo.first, formatCombo.second, description );
 
 						// Store platform-specific data for exact pipeline construction
 						// For raw formats, include the format in the caps
@@ -454,25 +484,42 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 							// Map PixelFormat back to GStreamer format string
 							const char* gstFormat = nullptr;
 							switch( formatCombo.second ) {
-								case Capture::Mode::PixelFormat::RGB24: gstFormat = "RGB"; break;
-								case Capture::Mode::PixelFormat::BGR24: gstFormat = "BGR"; break;
-								case Capture::Mode::PixelFormat::ARGB32: gstFormat = "RGBA"; break;
-								case Capture::Mode::PixelFormat::BGRA32: gstFormat = "BGRA"; break;
-								case Capture::Mode::PixelFormat::I420: gstFormat = "I420"; break;
-								case Capture::Mode::PixelFormat::YV12: gstFormat = "YV12"; break;
-								case Capture::Mode::PixelFormat::NV12: gstFormat = "NV12"; break;
-								case Capture::Mode::PixelFormat::YUY2: gstFormat = "YUY2"; break;
-								case Capture::Mode::PixelFormat::UYVY: gstFormat = "UYVY"; break;
-								default: gstFormat = nullptr; break;
+								case Capture::Mode::PixelFormat::RGB24:
+									gstFormat = "RGB";
+									break;
+								case Capture::Mode::PixelFormat::BGR24:
+									gstFormat = "BGR";
+									break;
+								case Capture::Mode::PixelFormat::ARGB32:
+									gstFormat = "RGBA";
+									break;
+								case Capture::Mode::PixelFormat::BGRA32:
+									gstFormat = "BGRA";
+									break;
+								case Capture::Mode::PixelFormat::I420:
+									gstFormat = "I420";
+									break;
+								case Capture::Mode::PixelFormat::YV12:
+									gstFormat = "YV12";
+									break;
+								case Capture::Mode::PixelFormat::NV12:
+									gstFormat = "NV12";
+									break;
+								case Capture::Mode::PixelFormat::YUY2:
+									gstFormat = "YUY2";
+									break;
+								case Capture::Mode::PixelFormat::UYVY:
+									gstFormat = "UYVY";
+									break;
+								default:
+									gstFormat = nullptr;
+									break;
 							}
 
 							if( gstFormat ) {
-								GstCapsPtr caps( gst_caps_new_simple( mediaType,
-									"width", G_TYPE_INT, res.first,
-									"height", G_TYPE_INT, res.second,
-									"framerate", GST_TYPE_FRACTION, rate.first, rate.second,
-									"format", G_TYPE_STRING, gstFormat,
-									nullptr ), gstCapsDeleter );
+								GstCapsPtr caps(
+									gst_caps_new_simple( mediaType, "width", G_TYPE_INT, res.first, "height", G_TYPE_INT, res.second, "framerate", GST_TYPE_FRACTION, rate.first, rate.second, "format", G_TYPE_STRING, gstFormat, nullptr ),
+									gstCapsDeleter );
 
 								gchar* capsStr = gst_caps_to_string( caps.get() );
 								if( capsStr ) {
@@ -480,13 +527,10 @@ std::vector<Capture::Mode> CaptureImplGStreamer::Device::getModes() const
 									g_free( capsStr );
 								}
 							}
-						} else {
+						}
+						else {
 							// For compressed formats, don't include format
-							GstCapsPtr caps( gst_caps_new_simple( mediaType,
-								"width", G_TYPE_INT, res.first,
-								"height", G_TYPE_INT, res.second,
-								"framerate", GST_TYPE_FRACTION, rate.first, rate.second,
-								nullptr ), gstCapsDeleter );
+							GstCapsPtr caps( gst_caps_new_simple( mediaType, "width", G_TYPE_INT, res.first, "height", G_TYPE_INT, res.second, "framerate", GST_TYPE_FRACTION, rate.first, rate.second, nullptr ), gstCapsDeleter );
 
 							gchar* capsStr = gst_caps_to_string( caps.get() );
 							if( capsStr ) {
@@ -656,13 +700,12 @@ bool CaptureImplGStreamer::isCapturing()
 
 	// Verify pipeline is in a valid state
 	if( mPipeline ) {
-		GstState state;
+		GstState			 state;
 		GstStateChangeReturn ret = gst_element_get_state( mPipeline, &state, nullptr, 0 );
 
 		// Consider PLAYING and PAUSED as valid capturing states
 		// PAUSED can be normal during startup or when seeking
-		bool pipelineValid = (ret != GST_STATE_CHANGE_FAILURE) &&
-							 (state == GST_STATE_PLAYING || state == GST_STATE_PAUSED);
+		bool pipelineValid = ( ret != GST_STATE_CHANGE_FAILURE ) && ( state == GST_STATE_PLAYING || state == GST_STATE_PAUSED );
 
 		// Only update flag for actual failures
 		if( mIsCapturing && ret == GST_STATE_CHANGE_FAILURE ) {
@@ -692,22 +735,23 @@ Surface8uRef CaptureImplGStreamer::getSurface() const
 
 // Pipeline configuration types (used by buildPipeline)
 enum class PipelineType {
-	RAW_DIRECT,      // v4l2src -> videoconvert -> appsink (for video/x-raw)
-	JPEG_DECODE,     // v4l2src -> jpegdec -> videoconvert -> appsink (for image/jpeg)
-	H264_DECODE,     // v4l2src -> h264parse -> avdec_h264 -> videoconvert -> appsink (for video/x-h264)
-	HEVC_DECODE,     // v4l2src -> h265parse -> avdec_h265 -> videoconvert -> appsink (for video/x-h265)
+	RAW_DIRECT,		   // v4l2src -> videoconvert -> appsink (for video/x-raw)
+	JPEG_DECODE,	   // v4l2src -> jpegdec -> videoconvert -> appsink (for image/jpeg)
+	H264_DECODE,	   // v4l2src -> h264parse -> avdec_h264 -> videoconvert -> appsink (for video/x-h264)
+	HEVC_DECODE,	   // v4l2src -> h265parse -> avdec_h265 -> videoconvert -> appsink (for video/x-h265)
 	DECODEBIN_FALLBACK // v4l2src -> decodebin -> videoconvert -> appsink (for unknown compressed formats)
 };
 
 struct DeviceFormatInfo {
-	PipelineType pipelineType;
-	std::string mediaType;
-	mutable GstStructure* bestFormat;  // mutable allows modification for ownership transfer
+	PipelineType		  pipelineType;
+	std::string			  mediaType;
+	mutable GstStructure* bestFormat; // mutable allows modification for ownership transfer
 };
 
 namespace {
 
-DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, int32_t targetHeight ) {
+DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, int32_t targetHeight )
+{
 	DeviceFormatInfo info = { PipelineType::DECODEBIN_FALLBACK, "", nullptr };
 
 	if( ! device ) {
@@ -720,31 +764,32 @@ DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, in
 	}
 
 	// Look for the best matching format, prioritizing efficiency
-	int numStructures = gst_caps_get_size( deviceCaps.get() );
-	int32_t bestScore = -1;
+	int			  numStructures = gst_caps_get_size( deviceCaps.get() );
+	int32_t		  bestScore = -1;
 	GstStructure* bestStructure = nullptr;
-	PipelineType bestPipelineType = PipelineType::DECODEBIN_FALLBACK;
-	std::string bestMediaType;
+	PipelineType  bestPipelineType = PipelineType::DECODEBIN_FALLBACK;
+	std::string	  bestMediaType;
 
 	for( int i = 0; i < numStructures; ++i ) {
 		GstStructure* structure = gst_caps_get_structure( deviceCaps.get(), i );
-		if( ! structure ) continue;
+		if( ! structure )
+			continue;
 
 		const gchar* mediaTypeName = gst_structure_get_name( structure );
-		if( ! mediaTypeName ) continue;
+		if( ! mediaTypeName )
+			continue;
 
 		std::string mediaType( mediaTypeName );
 
 		int width, height;
-		if( ! gst_structure_get_int( structure, "width", &width ) ||
-			! gst_structure_get_int( structure, "height", &height ) ) {
+		if( ! gst_structure_get_int( structure, "width", &width ) || ! gst_structure_get_int( structure, "height", &height ) ) {
 			continue;
 		}
 
 		// Calculate score for this format (same as existing resolution matching)
 		double targetAspect = (double)targetWidth / targetHeight;
 		double currentAspect = (double)width / height;
-		bool aspectMatch = std::abs( currentAspect - targetAspect ) < 0.05;
+		bool   aspectMatch = std::abs( currentAspect - targetAspect ) < 0.05;
 
 		int32_t score = 0;
 		if( width == targetWidth && height == targetHeight ) {
@@ -766,7 +811,7 @@ DeviceFormatInfo analyzeDeviceFormat( GstDevice* device, int32_t targetWidth, in
 
 		// Apply pipeline efficiency bonus (prefer simpler pipelines)
 		PipelineType pipelineType = PipelineType::DECODEBIN_FALLBACK;
-		int32_t efficiencyBonus = 0;
+		int32_t		 efficiencyBonus = 0;
 
 		if( mediaType == "video/x-raw" ) {
 			pipelineType = PipelineType::RAW_DIRECT;
@@ -840,9 +885,8 @@ bool CaptureImplGStreamer::initializePipelineWithCaps( const std::string& capsSt
 	}
 
 	std::string mediaType( mediaTypeName );
-	int width, height;
-	if( ! gst_structure_get_int( structure, "width", &width ) ||
-		! gst_structure_get_int( structure, "height", &height ) ) {
+	int			width, height;
+	if( ! gst_structure_get_int( structure, "width", &width ) || ! gst_structure_get_int( structure, "height", &height ) ) {
 		CI_LOG_E( "Cannot extract width/height from caps" );
 		return false;
 	}
@@ -1004,102 +1048,107 @@ bool CaptureImplGStreamer::buildPipeline( const DeviceFormatInfo& formatInfo )
 
 	// Build and link pipeline based on type
 	switch( formatInfo.pipelineType ) {
-		case PipelineType::RAW_DIRECT: {
-			// Pipeline: v4l2src [-> capsfilter] -> videoconvert -> capsfilter -> appsink
-			if( sourceCapsFilter ) {
-				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
-				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					throw CaptureExcInitFail( "Failed to link RAW pipeline with source caps filter" );
+		case PipelineType::RAW_DIRECT:
+			{
+				// Pipeline: v4l2src [-> capsfilter] -> videoconvert -> capsfilter -> appsink
+				if( sourceCapsFilter ) {
+					gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+					if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
+						throw CaptureExcInitFail( "Failed to link RAW pipeline with source caps filter" );
+					}
 				}
-			}
-			else {
-				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
-				if( ! gst_element_link_many( source.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					throw CaptureExcInitFail( "Failed to link RAW pipeline" );
+				else {
+					gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+					if( ! gst_element_link_many( source.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
+						throw CaptureExcInitFail( "Failed to link RAW pipeline" );
+					}
 				}
+				break;
 			}
-			break;
-		}
 
-		case PipelineType::JPEG_DECODE: {
-			// Pipeline: v4l2src [-> capsfilter] -> jpegdec -> videoconvert -> capsfilter -> appsink
-			if( sourceCapsFilter ) {
-				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
-				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					throw CaptureExcInitFail( "Failed to link JPEG pipeline with source caps filter" );
+		case PipelineType::JPEG_DECODE:
+			{
+				// Pipeline: v4l2src [-> capsfilter] -> jpegdec -> videoconvert -> capsfilter -> appsink
+				if( sourceCapsFilter ) {
+					gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+					if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
+						throw CaptureExcInitFail( "Failed to link JPEG pipeline with source caps filter" );
+					}
 				}
-			}
-			else {
-				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
-				if( ! gst_element_link_many( source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					throw CaptureExcInitFail( "Failed to link JPEG pipeline" );
+				else {
+					gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+					if( ! gst_element_link_many( source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
+						throw CaptureExcInitFail( "Failed to link JPEG pipeline" );
+					}
 				}
+				break;
 			}
-			break;
-		}
 
-		case PipelineType::H264_DECODE: {
-			// Pipeline: v4l2src [-> capsfilter] -> h264parse -> avdec_h264 -> videoconvert -> capsfilter -> appsink
-			if( sourceCapsFilter ) {
-				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
-				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					throw CaptureExcInitFail( "Failed to link H.264 pipeline with source caps filter" );
+		case PipelineType::H264_DECODE:
+			{
+				// Pipeline: v4l2src [-> capsfilter] -> h264parse -> avdec_h264 -> videoconvert -> capsfilter -> appsink
+				if( sourceCapsFilter ) {
+					gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+					if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
+						throw CaptureExcInitFail( "Failed to link H.264 pipeline with source caps filter" );
+					}
 				}
-			}
-			else {
-				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
-				if( ! gst_element_link_many( source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					throw CaptureExcInitFail( "Failed to link H.264 pipeline" );
+				else {
+					gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+					if( ! gst_element_link_many( source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
+						throw CaptureExcInitFail( "Failed to link H.264 pipeline" );
+					}
 				}
+				break;
 			}
-			break;
-		}
 
-		case PipelineType::HEVC_DECODE: {
-			// Pipeline: v4l2src [-> capsfilter] -> h265parse -> avdec_h265 -> videoconvert -> capsfilter -> appsink
-			if( sourceCapsFilter ) {
-				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
-				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					throw CaptureExcInitFail( "Failed to link HEVC pipeline with source caps filter" );
+		case PipelineType::HEVC_DECODE:
+			{
+				// Pipeline: v4l2src [-> capsfilter] -> h265parse -> avdec_h265 -> videoconvert -> capsfilter -> appsink
+				if( sourceCapsFilter ) {
+					gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+					if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
+						throw CaptureExcInitFail( "Failed to link HEVC pipeline with source caps filter" );
+					}
 				}
-			}
-			else {
-				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
-				if( ! gst_element_link_many( source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-					throw CaptureExcInitFail( "Failed to link HEVC pipeline" );
+				else {
+					gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+					if( ! gst_element_link_many( source.get(), parser.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
+						throw CaptureExcInitFail( "Failed to link HEVC pipeline" );
+					}
 				}
+				break;
 			}
-			break;
-		}
 
 		case PipelineType::DECODEBIN_FALLBACK:
-		default: {
-			// Pipeline: v4l2src [-> capsfilter] -> decodebin -> videoconvert -> capsfilter -> appsink
-			if( sourceCapsFilter ) {
-				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
-				if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), decoder.get(), nullptr ) ) {
-					throw CaptureExcInitFail( "Failed to link source through caps filter to decodebin" );
+		default:
+			{
+				// Pipeline: v4l2src [-> capsfilter] -> decodebin -> videoconvert -> capsfilter -> appsink
+				if( sourceCapsFilter ) {
+					gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), sourceCapsFilter.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+					if( ! gst_element_link_many( source.get(), sourceCapsFilter.get(), decoder.get(), nullptr ) ) {
+						throw CaptureExcInitFail( "Failed to link source through caps filter to decodebin" );
+					}
 				}
-			}
-			else {
-				gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
-				if( ! gst_element_link( source.get(), decoder.get() ) ) {
-					throw CaptureExcInitFail( "Failed to link source to decodebin" );
+				else {
+					gst_bin_add_many( GST_BIN( pipeline.get() ), source.get(), decoder.get(), videoConvert.get(), capsFilter.get(), appSink.get(), nullptr );
+					if( ! gst_element_link( source.get(), decoder.get() ) ) {
+						throw CaptureExcInitFail( "Failed to link source to decodebin" );
+					}
 				}
+
+				// Link videoconvert to capsfilter to appsink (separate for decodebin's dynamic pads)
+				if( ! gst_element_link_many( videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
+					throw CaptureExcInitFail( "Failed to link decodebin video processing elements" );
+				}
+
+				// Store for decodebin pad-added callback
+				mVideoConvert = videoConvert.get();
+
+				// Connect decodebin's dynamic pad
+				g_signal_connect( decoder.get(), "pad-added", G_CALLBACK( onDecoderPadAdded ), videoConvert.get() );
+				break;
 			}
-
-			// Link videoconvert to capsfilter to appsink (separate for decodebin's dynamic pads)
-			if( ! gst_element_link_many( videoConvert.get(), capsFilter.get(), appSink.get(), nullptr ) ) {
-				throw CaptureExcInitFail( "Failed to link decodebin video processing elements" );
-			}
-
-			// Store for decodebin pad-added callback
-			mVideoConvert = videoConvert.get();
-
-			// Connect decodebin's dynamic pad
-			g_signal_connect( decoder.get(), "pad-added", G_CALLBACK( onDecoderPadAdded ), videoConvert.get() );
-			break;
-		}
 	}
 
 	// Transfer ownership to member variables (release from unique_ptr)
@@ -1112,9 +1161,9 @@ bool CaptureImplGStreamer::buildPipeline( const DeviceFormatInfo& formatInfo )
 	mBus = gst_element_get_bus( mPipeline );
 
 	// Release ownership of elements that were added to pipeline but aren't stored as members
-	sourceCapsFilter.release();  // Owned by pipeline now
-	decoder.release();           // Owned by pipeline now
-	parser.release();            // Owned by pipeline now
+	sourceCapsFilter.release(); // Owned by pipeline now
+	decoder.release();			// Owned by pipeline now
+	parser.release();			// Owned by pipeline now
 
 	return true;
 }
