@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2010, The Cinder Project, All rights reserved.
+ Copyright (c) 2025, The Cinder Project, All rights reserved.
  This code is intended for use with the Cinder C++ library: http://libcinder.org
 
  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
@@ -59,23 +59,11 @@ inline void gstSampleDeleter( GstSample* sample )
 	if( sample )
 		gst_sample_unref( sample );
 }
-inline void gstMessageDeleter( GstMessage* msg )
-{
-	if( msg )
-		gst_message_unref( msg );
-}
-inline void gstBusDeleter( GstBus* bus )
-{
-	if( bus )
-		gst_object_unref( GST_OBJECT( bus ) );
-}
 
 // Type aliases for smart pointers using function pointer deleters
 using GstElementPtr = std::unique_ptr<GstElement, decltype( &gstElementDeleter )>;
 using GstCapsPtr = std::unique_ptr<GstCaps, decltype( &gstCapsDeleter )>;
 using GstSamplePtr = std::unique_ptr<GstSample, decltype( &gstSampleDeleter )>;
-using GstMessagePtr = std::unique_ptr<GstMessage, decltype( &gstMessageDeleter )>;
-using GstBusPtr = std::unique_ptr<GstBus, decltype( &gstBusDeleter )>;
 
 static string deriveUniqueId( GstDevice* device )
 {
@@ -580,28 +568,7 @@ CaptureImplGStreamer::CaptureImplGStreamer( const Capture::DeviceRef& device, co
 	// If mode has platformData (caps string from enumeration), use it directly
 	const std::string& platformData = mode.getPlatformData();
 	if( ! platformData.empty() ) {
-		if( mPipeline )
-			return;
-
-		// Map codec to pipeline type
-		PipelineType pipelineType = PipelineType::DECODEBIN_FALLBACK;
-		switch( mode.getCodec() ) {
-			case Capture::Mode::Codec::Uncompressed:
-				pipelineType = PipelineType::RAW_DIRECT;
-				break;
-			case Capture::Mode::Codec::JPEG:
-				pipelineType = PipelineType::JPEG_DECODE;
-				break;
-			case Capture::Mode::Codec::H264:
-				pipelineType = PipelineType::H264_DECODE;
-				break;
-			case Capture::Mode::Codec::HEVC:
-				pipelineType = PipelineType::HEVC_DECODE;
-				break;
-			default:
-				pipelineType = PipelineType::DECODEBIN_FALLBACK;
-				break;
-		}
+		PipelineType pipelineType = codecToPipeline( mode.getCodec() ).first;
 
 		// Parse caps string to get structure
 		GstCapsPtr requestedCaps( gst_caps_from_string( platformData.c_str() ), gstCapsDeleter );
@@ -740,6 +707,23 @@ Surface8uRef CaptureImplGStreamer::getSurface() const
 
 namespace {
 
+// Maps codec type to pipeline type and priority (higher = more efficient)
+std::pair<PipelineType, int> codecToPipeline( Capture::Mode::Codec codec )
+{
+	switch( codec ) {
+		case Capture::Mode::Codec::Uncompressed:
+			return { PipelineType::RAW_DIRECT, 4 };
+		case Capture::Mode::Codec::JPEG:
+			return { PipelineType::JPEG_DECODE, 3 };
+		case Capture::Mode::Codec::H264:
+			return { PipelineType::H264_DECODE, 2 };
+		case Capture::Mode::Codec::HEVC:
+			return { PipelineType::HEVC_DECODE, 1 };
+		default:
+			return { PipelineType::DECODEBIN_FALLBACK, 0 };
+	}
+}
+
 // Finds closest matching mode from available options. Prioritizes: 1) smallest area difference, 2) highest framerate, 3) most efficient pipeline.
 Capture::Mode findBestMode( const std::vector<Capture::Mode>& modes, int32_t targetWidth, int32_t targetHeight )
 {
@@ -758,26 +742,7 @@ Capture::Mode findBestMode( const std::vector<Capture::Mode>& modes, int32_t tar
 		int32_t currentArea = mode.getWidth() * mode.getHeight();
 		int32_t areaDiff = std::abs( currentArea - targetArea );
 		double frameRate = mode.getFrameRateFloat();
-
-		// Determine pipeline priority from codec
-		int pipelinePriority;
-		switch( mode.getCodec() ) {
-			case Capture::Mode::Codec::Uncompressed:
-				pipelinePriority = 4;
-				break;
-			case Capture::Mode::Codec::JPEG:
-				pipelinePriority = 3;
-				break;
-			case Capture::Mode::Codec::H264:
-				pipelinePriority = 2;
-				break;
-			case Capture::Mode::Codec::HEVC:
-				pipelinePriority = 1;
-				break;
-			default:
-				pipelinePriority = 0;
-				break;
-		}
+		int pipelinePriority = codecToPipeline( mode.getCodec() ).second;
 
 		// Compare: area first, then framerate, then pipeline priority
 		bool isBetter = false;
@@ -880,24 +845,7 @@ bool CaptureImplGStreamer::buildPipeline( const Capture::Mode& mode )
 	}
 
 	// Determine pipeline type from codec
-	PipelineType pipelineType;
-	switch( mode.getCodec() ) {
-		case Capture::Mode::Codec::Uncompressed:
-			pipelineType = PipelineType::RAW_DIRECT;
-			break;
-		case Capture::Mode::Codec::JPEG:
-			pipelineType = PipelineType::JPEG_DECODE;
-			break;
-		case Capture::Mode::Codec::H264:
-			pipelineType = PipelineType::H264_DECODE;
-			break;
-		case Capture::Mode::Codec::HEVC:
-			pipelineType = PipelineType::HEVC_DECODE;
-			break;
-		default:
-			pipelineType = PipelineType::DECODEBIN_FALLBACK;
-			break;
-	}
+	PipelineType pipelineType = codecToPipeline( mode.getCodec() ).first;
 
 	// Create pipeline-specific decoder elements
 	GstElementPtr decoder( nullptr, gstElementDeleter );
