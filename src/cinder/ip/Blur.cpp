@@ -41,9 +41,14 @@ uint8_t getPixelIncrement( const ChannelT<T> &channel )
 template<typename T>
 uint8_t getPixelDataOffset( const SurfaceT<T> &surface )
 {
-	// even for XRGB, RGBX, etc, all red/green/blue data is contiguous. We aren't concerned about their order,
-	// we just want the first color (nonalpha) byte
-	return std::min( surface.getChannelOrder().getRedOffset(), surface.getChannelOrder().getBlueOffset() );	
+	// even for XRGB, RGBX, etc, all channels are contiguous. Start at the earliest channel in memory
+	// so we don't overrun when alpha precedes the color data (e.g. ARGB).
+	const auto &channelOrder = surface.getChannelOrder();
+	uint8_t result = std::min( channelOrder.getRedOffset(), std::min( channelOrder.getGreenOffset(), channelOrder.getBlueOffset() ) );
+	uint8_t alphaOffset = channelOrder.getAlphaOffset();
+	if( alphaOffset != SurfaceChannelOrder::INVALID )
+		result = std::min( result, alphaOffset );
+	return result;
 }
 
 template<typename T>
