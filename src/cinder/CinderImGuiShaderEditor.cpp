@@ -2,6 +2,7 @@
 #include "cinder/gl/GlslProg.h"
 #include "cinder/Log.h"
 #include <map>
+#include <set>
 #include <string>
 
 using namespace ci;
@@ -26,6 +27,7 @@ static std::map<void*, ShaderEditorState> sShaderEditorStates;
 // Forward declarations
 static bool ShaderEditorImpl( const gl::GlslProgRef& shader, const std::vector<UniformBinding>* bindings, bool* pOpen );
 static bool ShaderUniformsWithBindings( const gl::GlslProgRef& shader, const std::vector<UniformBinding>& bindings );
+static bool RenderUniformFromCache( const gl::GlslProgRef& shader, const gl::GlslProg::Uniform& uniform, UniformSemantic semantic = UniformSemantic::DEFAULT, bool hasRange = false, float rangeMin = 0.0f, float rangeMax = 0.0f );
 
 // Public API - simple version (no bindings)
 bool ShaderEditor( const gl::GlslProgRef& shader, bool* pOpen )
@@ -86,7 +88,7 @@ static bool ShaderEditorImpl( const gl::GlslProgRef& shader, const std::vector<U
 				state.hasError = false;
 				state.compileError.clear();
 				recompiled = true;
-				CI_LOG_I( "Shader recompiled successfully" );
+				// Don't log success - user can see it in the UI
 			}
 			else {
 				state.hasError = true;
@@ -95,7 +97,7 @@ static bool ShaderEditorImpl( const gl::GlslProgRef& shader, const std::vector<U
 				while( ! state.compileError.empty() && ( state.compileError.back() == '\n' || state.compileError.back() == '\r' ) ) {
 					state.compileError.pop_back();
 				}
-				CI_LOG_E( "Shader compile error: " << error );
+				// Don't log error - user can see it in the UI
 			}
 		}
 
@@ -187,110 +189,213 @@ static bool ShaderEditorImpl( const gl::GlslProgRef& shader, const std::vector<U
 		}
 	}
 
-	// Show uniform controls
-	if( bindings && ImGui::CollapsingHeader( "Uniforms", ImGuiTreeNodeFlags_DefaultOpen ) ) {
-		ShaderUniformsWithBindings( shader, *bindings );
+	// Show uniform controls - always show header, will auto-discover uniforms if no bindings provided
+	if( ImGui::CollapsingHeader( "Uniforms", ImGuiTreeNodeFlags_DefaultOpen ) ) {
+		if( bindings && ! bindings->empty() ) {
+			// Have explicit bindings - use them (additive mode: explicit bindings + auto-discovered)
+			ShaderUniformsWithBindings( shader, *bindings );
+		}
+		else {
+			// No bindings - auto-discover all uniforms
+			ShaderUniformsWithBindings( shader, {} );
+		}
 	}
 
 	return recompiled;
 }
 
-// Uniform controls using bindings
+// Helper function to render a uniform widget using backing store
+static bool RenderUniformFromCache( const gl::GlslProgRef& shader, const gl::GlslProg::Uniform& uniform, UniformSemantic semantic, bool hasRange, float rangeMin, float rangeMax )
+{
+	bool modified = false;
+	GLint location = uniform.getLocation();
+
+	ImGui::PushID( location );
+
+	switch( uniform.getType() ) {
+		case GL_FLOAT: {
+			float val = 0.0f;
+			shader->getUniformValue( uniform.getName(), &val );
+			if( hasRange ) {
+				if( ImGui::SliderFloat( uniform.getName().c_str(), &val, rangeMin, rangeMax ) ) {
+					shader->uniform( location, val );
+					modified = true;
+				}
+			}
+			else {
+				if( ImGui::DragFloat( uniform.getName().c_str(), &val, 0.01f ) ) {
+					shader->uniform( location, val );
+					modified = true;
+				}
+			}
+			break;
+		}
+
+		case GL_FLOAT_VEC2: {
+			vec2 val( 0.0f );
+			shader->getUniformValue( uniform.getName(), &val );
+			if( ImGui::DragFloat2( uniform.getName().c_str(), &val.x, 0.01f ) ) {
+				shader->uniform( location, val );
+				modified = true;
+			}
+			break;
+		}
+
+		case GL_FLOAT_VEC3: {
+			vec3 val( 0.0f );
+			shader->getUniformValue( uniform.getName(), &val );
+			if( semantic == UniformSemantic::COLOR ) {
+				if( ImGui::ColorEdit3( uniform.getName().c_str(), &val.x ) ) {
+					shader->uniform( location, val );
+					modified = true;
+				}
+			}
+			else {
+				if( ImGui::DragFloat3( uniform.getName().c_str(), &val.x, 0.1f ) ) {
+					shader->uniform( location, val );
+					modified = true;
+				}
+			}
+			break;
+		}
+
+		case GL_FLOAT_VEC4: {
+			vec4 val( 0.0f );
+			shader->getUniformValue( uniform.getName(), &val );
+			if( ImGui::DragFloat4( uniform.getName().c_str(), &val.x, 0.01f ) ) {
+				shader->uniform( location, val );
+				modified = true;
+			}
+			break;
+		}
+
+		case GL_INT: {
+			int val = 0;
+			shader->getUniformValue( uniform.getName(), &val );
+			if( ImGui::DragInt( uniform.getName().c_str(), &val ) ) {
+				shader->uniform( location, val );
+				modified = true;
+			}
+			break;
+		}
+
+		case GL_BOOL: {
+			bool val = false;
+			shader->getUniformValue( uniform.getName(), &val );
+			if( ImGui::Checkbox( uniform.getName().c_str(), &val ) ) {
+				shader->uniform( location, val );
+				modified = true;
+			}
+			break;
+		}
+
+		case GL_INT_VEC2: {
+			ivec2 val( 0 );
+			shader->getUniformValue( uniform.getName(), &val );
+			if( ImGui::DragInt2( uniform.getName().c_str(), &val.x ) ) {
+				shader->uniform( location, val );
+				modified = true;
+			}
+			break;
+		}
+
+		case GL_INT_VEC3: {
+			ivec3 val( 0 );
+			shader->getUniformValue( uniform.getName(), &val );
+			if( ImGui::DragInt3( uniform.getName().c_str(), &val.x ) ) {
+				shader->uniform( location, val );
+				modified = true;
+			}
+			break;
+		}
+
+		case GL_INT_VEC4: {
+			ivec4 val( 0 );
+			shader->getUniformValue( uniform.getName(), &val );
+			if( ImGui::DragInt4( uniform.getName().c_str(), &val.x ) ) {
+				shader->uniform( location, val );
+				modified = true;
+			}
+			break;
+		}
+
+		case GL_FLOAT_MAT4: {
+			ImGui::TextDisabled( "%s: mat4 (not editable)", uniform.getName().c_str() );
+			break;
+		}
+
+		case GL_FLOAT_MAT3: {
+			ImGui::TextDisabled( "%s: mat3 (not editable)", uniform.getName().c_str() );
+			break;
+		}
+
+		case GL_FLOAT_MAT2: {
+			ImGui::TextDisabled( "%s: mat2 (not editable)", uniform.getName().c_str() );
+			break;
+		}
+
+		case GL_SAMPLER_2D:
+		case GL_SAMPLER_CUBE:
+			ImGui::TextDisabled( "%s: sampler (not editable)", uniform.getName().c_str() );
+			break;
+
+		default:
+			ImGui::TextDisabled( "%s: 0x%04X (unsupported)", uniform.getName().c_str(), uniform.getType() );
+			break;
+	}
+
+	ImGui::PopID();
+	return modified;
+}
+
+// Uniform controls using bindings (additive mode with metadata hints)
 static bool ShaderUniformsWithBindings( const gl::GlslProgRef& shader, const std::vector<UniformBinding>& bindings )
 {
-	if( ! shader || bindings.empty() )
+	if( ! shader )
 		return false;
 
 	bool modified = false;
 
+	// Build map of uniform names to their metadata hints
+	std::map<std::string, UniformBinding> bindingMap;
 	for( const auto& binding : bindings ) {
-		// Find the uniform in the shader
-		GLint location = shader->getUniformLocation( binding.name );
-		if( location == -1 ) {
-			ImGui::TextDisabled( "%s (not found)", binding.name.c_str() );
-			continue;
+		bindingMap[binding.name] = binding;
+	}
+
+	// Render all uniforms, using metadata hints where available
+	const auto& activeUniforms = shader->getActiveUniforms();
+
+	// Separate into hinted and unhinted for better organization
+	std::vector<const gl::GlslProg::Uniform*> hintedUniforms;
+	std::vector<const gl::GlslProg::Uniform*> unhintedUniforms;
+
+	for( const auto& uniform : activeUniforms ) {
+		if( bindingMap.find( uniform.getName() ) != bindingMap.end() ) {
+			hintedUniforms.push_back( &uniform );
 		}
-
-		ImGui::PushID( location );
-
-		// Handle different uniform types
-		switch( binding.type ) {
-			case GL_FLOAT: {
-				float* pVal = static_cast<float*>( binding.ptr );
-				if( binding.hasRange ) {
-					if( ImGui::SliderFloat( binding.name.c_str(), pVal, binding.rangeMin, binding.rangeMax ) ) {
-						modified = true;
-					}
-				}
-				else {
-					if( ImGui::DragFloat( binding.name.c_str(), pVal, 0.01f ) ) {
-						modified = true;
-					}
-				}
-				shader->uniform( location, *pVal );
-				break;
-			}
-
-			case GL_FLOAT_VEC2: {
-				vec2* pVal = static_cast<vec2*>( binding.ptr );
-				if( ImGui::DragFloat2( binding.name.c_str(), &pVal->x, 0.01f ) ) {
-					modified = true;
-				}
-				shader->uniform( location, *pVal );
-				break;
-			}
-
-			case GL_FLOAT_VEC3: {
-				vec3* pVal = static_cast<vec3*>( binding.ptr );
-				if( binding.vec3Semantic == Vec3Semantic::COLOR ) {
-					// Treat as RGB color
-					if( ImGui::ColorEdit3( binding.name.c_str(), &pVal->x ) ) {
-						modified = true;
-					}
-				}
-				else {
-					// Treat as generic vector
-					if( ImGui::DragFloat3( binding.name.c_str(), &pVal->x, 0.1f ) ) {
-						modified = true;
-					}
-				}
-				shader->uniform( location, *pVal );
-				break;
-			}
-
-			case GL_FLOAT_VEC4: {
-				vec4* pVal = static_cast<vec4*>( binding.ptr );
-				if( ImGui::DragFloat4( binding.name.c_str(), &pVal->x, 0.01f ) ) {
-					modified = true;
-				}
-				shader->uniform( location, *pVal );
-				break;
-			}
-
-			case GL_INT: {
-				int* pVal = static_cast<int*>( binding.ptr );
-				if( ImGui::DragInt( binding.name.c_str(), pVal ) ) {
-					modified = true;
-				}
-				shader->uniform( location, *pVal );
-				break;
-			}
-
-			case GL_BOOL: {
-				bool* pVal = static_cast<bool*>( binding.ptr );
-				if( ImGui::Checkbox( binding.name.c_str(), pVal ) ) {
-					modified = true;
-				}
-				shader->uniform( location, *pVal );
-				break;
-			}
-
-			default:
-				ImGui::Text( "%s: 0x%04X (unsupported)", binding.name.c_str(), binding.type );
-				break;
+		else {
+			unhintedUniforms.push_back( &uniform );
 		}
+	}
 
-		ImGui::PopID();
+	// First, render uniforms with explicit metadata hints
+	for( const auto* uniform : hintedUniforms ) {
+		const auto& binding = bindingMap[uniform->getName()];
+		if( RenderUniformFromCache( shader, *uniform, binding.semantic, binding.hasRange, binding.rangeMin, binding.rangeMax ) ) {
+			modified = true;
+		}
+	}
+
+	// Then, auto-discover and render remaining uniforms
+	if( ! unhintedUniforms.empty() && ! hintedUniforms.empty() ) {
+		ImGui::Separator();
+		ImGui::Text( "Auto-discovered uniforms:" );
+	}
+
+	for( const auto* uniform : unhintedUniforms ) {
+		if( RenderUniformFromCache( shader, *uniform, UniformSemantic::DEFAULT, false, 0.0f, 0.0f ) ) {
+			modified = true;
+		}
 	}
 
 	return modified;

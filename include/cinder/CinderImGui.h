@@ -183,82 +183,59 @@ namespace ImGui {
 		~ScopedColumns();
 	};
 
-	//! Metadata hint for shader reflection - specifies semantic type of vec3 uniforms
-	enum class Vec3Semantic {
-		VECTOR,		//! Generic 3D vector (default)
-		COLOR,		//! RGB color value
+	//! Metadata hint for shader reflection - specifies semantic type of uniforms
+	enum class UniformSemantic {
+		DEFAULT,	//! Use default widget for this type
+		COLOR,		//! RGB/RGBA color value
 		POSITION,	//! 3D position
 		DIRECTION	//! Direction vector (normalized)
 	};
 
-	//! Uniform binding - binds app variables to shader uniforms with automatic type deduction
+	//! Uniform metadata hint - provides semantic information for shader uniforms
+	//! The uniform values are stored in GlslProg's backing store, not in app variables.
 	struct CI_API UniformBinding {
 		std::string name;
-		void* ptr;
-		GLenum type;
-		Vec3Semantic vec3Semantic = Vec3Semantic::VECTOR;
+		UniformSemantic semantic = UniformSemantic::DEFAULT;
 		float rangeMin = 0.0f;
 		float rangeMax = 0.0f;
 		bool hasRange = false;
 
-		// Automatic type deduction from pointer type
-		UniformBinding(const std::string& n, float* p)
-			: name(n), ptr(p), type(GL_FLOAT) {}
+		// Default constructor
+		UniformBinding() = default;
 
-		UniformBinding(const std::string& n, glm::vec2* p)
-			: name(n), ptr(p), type(GL_FLOAT_VEC2) {}
+		// Simple semantic hint
+		UniformBinding(const std::string& n, UniformSemantic semantic = UniformSemantic::DEFAULT)
+			: name(n), semantic(semantic) {}
 
-		UniformBinding(const std::string& n, glm::vec3* p)
-			: name(n), ptr(p), type(GL_FLOAT_VEC3) {}
-
-		UniformBinding(const std::string& n, glm::vec4* p)
-			: name(n), ptr(p), type(GL_FLOAT_VEC4) {}
-
-		UniformBinding(const std::string& n, ci::Colorf* p)
-			: name(n), ptr(p), type(GL_FLOAT_VEC3), vec3Semantic(Vec3Semantic::COLOR) {}
-
-		UniformBinding(const std::string& n, ci::ColorAf* p)
-			: name(n), ptr(p), type(GL_FLOAT_VEC4) {}
-
-		UniformBinding(const std::string& n, int* p)
-			: name(n), ptr(p), type(GL_INT) {}
-
-		UniformBinding(const std::string& n, bool* p)
-			: name(n), ptr(p), type(GL_BOOL) {}
-
-		// With range for float
-		UniformBinding(const std::string& n, float* p, float min, float max)
-			: name(n), ptr(p), type(GL_FLOAT), hasRange(true), rangeMin(min), rangeMax(max) {}
-
-		// With semantic override for vec3
-		UniformBinding(const std::string& n, glm::vec3* p, Vec3Semantic semantic)
-			: name(n), ptr(p), type(GL_FLOAT_VEC3), vec3Semantic(semantic) {}
+		// With range hint (for float uniforms)
+		UniformBinding(const std::string& n, float min, float max)
+			: name(n), hasRange(true), rangeMin(min), rangeMax(max) {}
 	};
 
 	//! Displays an interactive shader editor with compile button and uniform controls
 	//! Returns true if the shader was recompiled successfully. Handles compilation errors gracefully.
 	//! This is NOT a window - use it inside ImGui::Begin()/End() or other containers.
 	//!
-	//! Simple usage (no bindings - uniforms stored internally):
+	//! All uniform values are stored in GlslProg's backing store. The optional binding list is for
+	//! providing metadata hints (semantic types, ranges) for specific uniforms.
+	//!
+	//! Simple usage (auto-discover all uniforms):
 	//!   ImGui::Begin("Editor");
 	//!   ImGui::ShaderEditor( shader );
 	//!   ImGui::End();
 	//!
-	//! Advanced usage (with bindings - uniforms live in app):
+	//! Advanced usage (with semantic hints for specific uniforms):
 	//!   ImGui::Begin("Editor");
 	//!   ImGui::Text("FPS: %.1f", fps);
 	//!   ImGui::ShaderEditor( shader, {
-	//!       { "uAmbientColor", &mAmbientColor },           // Colorf* → automatic COLOR semantic
-	//!       { "uLightPos", &mLightPos },                   // vec3* → automatic VECTOR semantic
-	//!       { "uLightDir", &mLightDir, Vec3Semantic::DIRECTION }, // Override semantic
-	//!       { "uShininess", &mShininess, 1.0f, 128.0f }    // float* with range
+	//!       { "uLightDir", UniformSemantic::DIRECTION },    // vec3 treated as direction
+	//!       { "uAmbientColor", UniformSemantic::COLOR },    // vec3 treated as RGB color
+	//!       { "uShininess", 1.0f, 128.0f }                  // float with slider range
 	//!   });
 	//!   ImGui::End();
 	//!
-	//! DESIGN NOTE - UBO Future:
-	//! When Cinder moves to UBOs, this pattern naturally extends:
-	//!   ImGui::ShaderEditor( shader, ubo );
-	//! ShaderEditor will read/write the UBO buffer directly, maintaining the same design.
+	//! Uniforms not in the binding list will be auto-discovered with default widgets.
+	//! Uniform values persist across shader recompilation automatically.
 	CI_API bool	ShaderEditor( const ci::gl::GlslProgRef& shader, bool* pOpen = nullptr );
 	CI_API bool	ShaderEditor( const ci::gl::GlslProgRef& shader, const std::vector<UniformBinding>& bindings, bool* pOpen = nullptr );
 }

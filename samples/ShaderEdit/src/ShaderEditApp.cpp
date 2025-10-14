@@ -14,7 +14,6 @@ class ShaderEditApp : public App {
 	void setup() override;
 	void update() override;
 	void draw() override;
-	void keyDown( KeyEvent event ) override;
 
   private:
 	void createPhongShader();
@@ -24,21 +23,12 @@ class ShaderEditApp : public App {
 	CameraPersp			mCamera;
 	CameraUi			mCamUi;
 
-	// Uniform values - bound to ShaderEditor
-	Colorf				mAmbientColor = Colorf( 0.2f, 0.2f, 0.2f );
-	Colorf				mDiffuseColor = Colorf( 0.8f, 0.3f, 0.2f );
-	Colorf				mSpecularColor = Colorf( 1.0f, 1.0f, 1.0f );
-	vec3				mPointLightPosition = vec3( 5.0f, 5.0f, 5.0f );
-	vec3				mDirectionalLightDir = vec3( -0.2f, -1.0f, -0.3f );
-	Colorf				mDirectionalLightColor = Colorf( 0.3f, 0.3f, 0.4f );
-	float				mShininess = 32.0f;
-
 	float				mRotation = 0.0f;
 };
 
 void ShaderEditApp::setup()
 {
-	CI_LOG_I( "ShaderEdit Sample - Live Shader Editing with Bindings" );
+	CI_LOG_I( "ShaderEdit Sample - Live Shader Editing with Uniform Backing Store" );
 
 	// Setup camera
 	mCamera.lookAt( vec3( 3, 3, 3 ), vec3( 0 ) );
@@ -64,7 +54,17 @@ void ShaderEditApp::createPhongShader()
 	try {
 		mShader = gl::GlslProg::create( loadAsset( "phong.vert" ), loadAsset( "phong.frag" ) );
 		mShader->setLabel( "Phong Shader" );
-		CI_LOG_I( "Phong shader created successfully" );
+
+		// Set default uniform values
+		mShader->uniform( "uAmbientColor", vec3( 0.05f, 0.05f, 0.15f ) );       // Dark blue ambient
+		mShader->uniform( "uDiffuseColor", vec3( 0.8f, 0.3f, 0.2f ) );          // Orange-red diffuse
+		mShader->uniform( "uSpecularColor", vec3( 1.0f, 1.0f, 1.0f ) );         // White specular
+		mShader->uniform( "uPointLightPosition", vec3( 5.0f, 5.0f, 5.0f ) );    // Point light position
+		mShader->uniform( "uDirectionalLightDir", vec3( -0.2f, -1.0f, -0.3f ) );// Directional light
+		mShader->uniform( "uDirectionalLightColor", vec3( 0.3f, 0.3f, 0.4f ) ); // Bluish directional
+		mShader->uniform( "uShininess", 32.0f );                                 // Moderate shininess
+
+		CI_LOG_I( "Phong shader created successfully with default uniforms" );
 	}
 	catch( const gl::GlslProgCompileExc &exc ) {
 		CI_LOG_E( "Shader compile error: " << exc.what() );
@@ -84,7 +84,7 @@ void ShaderEditApp::draw()
 
 	if( mShader && mGeo ) {
 		// Draw rotating teapot
-		// Uniforms are automatically set by ShaderEditor from our bound variables
+		// Uniforms are stored in shader's backing store and automatically preserved across recompilation
 		gl::ScopedGlslProg shaderScope( mShader );
 		gl::ScopedModelMatrix modelScope;
 		gl::rotate( mRotation, vec3( 0, 1, 0 ) );
@@ -98,27 +98,25 @@ void ShaderEditApp::draw()
 	ImGui::Text( "FPS: %.1f", getAverageFps() );
 	ImGui::Separator();
 
-	// ShaderEditor embedded in our window!
+	// ShaderEditor with metadata hints for specific uniforms
+	// All uniforms are auto-discovered; we just provide hints for better widgets
 	ImGui::ShaderEditor( mShader, {
-		{ "uAmbientColor", &mAmbientColor },                       // Colorf* → auto COLOR
-		{ "uDiffuseColor", &mDiffuseColor },                       // Colorf* → auto COLOR
-		{ "uSpecularColor", &mSpecularColor },                     // Colorf* → auto COLOR
-		{ "uPointLightPosition", &mPointLightPosition },           // vec3* → auto VECTOR
-		{ "uDirectionalLightDir", &mDirectionalLightDir, ImGui::Vec3Semantic::DIRECTION }, // vec3* with DIRECTION override
-		{ "uDirectionalLightColor", &mDirectionalLightColor },     // Colorf* → auto COLOR
-		{ "uShininess", &mShininess, 1.0f, 128.0f }                // float* with range
+		{ "uDirectionalLightDir", ImGui::UniformSemantic::DIRECTION },
+		{ "uAmbientColor", ImGui::UniformSemantic::COLOR },
+		{ "uDiffuseColor", ImGui::UniformSemantic::COLOR },
+		{ "uSpecularColor", ImGui::UniformSemantic::COLOR },
+		{ "uDirectionalLightColor", ImGui::UniformSemantic::COLOR },
+		{ "uShininess", 1.0f, 128.0f }
 	});
+
+	// Alternatively, just call with empty hints to get default widgets for all uniforms
+	//	ImGui::ShaderEditor( mShader, {} );
 
 	ImGui::End();
 }
 
-void ShaderEditApp::keyDown( KeyEvent event )
-{
-	// No need for key handling - window can be closed normally
-}
-
 CINDER_APP( ShaderEditApp, RendererGl, []( App::Settings *settings ) {
 	settings->setWindowSize( 1400, 900 );
-	settings->setTitle( "ShaderEdit - Live Shader Editing with Bindings" );
+	settings->setTitle( "ShaderEdit - Live Shader Editing" );
 	settings->setHighDensityDisplayEnabled( false );
 } )

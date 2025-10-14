@@ -58,7 +58,7 @@ class UniformValueCache : cinder::Noncopyable {
 		for( uint32_t b = 0; b < bufferSize; ++b )
 			mValidBytes[b] = false;
 	}
-	
+
 	// 'uniformByteOffset' expresses where the first element of an array is: example[0], although 'arrayIndex' may be >0
 	bool shouldBuffer( uint32_t uniformByteOffset, uint32_t typeSize, int arrayIndex, int indexCount, const void* valuePointer )
 	{
@@ -70,9 +70,9 @@ class UniformValueCache : cinder::Noncopyable {
 				break;
 			}
 		}
-	
+
 		uint8_t* cachePtr = mBuffer.get() + uniformByteOffset + arrayIndex * typeSize;
-		
+
 		if( ! cacheValid ) { // if not, record it and cache it
 			for( uint32_t b = uniformByteOffset + arrayIndex * typeSize; b < uniformByteOffset + ( arrayIndex + indexCount ) * typeSize; ++b )
 				mValidBytes[b] = true;
@@ -91,7 +91,38 @@ class UniformValueCache : cinder::Noncopyable {
 			}
 		}
 	}
-	
+
+	// Query cached value - returns true if the value is valid (has been set)
+	bool getValue( uint32_t uniformByteOffset, uint32_t typeSize, int arrayIndex, int indexCount, void* outValuePointer ) const
+	{
+		// Check if all bytes in this range are valid
+		for( uint32_t b = uniformByteOffset + arrayIndex * typeSize; b < uniformByteOffset + ( arrayIndex + indexCount ) * typeSize; ++b ) {
+			if( mValidBytes[b] == false ) {
+				return false;
+			}
+		}
+
+		// Copy the cached value to output
+		const uint8_t* cachePtr = mBuffer.get() + uniformByteOffset + arrayIndex * typeSize;
+		memcpy( outValuePointer, cachePtr, typeSize * indexCount );
+		return true;
+	}
+
+	// Check if a uniform has a cached value
+	bool hasValue( uint32_t uniformByteOffset, uint32_t typeSize, int arrayIndex, int indexCount ) const
+	{
+		for( uint32_t b = uniformByteOffset + arrayIndex * typeSize; b < uniformByteOffset + ( arrayIndex + indexCount ) * typeSize; ++b ) {
+			if( mValidBytes[b] == false ) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	// Get raw buffer for bulk operations (e.g., preservation across recompile)
+	const uint8_t* getRawBuffer() const { return mBuffer.get(); }
+	uint32_t getBufferSize() const { return mBufferSize; }
+
   private:
 	std::vector<uint32_t>			mCachedByteOffsets;
 	std::unique_ptr<uint8_t[]>		mBuffer;
@@ -1210,6 +1241,155 @@ GLint GlslProg::getAttribSemanticLocation( geom::Attrib semantic ) const
         return -1;
 }
     
+//! Query cached uniform values
+bool GlslProg::getUniformValue( const std::string &name, bool *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, int *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, float *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+#if ! defined( CINDER_GL_ES_2 )
+bool GlslProg::getUniformValue( const std::string &name, uint32_t *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+#endif
+
+bool GlslProg::getUniformValue( const std::string &name, vec2 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, vec3 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, vec4 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, ivec2 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, ivec3 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, ivec4 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+#if ! defined( CINDER_GL_ES_2 )
+bool GlslProg::getUniformValue( const std::string &name, uvec2 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, uvec3 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, uvec4 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+#endif
+
+bool GlslProg::getUniformValue( const std::string &name, mat2 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, mat3 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
+bool GlslProg::getUniformValue( const std::string &name, mat4 *out ) const
+{
+	int uniformLocation = -1;
+	auto found = findUniform( name, &uniformLocation );
+	if( ! found || ! mUniformValueCache )
+		return false;
+	return mUniformValueCache->getValue( found->mBytePointer, found->mTypeSize, uniformLocation - found->mLoc, 1, out );
+}
+
 GLint GlslProg::getAttribLocation( const std::string &name ) const
 {
 	auto found = findAttrib( name );
@@ -2108,6 +2288,40 @@ bool GlslProg::recompile( const std::string &vertexSource, const std::string &fr
 		GLuint oldHandle = mHandle;
 		mHandle = newHandle;
 
+		// Preserve uniform values from old shader (before deleting it)
+		// Store as name->rawbytes map since uniform locations will change
+		std::map<std::string, std::vector<uint8_t>> savedUniformValues;
+		CI_LOG_I( "=== RECOMPILE START ===" );
+		if( mUniformValueCache ) {
+			for( const auto& uniform : mUniforms ) {
+				// Skip automatic Cinder matrices - they're set by gl::setMatrices() every frame
+				if( uniform.mSemantic != UniformSemantic::UNIFORM_USER_DEFINED ) {
+					CI_LOG_I( "  Skip auto: " << uniform.mName << " (semantic=" << uniform.mSemantic << ")" );
+					continue;
+				}
+
+				std::vector<uint8_t> data( uniform.mTypeSize * uniform.mCount );
+				// getValue handles array indexing internally, so pass the base pointer
+				if( mUniformValueCache->getValue( uniform.mBytePointer, uniform.mTypeSize, 0, uniform.mCount, data.data() ) ) {
+					savedUniformValues[uniform.mName] = std::move( data );
+					if( uniform.mType == GL_FLOAT_VEC3 ) {
+						const float* v = reinterpret_cast<const float*>( savedUniformValues[uniform.mName].data() );
+						CI_LOG_I( "  Save: " << uniform.mName << " = (" << v[0] << ", " << v[1] << ", " << v[2] << ")" );
+					}
+					else if( uniform.mType == GL_FLOAT ) {
+						const float* f = reinterpret_cast<const float*>( savedUniformValues[uniform.mName].data() );
+						CI_LOG_I( "  Save: " << uniform.mName << " = " << *f );
+					}
+					else {
+						CI_LOG_I( "  Save: " << uniform.mName << " (" << data.size() << " bytes)" );
+					}
+				}
+				else {
+					CI_LOG_I( "  Save FAILED: " << uniform.mName );
+				}
+			}
+		}
+
 		// Delete the old program
 		if( oldHandle )
 			glDeleteProgram( oldHandle );
@@ -2132,6 +2346,118 @@ bool GlslProg::recompile( const std::string &vertexSource, const std::string &fr
 #if defined( CINDER_GL_HAS_UNIFORM_BLOCKS )
 		cacheActiveUniformBlocks();
 #endif
+
+		// Restore uniform values that still exist in the new shader
+		CI_LOG_I( "=== RESTORE UNIFORMS ===" );
+		GLint currentProgram = 0;
+		glGetIntegerv( GL_CURRENT_PROGRAM, &currentProgram );
+		CI_LOG_I( "  Current program before bind: " << currentProgram );
+
+		// Use glUseProgram directly to bypass Context caching - Context still thinks old program is bound
+		glUseProgram( mHandle );
+		glGetIntegerv( GL_CURRENT_PROGRAM, &currentProgram );
+		CI_LOG_I( "  Current program after glUseProgram: " << currentProgram << " (our handle: " << mHandle << ")" );
+
+		for( const auto& uniform : mUniforms ) {
+			auto found = savedUniformValues.find( uniform.mName );
+			if( found != savedUniformValues.end() ) {
+				// Uniform still exists - restore its value
+				const auto& data = found->second;
+				// Make sure sizes match (might not if type changed)
+				if( data.size() == uniform.mTypeSize * uniform.mCount ) {
+					if( uniform.mType == GL_FLOAT_VEC3 ) {
+						const float* v = reinterpret_cast<const float*>( data.data() );
+						CI_LOG_I( "  Restore: " << uniform.mName << " = (" << v[0] << ", " << v[1] << ", " << v[2] << ") loc=" << uniform.mLoc );
+					}
+					else if( uniform.mType == GL_FLOAT ) {
+						const float* f = reinterpret_cast<const float*>( data.data() );
+						CI_LOG_I( "  Restore: " << uniform.mName << " = " << *f << " loc=" << uniform.mLoc );
+					}
+					else {
+						CI_LOG_I( "  Restore: " << uniform.mName << " loc=" << uniform.mLoc );
+					}
+					// Upload to GPU using raw OpenGL calls
+					switch( uniform.mType ) {
+						case GL_FLOAT:
+							glUniform1fv( uniform.mLoc, uniform.mCount, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_FLOAT_VEC2:
+							glUniform2fv( uniform.mLoc, uniform.mCount, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_FLOAT_VEC3:
+							glUniform3fv( uniform.mLoc, uniform.mCount, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_FLOAT_VEC4:
+							glUniform4fv( uniform.mLoc, uniform.mCount, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_INT:
+						case GL_BOOL:
+						case GL_SAMPLER_2D:
+						case GL_SAMPLER_CUBE:
+							glUniform1iv( uniform.mLoc, uniform.mCount, reinterpret_cast<const int*>( data.data() ) );
+							break;
+						case GL_INT_VEC2:
+						case GL_BOOL_VEC2:
+							glUniform2iv( uniform.mLoc, uniform.mCount, reinterpret_cast<const int*>( data.data() ) );
+							break;
+						case GL_INT_VEC3:
+						case GL_BOOL_VEC3:
+							glUniform3iv( uniform.mLoc, uniform.mCount, reinterpret_cast<const int*>( data.data() ) );
+							break;
+						case GL_INT_VEC4:
+						case GL_BOOL_VEC4:
+							glUniform4iv( uniform.mLoc, uniform.mCount, reinterpret_cast<const int*>( data.data() ) );
+							break;
+#if ! defined( CINDER_GL_ES_2 )
+						case GL_UNSIGNED_INT:
+							glUniform1uiv( uniform.mLoc, uniform.mCount, reinterpret_cast<const unsigned int*>( data.data() ) );
+							break;
+						case GL_UNSIGNED_INT_VEC2:
+							glUniform2uiv( uniform.mLoc, uniform.mCount, reinterpret_cast<const unsigned int*>( data.data() ) );
+							break;
+						case GL_UNSIGNED_INT_VEC3:
+							glUniform3uiv( uniform.mLoc, uniform.mCount, reinterpret_cast<const unsigned int*>( data.data() ) );
+							break;
+						case GL_UNSIGNED_INT_VEC4:
+							glUniform4uiv( uniform.mLoc, uniform.mCount, reinterpret_cast<const unsigned int*>( data.data() ) );
+							break;
+#endif
+						case GL_FLOAT_MAT2:
+							glUniformMatrix2fv( uniform.mLoc, uniform.mCount, GL_FALSE, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_FLOAT_MAT3:
+							glUniformMatrix3fv( uniform.mLoc, uniform.mCount, GL_FALSE, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_FLOAT_MAT4:
+							glUniformMatrix4fv( uniform.mLoc, uniform.mCount, GL_FALSE, reinterpret_cast<const float*>( data.data() ) );
+							break;
+					}
+					// Also update the cache so queries will work
+					if( mUniformValueCache ) {
+						// shouldBuffer handles array indexing internally, so pass the base pointer
+						mUniformValueCache->shouldBuffer( uniform.mBytePointer, uniform.mTypeSize, 0, uniform.mCount, data.data() );
+					}
+				}
+				else {
+					CI_LOG_W( "  SIZE MISMATCH: " << uniform.mName << " expected=" << (uniform.mTypeSize * uniform.mCount) << " got=" << data.size() );
+				}
+			}
+			else {
+				CI_LOG_I( "  Not in saved: " << uniform.mName << " (semantic=" << uniform.mSemantic << ")" );
+			}
+		}
+
+		// The shader is now bound with user uniforms restored.
+		// Set the automatic Cinder uniforms (matrices, etc.) to their current values
+		glGetIntegerv( GL_CURRENT_PROGRAM, &currentProgram );
+		CI_LOG_I( "=== CALLING setDefaultShaderVars, program=" << currentProgram << " ===" );
+		gl::setDefaultShaderVars();
+		glGetIntegerv( GL_CURRENT_PROGRAM, &currentProgram );
+		CI_LOG_I( "=== AFTER setDefaultShaderVars, program=" << currentProgram << " ===" );
+
+		// Update the Context's cached bound shader to reflect reality
+		// (we used glUseProgram directly, so Context doesn't know we're bound)
+		gl::context()->bindGlslProg( this );
 
 		// Restore label
 		setLabel( savedLabel );

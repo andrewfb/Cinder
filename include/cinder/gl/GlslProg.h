@@ -438,6 +438,28 @@ class CI_API GlslProg {
 	//! Returns a const pointer to the Uniform that matches \a name. Returns nullptr if the uniform doesn't exist. The uniform location (accounting for indices, like "example[2]") is stored in \a resultLocation if it's non-null.
 	const Uniform*					findUniform( const std::string &name, int *resultLocation ) const;
 
+	//! Query cached uniform values. Returns true if the value is available (has been set), false otherwise.
+	bool	getUniformValue( const std::string &name, bool *out ) const;
+	bool	getUniformValue( const std::string &name, int *out ) const;
+	bool	getUniformValue( const std::string &name, float *out ) const;
+#if ! defined( CINDER_GL_ES_2 )
+	bool	getUniformValue( const std::string &name, uint32_t *out ) const;
+#endif
+	bool	getUniformValue( const std::string &name, vec2 *out ) const;
+	bool	getUniformValue( const std::string &name, vec3 *out ) const;
+	bool	getUniformValue( const std::string &name, vec4 *out ) const;
+	bool	getUniformValue( const std::string &name, ivec2 *out ) const;
+	bool	getUniformValue( const std::string &name, ivec3 *out ) const;
+	bool	getUniformValue( const std::string &name, ivec4 *out ) const;
+#if ! defined( CINDER_GL_ES_2 )
+	bool	getUniformValue( const std::string &name, uvec2 *out ) const;
+	bool	getUniformValue( const std::string &name, uvec3 *out ) const;
+	bool	getUniformValue( const std::string &name, uvec4 *out ) const;
+#endif
+	bool	getUniformValue( const std::string &name, mat2 *out ) const;
+	bool	getUniformValue( const std::string &name, mat3 *out ) const;
+	bool	getUniformValue( const std::string &name, mat4 *out ) const;
+
 #if defined( CINDER_GL_HAS_UNIFORM_BLOCKS )
 	//! Analogous to glUniformBlockBinding()
 	void	uniformBlock( const std::string &name, GLint binding ) const;
