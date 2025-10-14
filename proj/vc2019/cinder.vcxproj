@@ -767,6 +767,7 @@
     <ClCompile Include="..\..\src\cinder\Channel.cpp" />
     <ClCompile Include="..\..\src\cinder\CinderAssert.cpp" />
     <ClCompile Include="..\..\src\cinder\CinderImGui.cpp" />
+    <ClCompile Include="..\..\src\cinder\CinderImGuiShaderEditor.cpp" />
     <ClCompile Include="..\..\src\cinder\Clipboard.cpp" />
     <ClCompile Include="..\..\src\cinder\Color.cpp" />
     <ClCompile Include="..\..\src\cinder\DataSource.cpp" />

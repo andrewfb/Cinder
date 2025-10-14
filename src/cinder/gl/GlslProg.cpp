@@ -640,6 +640,14 @@ GlslProg::GlslProg( const Format &format )
 	}
     
 	setLabel( format.getLabel() );
+
+	// Store shader sources for live editing
+	mVertexShaderSource = format.getVertex();
+	mFragmentShaderSource = format.getFragment();
+#if defined( CINDER_GL_HAS_GEOM_SHADER )
+	mGeometryShaderSource = format.getGeometry();
+#endif
+
 	gl::context()->glslProgCreated( this );
 }
 
@@ -1969,6 +1977,172 @@ void GlslProg::uniformMatFunc( int location, const mat4 *data, int count, bool t
 {
     ScopedGlslProg shaderBind( this );
     glUniformMatrix4fv( location, count, ( transpose ) ? GL_TRUE : GL_FALSE, glm::value_ptr( *data ) );
+}
+
+bool GlslProg::recompile( const std::string &vertexSource, const std::string &fragmentSource, const std::string &geometrySource, std::string *outError )
+{
+
+	// Store current label
+	std::string savedLabel = mLabel;
+
+	try {
+		// Create a new GL program in isolation
+		GLuint newHandle = glCreateProgram();
+
+		// Compile shaders with the new sources
+		GLuint vertexHandle = 0;
+		GLuint fragmentHandle = 0;
+		GLuint geometryHandle = 0;
+
+		if( ! vertexSource.empty() ) {
+			vertexHandle = glCreateShader( GL_VERTEX_SHADER );
+			const char *cStr = vertexSource.c_str();
+			glShaderSource( vertexHandle, 1, reinterpret_cast<const GLchar**>( &cStr ), NULL );
+			glCompileShader( vertexHandle );
+
+			GLint status;
+			glGetShaderiv( vertexHandle, GL_COMPILE_STATUS, &status );
+			if( status != GL_TRUE ) {
+				std::string log = getShaderLog( vertexHandle );
+				glDeleteShader( vertexHandle );
+				glDeleteProgram( newHandle );
+				if( outError )
+					*outError = "VERTEX: " + log;
+				return false;
+			}
+			glAttachShader( newHandle, vertexHandle );
+		}
+
+		if( ! fragmentSource.empty() ) {
+			fragmentHandle = glCreateShader( GL_FRAGMENT_SHADER );
+			const char *cStr = fragmentSource.c_str();
+			glShaderSource( fragmentHandle, 1, reinterpret_cast<const GLchar**>( &cStr ), NULL );
+			glCompileShader( fragmentHandle );
+
+			GLint status;
+			glGetShaderiv( fragmentHandle, GL_COMPILE_STATUS, &status );
+			if( status != GL_TRUE ) {
+				std::string log = getShaderLog( fragmentHandle );
+				glDeleteShader( fragmentHandle );
+				if( vertexHandle )
+					glDeleteShader( vertexHandle );
+				glDeleteProgram( newHandle );
+				if( outError )
+					*outError = "FRAGMENT: " + log;
+				return false;
+			}
+			glAttachShader( newHandle, fragmentHandle );
+		}
+
+#if defined( CINDER_GL_HAS_GEOM_SHADER )
+		if( ! geometrySource.empty() ) {
+			geometryHandle = glCreateShader( GL_GEOMETRY_SHADER );
+			const char *cStr = geometrySource.c_str();
+			glShaderSource( geometryHandle, 1, reinterpret_cast<const GLchar**>( &cStr ), NULL );
+			glCompileShader( geometryHandle );
+
+			GLint status;
+			glGetShaderiv( geometryHandle, GL_COMPILE_STATUS, &status );
+			if( status != GL_TRUE ) {
+				std::string log = getShaderLog( geometryHandle );
+				glDeleteShader( geometryHandle );
+				if( fragmentHandle )
+					glDeleteShader( fragmentHandle );
+				if( vertexHandle )
+					glDeleteShader( vertexHandle );
+				glDeleteProgram( newHandle );
+				if( outError )
+					*outError = "GEOMETRY: " + log;
+				return false;
+			}
+			glAttachShader( newHandle, geometryHandle );
+		}
+#endif
+
+		// Link the new program
+		glLinkProgram( newHandle );
+
+		GLint linkStatus;
+		glGetProgramiv( newHandle, GL_LINK_STATUS, &linkStatus );
+		if( linkStatus != GL_TRUE ) {
+			string log;
+			GLint logLength = 0;
+			GLint charsWritten = 0;
+			glGetProgramiv( newHandle, GL_INFO_LOG_LENGTH, &logLength );
+
+			if( logLength > 0 ) {
+				unique_ptr<GLchar[]> debugLog( new GLchar[logLength + 1] );
+				glGetProgramInfoLog( newHandle, logLength, &charsWritten, debugLog.get() );
+				log.append( debugLog.get(), 0, logLength );
+			}
+
+			// Clean up
+			if( geometryHandle )
+				glDeleteShader( geometryHandle );
+			if( fragmentHandle )
+				glDeleteShader( fragmentHandle );
+			if( vertexHandle )
+				glDeleteShader( vertexHandle );
+			glDeleteProgram( newHandle );
+
+			if( outError )
+				*outError = "LINK: " + log;
+			return false;
+		}
+
+		// Detach and delete shader objects (they're no longer needed after linking)
+		if( vertexHandle ) {
+			glDetachShader( newHandle, vertexHandle );
+			glDeleteShader( vertexHandle );
+		}
+		if( fragmentHandle ) {
+			glDetachShader( newHandle, fragmentHandle );
+			glDeleteShader( fragmentHandle );
+		}
+		if( geometryHandle ) {
+			glDetachShader( newHandle, geometryHandle );
+			glDeleteShader( geometryHandle );
+		}
+
+		// Success! Now swap out the old program for the new one
+		GLuint oldHandle = mHandle;
+		mHandle = newHandle;
+
+		// Delete the old program
+		if( oldHandle )
+			glDeleteProgram( oldHandle );
+
+		// Update stored source code
+		mVertexShaderSource = vertexSource;
+		mFragmentShaderSource = fragmentSource;
+#if defined( CINDER_GL_HAS_GEOM_SHADER )
+		mGeometryShaderSource = geometrySource;
+#endif
+
+		// Re-cache uniforms and attributes
+		mAttributes.clear();
+		mUniforms.clear();
+		mUniformValueCache.reset();
+#if defined( CINDER_GL_HAS_UNIFORM_BLOCKS )
+		mUniformBlocks.clear();
+#endif
+
+		cacheActiveAttribs();
+		cacheActiveUniforms();
+#if defined( CINDER_GL_HAS_UNIFORM_BLOCKS )
+		cacheActiveUniformBlocks();
+#endif
+
+		// Restore label
+		setLabel( savedLabel );
+
+		return true;
+	}
+	catch( const std::exception &exc ) {
+		if( outError )
+			*outError = exc.what();
+		return false;
+	}
 }
 
 std::ostream& operator<<( std::ostream &os, const GlslProg &rhs )

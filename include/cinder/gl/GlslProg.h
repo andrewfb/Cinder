@@ -93,18 +93,18 @@ class CI_API GlslProg {
 		GLenum				getType() const { return mType; }
 		//! Returns the defined UniformSemantic.
 		UniformSemantic		getUniformSemantic() const { return mSemantic; }
-		
+
 	  private:
 		std::string		mName;
 		GLint			mCount = 0, mLoc = -1, mIndex = -1;
 		GLenum			mType = ~0u;
 		UniformSemantic mSemantic = UniformSemantic::UNIFORM_USER_DEFINED;
-		
+
 		//! Used internally for the value cache. Size of a single element.
 		GLint			mTypeSize = 0;
 		//! Used internally for the value cache.
 		GLint			mBytePointer = 0;
-		
+
 		friend class GlslProg;
 	};
 	
@@ -468,6 +468,17 @@ class CI_API GlslProg {
 	//! Sets the debugging label associated with the Program. Calls glObjectLabel() when available.
 	void				setLabel( const std::string &label );
 
+	//! Returns the original vertex shader source code (for live editing)
+	const std::string&	getVertexShaderSource() const { return mVertexShaderSource; }
+	//! Returns the original fragment shader source code (for live editing)
+	const std::string&	getFragmentShaderSource() const { return mFragmentShaderSource; }
+	//! Returns the original geometry shader source code (for live editing)
+	const std::string&	getGeometryShaderSource() const { return mGeometryShaderSource; }
+
+	//! Recompiles the shader with new source code in-place
+	//! Returns true if successful. On failure, the original shader remains active and error is returned via outError
+	bool				recompile( const std::string &vertexSource, const std::string &fragmentSource, const std::string &geometrySource, std::string *outError = nullptr );
+
   protected:
 	GlslProg( const Format &format );
 
@@ -563,6 +574,11 @@ class CI_API GlslProg {
 	mutable std::set<int>					mLoggedUniformLocations;
 	std::string								mLabel; // debug label
 	std::vector<fs::path>					mShaderPreprocessorIncludedFiles;
+
+	// Store original shader sources for live editing
+	std::string								mVertexShaderSource;
+	std::string								mFragmentShaderSource;
+	std::string								mGeometryShaderSource;
 
 	friend class Context;
 	friend CI_API std::ostream& operator<<( std::ostream &os, const GlslProg &rhs );
