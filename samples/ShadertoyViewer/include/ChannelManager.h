@@ -3,7 +3,14 @@
 #include "cinder/gl/Texture.h"
 #include "cinder/Color.h"
 #include "cinder/app/App.h"
-#include <filesystem>
+#include "cinder/Filesystem.h"
+
+// Texture types supported by channels
+enum class TextureType {
+	Texture2D,
+	TextureCube,
+	Texture3D
+};
 
 // Procedural texture types
 enum class ProceduralType {
@@ -17,12 +24,15 @@ enum class ProceduralType {
 
 // Channel configuration for texture inputs
 struct ChannelConfig {
-	ci::gl::TextureRef	texture;
-	std::filesystem::path path;
-	bool			filterLinear = true;	// false = nearest
-	bool			wrapRepeat = true;		// false = clamp
-	ci::vec3		resolution;				// width, height, 1.0
-	float			time = 0.0f;			// channel playback time
+	ci::gl::TextureRef			texture;		// For 2D textures
+	ci::gl::TextureCubeMapRef	textureCube;	// For cubemap textures
+	ci::gl::Texture3dRef		texture3d;		// For 3D textures
+	TextureType					textureType = TextureType::Texture2D;
+	ci::fs::path				path;
+	bool						filterLinear = true;	// false = nearest
+	bool						wrapRepeat = true;		// false = clamp
+	ci::vec3					resolution;				// width, height, depth
+	float						time = 0.0f;			// channel playback time
 
 	// Cache for texture state to avoid redundant GL calls
 	bool			lastFilterLinear = true;
@@ -45,7 +55,9 @@ public:
 
 	// Channel management
 	void createDefaultTexture( int channelIndex );
-	void loadChannelTexture( int channelIndex, const std::filesystem::path &path );
+	void loadChannelTexture( int channelIndex, const ci::fs::path &path );
+	void loadChannelCubemap( int channelIndex, const ci::fs::path &path );
+	void loadChannelCubemapFaces( int channelIndex, const std::vector<ci::fs::path> &faces );
 	void generateProceduralTexture( int channelIndex );
 
 	// Access

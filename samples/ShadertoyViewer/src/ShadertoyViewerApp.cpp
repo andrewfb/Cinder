@@ -218,24 +218,73 @@ void ShadertoyViewerApp::updateUniforms()
 	for( int i = 0; i < 4; ++i ) {
 		auto& channel = mChannelManager.getChannel( i );
 
-		if( channel.texture ) {
-			auto& tex = channel.texture;
+		// Handle different texture types
+		switch( channel.textureType ) {
+			case TextureType::Texture2D:
+				if( channel.texture ) {
+					auto& tex = channel.texture;
 
-			// Only update filter/wrap modes if they changed (avoid redundant GL calls)
-			if( channel.filterLinear != channel.lastFilterLinear ) {
-				tex->setMinFilter( channel.filterLinear ? GL_LINEAR : GL_NEAREST );
-				tex->setMagFilter( channel.filterLinear ? GL_LINEAR : GL_NEAREST );
-				channel.lastFilterLinear = channel.filterLinear;
-			}
+					// Only update filter/wrap modes if they changed (avoid redundant GL calls)
+					if( channel.filterLinear != channel.lastFilterLinear ) {
+						tex->setMinFilter( channel.filterLinear ? GL_LINEAR : GL_NEAREST );
+						tex->setMagFilter( channel.filterLinear ? GL_LINEAR : GL_NEAREST );
+						channel.lastFilterLinear = channel.filterLinear;
+					}
 
-			if( channel.wrapRepeat != channel.lastWrapRepeat ) {
-				tex->setWrap( channel.wrapRepeat ? GL_REPEAT : GL_CLAMP_TO_EDGE,
-							  channel.wrapRepeat ? GL_REPEAT : GL_CLAMP_TO_EDGE );
-				channel.lastWrapRepeat = channel.wrapRepeat;
-			}
+					if( channel.wrapRepeat != channel.lastWrapRepeat ) {
+						tex->setWrap( channel.wrapRepeat ? GL_REPEAT : GL_CLAMP_TO_EDGE,
+									  channel.wrapRepeat ? GL_REPEAT : GL_CLAMP_TO_EDGE );
+						channel.lastWrapRepeat = channel.wrapRepeat;
+					}
 
-			// Bind texture to unit i
-			tex->bind( (uint8_t)i );
+					// Bind texture to unit i
+					tex->bind( (uint8_t)i );
+				}
+				break;
+
+			case TextureType::TextureCube:
+				if( channel.textureCube ) {
+					auto& tex = channel.textureCube;
+
+					// Only update filter/wrap modes if they changed
+					if( channel.filterLinear != channel.lastFilterLinear ) {
+						tex->setMinFilter( channel.filterLinear ? GL_LINEAR : GL_NEAREST );
+						tex->setMagFilter( channel.filterLinear ? GL_LINEAR : GL_NEAREST );
+						channel.lastFilterLinear = channel.filterLinear;
+					}
+
+					if( channel.wrapRepeat != channel.lastWrapRepeat ) {
+						tex->setWrap( channel.wrapRepeat ? GL_REPEAT : GL_CLAMP_TO_EDGE,
+									  channel.wrapRepeat ? GL_REPEAT : GL_CLAMP_TO_EDGE );
+						channel.lastWrapRepeat = channel.wrapRepeat;
+					}
+
+					// Bind cubemap to unit i
+					tex->bind( (uint8_t)i );
+				}
+				break;
+
+			case TextureType::Texture3D:
+				if( channel.texture3d ) {
+					auto& tex = channel.texture3d;
+
+					// Only update filter/wrap modes if they changed
+					if( channel.filterLinear != channel.lastFilterLinear ) {
+						tex->setMinFilter( channel.filterLinear ? GL_LINEAR : GL_NEAREST );
+						tex->setMagFilter( channel.filterLinear ? GL_LINEAR : GL_NEAREST );
+						channel.lastFilterLinear = channel.filterLinear;
+					}
+
+					if( channel.wrapRepeat != channel.lastWrapRepeat ) {
+						tex->setWrap( channel.wrapRepeat ? GL_REPEAT : GL_CLAMP_TO_EDGE,
+									  channel.wrapRepeat ? GL_REPEAT : GL_CLAMP_TO_EDGE );
+						channel.lastWrapRepeat = channel.wrapRepeat;
+					}
+
+					// Bind 3D texture to unit i
+					tex->bind( (uint8_t)i );
+				}
+				break;
 		}
 	}
 
@@ -307,10 +356,25 @@ std::string ShadertoyViewerApp::wrapShaderSource( const std::string& userFragmen
 	ss << "uniform float     iFrameRate;\n";
 	ss << "uniform vec4      iMouse;\n";
 	ss << "uniform vec4      iDate;\n";
-	ss << "uniform sampler2D iChannel0;\n";
-	ss << "uniform sampler2D iChannel1;\n";
-	ss << "uniform sampler2D iChannel2;\n";
-	ss << "uniform sampler2D iChannel3;\n";
+
+	// Declare correct sampler types based on loaded textures
+	for( int i = 0; i < 4; ++i ) {
+		const auto& channel = mChannelManager.getChannel( i );
+		std::string channelName = "iChannel" + std::to_string( i );
+
+		switch( channel.textureType ) {
+			case TextureType::Texture2D:
+				ss << "uniform sampler2D " << channelName << ";\n";
+				break;
+			case TextureType::TextureCube:
+				ss << "uniform samplerCube " << channelName << ";\n";
+				break;
+			case TextureType::Texture3D:
+				ss << "uniform sampler3D " << channelName << ";\n";
+				break;
+		}
+	}
+
 	ss << "uniform vec3      iChannelResolution[4];\n";
 	ss << "uniform float     iChannelTime[4];\n";
 	ss << "\n";

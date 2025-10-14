@@ -52,21 +52,86 @@ void ChannelManager::createDefaultTexture( int channelIndex )
 	mChannels[channelIndex].path = "[default checkerboard]";
 }
 
-void ChannelManager::loadChannelTexture( int channelIndex, const std::filesystem::path &path )
+void ChannelManager::loadChannelTexture( int channelIndex, const ci::fs::path &path )
 {
 	if( channelIndex < 0 || channelIndex >= 4 )
 		return;
 
 	try {
 		auto img = loadImage( path );
-		mChannels[channelIndex].texture = gl::Texture::create( img );
-		mChannels[channelIndex].resolution = vec3( img->getWidth(), img->getHeight(), 1.0f );
+		Surface8u surface( img );
+
+		mChannels[channelIndex].texture = gl::Texture::create( surface );
+		mChannels[channelIndex].textureCube = nullptr;
+		mChannels[channelIndex].texture3d = nullptr;
+		mChannels[channelIndex].textureType = TextureType::Texture2D;
+		mChannels[channelIndex].resolution = vec3( surface.getWidth(), surface.getHeight(), 1.0f );
 		mChannels[channelIndex].path = path;
 		mChannels[channelIndex].proceduralType = ProceduralType::FileTexture;
 		CI_LOG_I( "Loaded texture for channel " << channelIndex << ": " << path );
 	}
 	catch( const std::exception &exc ) {
 		CI_LOG_E( "Failed to load texture: " << exc.what() );
+	}
+}
+
+void ChannelManager::loadChannelCubemap( int channelIndex, const ci::fs::path &path )
+{
+	if( channelIndex < 0 || channelIndex >= 4 )
+		return;
+
+	try {
+		// Load image and automatically infer cubemap layout (horizontal cross, vertical cross, row, or column)
+		auto img = loadImage( path );
+
+		// Create cubemap - automatically infers layout based on aspect ratio
+		auto cubeMap = gl::TextureCubeMap::create( img, gl::TextureCubeMap::Format().mipmap() );
+
+		mChannels[channelIndex].texture = nullptr;
+		mChannels[channelIndex].textureCube = cubeMap;
+		mChannels[channelIndex].texture3d = nullptr;
+		mChannels[channelIndex].textureType = TextureType::TextureCube;
+		mChannels[channelIndex].resolution = vec3( (float)cubeMap->getWidth(), (float)cubeMap->getHeight(), 1.0f );
+		mChannels[channelIndex].path = path;
+		mChannels[channelIndex].proceduralType = ProceduralType::FileTexture;
+		CI_LOG_I( "Loaded cubemap for channel " << channelIndex << ": " << path );
+	}
+	catch( const std::exception &exc ) {
+		CI_LOG_E( "Failed to load cubemap: " << exc.what() );
+	}
+}
+
+void ChannelManager::loadChannelCubemapFaces( int channelIndex, const std::vector<ci::fs::path> &faces )
+{
+	if( channelIndex < 0 || channelIndex >= 4 )
+		return;
+
+	if( faces.size() != 6 ) {
+		CI_LOG_E( "Cubemap requires exactly 6 face images (got " << faces.size() << ")" );
+		return;
+	}
+
+	try {
+		// Load all 6 faces in order: +X, -X, +Y, -Y, +Z, -Z
+		ImageSourceRef images[6];
+		for( int i = 0; i < 6; ++i ) {
+			images[i] = loadImage( faces[i] );
+		}
+
+		// Create cubemap from faces (expects images ordered { +X, -X, +Y, -Y, +Z, -Z })
+		auto cubeMap = gl::TextureCubeMap::create( images, gl::TextureCubeMap::Format().mipmap() );
+
+		mChannels[channelIndex].texture = nullptr;
+		mChannels[channelIndex].textureCube = cubeMap;
+		mChannels[channelIndex].texture3d = nullptr;
+		mChannels[channelIndex].textureType = TextureType::TextureCube;
+		mChannels[channelIndex].resolution = vec3( (float)cubeMap->getWidth(), (float)cubeMap->getHeight(), 1.0f );
+		mChannels[channelIndex].path = "[Cubemap from 6 faces]";
+		mChannels[channelIndex].proceduralType = ProceduralType::FileTexture;
+		CI_LOG_I( "Loaded cubemap from 6 faces for channel " << channelIndex );
+	}
+	catch( const std::exception &exc ) {
+		CI_LOG_E( "Failed to load cubemap faces: " << exc.what() );
 	}
 }
 
@@ -203,6 +268,7 @@ void ChannelManager::generateProceduralTexture( int channelIndex )
 	}
 
 	ch.texture = gl::Texture::create( surface );
+	ch.textureType = TextureType::Texture2D;
 	ch.resolution = vec3( size, size, 1.0f );
 }
 
@@ -305,12 +371,40 @@ void ChannelManager::drawChannelsPane( bool *pOpen, App *app )
 				}
 
 				case ProceduralType::FileTexture: {
-					if( ImGui::Button( "Load Texture File" ) ) {
+					// Display current texture type prominently
+					const char* textureTypeStr = "Unknown";
+					ImVec4 typeColor = ImVec4( 1.0f, 1.0f, 1.0f, 1.0f );
+					switch( mChannels[i].textureType ) {
+						case TextureType::Texture2D:
+							textureTypeStr = "2D Texture";
+							typeColor = ImVec4( 0.4f, 0.8f, 1.0f, 1.0f );  // Light blue
+							break;
+						case TextureType::TextureCube:
+							textureTypeStr = "Cubemap";
+							typeColor = ImVec4( 1.0f, 0.7f, 0.3f, 1.0f );  // Orange
+							break;
+						case TextureType::Texture3D:
+							textureTypeStr = "3D Texture";
+							typeColor = ImVec4( 0.7f, 1.0f, 0.4f, 1.0f );  // Green
+							break;
+					}
+					ImGui::TextColored( typeColor, "Type: %s", textureTypeStr );
+
+					// Load buttons
+					if( ImGui::Button( "Load 2D Texture" ) ) {
 						auto path = app->getOpenFilePath( "", ImageIo::getLoadExtensions() );
 						if( !path.empty() ) {
 							loadChannelTexture( i, path );
 						}
 					}
+					ImGui::SameLine();
+					if( ImGui::Button( "Load Cubemap" ) ) {
+						auto path = app->getOpenFilePath( "", ImageIo::getLoadExtensions() );
+						if( !path.empty() ) {
+							loadChannelCubemap( i, path );
+						}
+					}
+
 					break;
 				}
 			}
