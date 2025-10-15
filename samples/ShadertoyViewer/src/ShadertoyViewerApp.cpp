@@ -16,7 +16,6 @@
 #include "cinder/Utilities.h"
 #include "ChannelManager.h"
 #include <algorithm>
-#include <chrono>
 #include <ctime>
 
 using namespace ci;
@@ -44,6 +43,9 @@ class ShadertoyViewerApp : public App {
 	void renderShaderToFbo();
 	void updateUniforms();
 	gl::Fbo::Format createFboFormat();
+
+	// Timing
+	void updateTimekeeping();
 
 	// ImGui interface
 	void drawGui();
@@ -73,13 +75,11 @@ class ShadertoyViewerApp : public App {
 	int				mErrorLine = -1; // Line number of compile error (-1 = none)
 
 	// Playback state
-	bool										   mPaused = false;
-	float										   mTime = 0.0f;
-	float										   mTimeDelta = 0.0f;
-	int											   mFrame = 0;
-	float										   mTimeScale = 1.0f;
-	float										   mFrameRate = 60.0f;
-	std::chrono::high_resolution_clock::time_point mLastFrameTime;
+	bool   mPaused = false;
+	double mTime = 0.0;
+	double mLastUpdateTime = 0.0;
+	int    mFrame = 0;
+	float  mTimeScale = 1.0f;
 
 	// Rendering state
 	ivec2 mRenderResolution = ivec2( 1280, 720 );
@@ -90,6 +90,9 @@ class ShadertoyViewerApp : public App {
 	// Mouse state (Shadertoy convention: xy = current pos, zw = click pos)
 	vec4 mMouseState = vec4( 0.0f );
 	bool mMouseDown = false;
+
+	// Date state (cached per frame)
+	vec4 mDate = vec4( 0.0f );
 
 	// Channel manager
 	ChannelManager mChannelManager;
@@ -114,8 +117,8 @@ void ShadertoyViewerApp::setup()
 	ImGuiIO& io = ImGui::GetIO();
 	io.FontGlobalScale = 1.3f;
 
-	// Initialize timer
-	mLastFrameTime = std::chrono::high_resolution_clock::now();
+	// Initialize timer using Cinder's built-in timer
+	mLastUpdateTime = getElapsedSeconds();
 
 	// Create initial FBO
 	mRenderFbo = gl::Fbo::create( mRenderResolution.x, mRenderResolution.y, createFboFormat() );
@@ -134,29 +137,7 @@ void ShadertoyViewerApp::setup()
 
 void ShadertoyViewerApp::update()
 {
-	// Calculate timing
-	auto						 now = std::chrono::high_resolution_clock::now();
-	std::chrono::duration<float> elapsed = now - mLastFrameTime;
-	mTimeDelta = elapsed.count();
-	mLastFrameTime = now;
-
-	// Update frame rate measurement
-	if( mTimeDelta > 0.0f )
-		mFrameRate = 0.9f * mFrameRate + 0.1f * ( 1.0f / mTimeDelta );
-
-	// Update time and frame counter
-	if( ! mPaused ) {
-		mTime += mTimeDelta * mTimeScale;
-		mFrame++;
-
-		// Advance iChannelTime ONLY for time-dependent sources (videos, buffers)
-		// Static images/cubemaps stay at 0.0 for Shadertoy parity
-		for( int i = 0; i < 4; ++i ) {
-			if( mChannelManager.getChannel( i ).timeDependent ) {
-				mChannelManager.getChannel( i ).time += mTimeDelta * mTimeScale;
-			}
-		}
-	}
+	updateTimekeeping();
 
 	// Recreate FBO if resolution or supersampling changed
 	if( mResolutionChanged || mSupersampleChanged ) {
@@ -182,10 +163,44 @@ void ShadertoyViewerApp::update()
 	}
 }
 
+void ShadertoyViewerApp::updateTimekeeping()
+{
+	// Calculate timing delta using Cinder's built-in timer (double precision)
+	double currentTime = getElapsedSeconds();
+	double timeDelta = currentTime - mLastUpdateTime;
+	mLastUpdateTime = currentTime;
+
+	// Update time and frame counter
+	if( ! mPaused ) {
+		mTime += timeDelta * mTimeScale;
+		mFrame++;
+
+		// Advance iChannelTime ONLY for time-dependent sources (videos, buffers)
+		// Static images/cubemaps stay at 0.0 for Shadertoy parity
+		for( int i = 0; i < 4; ++i ) {
+			if( mChannelManager.getChannel( i ).timeDependent ) {
+				mChannelManager.getChannel( i ).time += (float)( timeDelta * mTimeScale );
+			}
+		}
+	}
+
+	// Update iDate once per frame (used by both shader uniform and GUI)
+	auto	t = std::time( nullptr );
+	std::tm tm;
+#if defined( CINDER_MSW )
+	localtime_s( &tm, &t );
+#else
+	tm = *std::localtime( &t );
+#endif
+	float seconds = tm.tm_hour * 3600.0f + tm.tm_min * 60.0f + tm.tm_sec;
+	mDate = vec4( (float)( tm.tm_year + 1900 ), (float)( tm.tm_mon + 1 ), (float)tm.tm_mday, seconds );
+}
+
 gl::Fbo::Format ShadertoyViewerApp::createFboFormat()
 {
 	gl::Fbo::Format format;
 	format.setSamples( 0 );
+	format.disableDepth(); // No depth testing needed for fullscreen quad
 
 	gl::Texture2d::Format texFormat;
 	texFormat.setInternalFormat( GL_RGBA8 );
@@ -230,7 +245,7 @@ void ShadertoyViewerApp::renderShaderToFbo()
 	gl::ScopedMatrices	  matrices;
 	gl::setMatricesWindow( mRenderFbo->getSize() );
 
-	gl::clear( Color( 0, 0, 0 ) );
+	// No clear needed - Shadertoy shaders write every pixel
 
 	// Update uniforms
 	updateUniforms();
@@ -239,11 +254,24 @@ void ShadertoyViewerApp::renderShaderToFbo()
 	gl::ScopedGlslProg shader( mShaderProg );
 	gl::drawSolidRect( Rectf( 0, 0, (float)mRenderFbo->getWidth(), (float)mRenderFbo->getHeight() ) );
 
-	// Unbind all channel textures to avoid conflicts when drawing FBO to screen
+	// Unbind channel textures to avoid conflicts when drawing FBO to screen
+	// Only unbind the specific texture type that was bound for each channel
 	for( int i = 0; i < 4; ++i ) {
-		gl::context()->bindTexture( GL_TEXTURE_2D, 0, i );
-		gl::context()->bindTexture( GL_TEXTURE_CUBE_MAP, 0, i );
-		gl::context()->bindTexture( GL_TEXTURE_3D, 0, i );
+		const auto& channel = mChannelManager.getChannel( i );
+		switch( channel.textureType ) {
+			case TextureType::Texture2D:
+				if( channel.texture )
+					gl::context()->bindTexture( GL_TEXTURE_2D, 0, i );
+				break;
+			case TextureType::TextureCube:
+				if( channel.textureCube )
+					gl::context()->bindTexture( GL_TEXTURE_CUBE_MAP, 0, i );
+				break;
+			case TextureType::Texture3D:
+				if( channel.texture3d )
+					gl::context()->bindTexture( GL_TEXTURE_3D, 0, i );
+				break;
+		}
 	}
 }
 
@@ -333,33 +361,25 @@ void ShadertoyViewerApp::updateUniforms()
 	mShaderProg->uniform( "iResolution", vec3( (float)actualResolution.x, (float)actualResolution.y, 1.0f ) );
 
 	// iTime: shader playback time in seconds
-	mShaderProg->uniform( "iTime", mTime );
+	mShaderProg->uniform( "iTime", (float)mTime );
 
 	// iTimeDelta: time since last frame
-	mShaderProg->uniform( "iTimeDelta", mTimeDelta );
+	float timeDelta = (float)( getElapsedSeconds() - mLastUpdateTime );
+	mShaderProg->uniform( "iTimeDelta", timeDelta );
 
 	// iFrame: frame counter
 	mShaderProg->uniform( "iFrame", mFrame );
 
 	// iFrameRate: frames per second
-	mShaderProg->uniform( "iFrameRate", mFrameRate );
+	mShaderProg->uniform( "iFrameRate", getAverageFps() );
 
 	// iMouse: xy = current position, zw = click position (scaled for supersampling)
 	float supersampleScale = mSupersample ? 2.0f : 1.0f;
 	vec4 scaledMouseState = mMouseState * supersampleScale;
 	mShaderProg->uniform( "iMouse", scaledMouseState );
 
-	// iDate: year, month, day, time in seconds
-	auto	t = std::time( nullptr );
-	std::tm tm;
-#if defined( CINDER_MSW )
-	localtime_s( &tm, &t );
-#else
-	tm = *std::localtime( &t );
-#endif
-	float seconds = tm.tm_hour * 3600.0f + tm.tm_min * 60.0f + tm.tm_sec;
-	vec4  date( (float)( tm.tm_year + 1900 ), (float)( tm.tm_mon + 1 ), (float)tm.tm_mday, seconds );
-	mShaderProg->uniform( "iDate", date );
+	// iDate: year, month, day, time in seconds (computed once per frame in update())
+	mShaderProg->uniform( "iDate", mDate );
 
 	// iChannel texture unit uniforms
 	for( int i = 0; i < 4; ++i ) {
@@ -478,9 +498,8 @@ void ShadertoyViewerApp::compileShader( const std::string& fragmentSource )
 			size_t lineEnd = log.find( ":", lineStart );
 			if( lineEnd != std::string::npos ) {
 				try {
-					int wrappedLine = std::stoi( log.substr( lineStart, lineEnd - lineStart ) );
-					// Account for wrapper lines (version, uniforms, etc - approximately 16 lines)
-					mErrorLine = std::max( 1, wrappedLine - 16 );
+					// Line numbers now match user code thanks to #line directive
+					mErrorLine = std::stoi( log.substr( lineStart, lineEnd - lineStart ) );
 				}
 				catch( ... ) {
 					mErrorLine = -1;
@@ -536,10 +555,14 @@ void ShadertoyViewerApp::openShaderDialog()
 
 void ShadertoyViewerApp::mouseMove( MouseEvent event )
 {
-	// Normalize mouse coordinates to framebuffer resolution, not window size
-	// Clamp to framebuffer bounds
-	float x = glm::clamp( (float)event.getX(), 0.0f, (float)mRenderResolution.x );
-	float y = glm::clamp( (float)event.getY(), 0.0f, (float)mRenderResolution.y );
+	// Account for HiDPI displays by using content scale
+	float contentScale = getWindowContentScale();
+	float x = event.getX() * contentScale;
+	float y = event.getY() * contentScale;
+
+	// Clamp to render bounds
+	x = glm::clamp( x, 0.0f, (float)mRenderResolution.x );
+	y = glm::clamp( y, 0.0f, (float)mRenderResolution.y );
 
 	mMouseState.x = x;
 	mMouseState.y = (float)mRenderResolution.y - y; // Flip Y to match Shadertoy
@@ -549,8 +572,10 @@ void ShadertoyViewerApp::mouseDown( MouseEvent event )
 {
 	mMouseDown = true;
 
-	float x = glm::clamp( (float)event.getX(), 0.0f, (float)mRenderResolution.x );
-	float y = glm::clamp( (float)event.getY(), 0.0f, (float)mRenderResolution.y );
+	// Account for HiDPI displays
+	float contentScale = getWindowContentScale();
+	float x = glm::clamp( event.getX() * contentScale, 0.0f, (float)mRenderResolution.x );
+	float y = glm::clamp( event.getY() * contentScale, 0.0f, (float)mRenderResolution.y );
 
 	mMouseState.x = x;
 	mMouseState.y = (float)mRenderResolution.y - y;
@@ -561,8 +586,10 @@ void ShadertoyViewerApp::mouseDown( MouseEvent event )
 void ShadertoyViewerApp::mouseDrag( MouseEvent event )
 {
 	if( mMouseDown ) {
-		float x = glm::clamp( (float)event.getX(), 0.0f, (float)mRenderResolution.x );
-		float y = glm::clamp( (float)event.getY(), 0.0f, (float)mRenderResolution.y );
+		// Account for HiDPI displays
+		float contentScale = getWindowContentScale();
+		float x = glm::clamp( event.getX() * contentScale, 0.0f, (float)mRenderResolution.x );
+		float y = glm::clamp( event.getY() * contentScale, 0.0f, (float)mRenderResolution.y );
 
 		mMouseState.x = x;
 		mMouseState.y = (float)mRenderResolution.y - y;
@@ -582,7 +609,7 @@ void ShadertoyViewerApp::keyDown( KeyEvent event )
 	}
 	// R = reset time
 	else if( event.getCode() == KeyEvent::KEY_r ) {
-		mTime = 0.0f;
+		mTime = 0.0;
 		mFrame = 0;
 	}
 	else if( event.getCode() == KeyEvent::KEY_g ) {
@@ -725,7 +752,7 @@ void ShadertoyViewerApp::drawPlaybackPane()
 
 	ImGui::SameLine();
 	if( ImGui::Button( "Reset" ) ) {
-		mTime = 0.0f;
+		mTime = 0.0;
 		mFrame = 0;
 	}
 
@@ -734,7 +761,7 @@ void ShadertoyViewerApp::drawPlaybackPane()
 	ImGui::Separator();
 
 	// Stats
-	ImGui::Text( "FPS: %.1f", mFrameRate );
+	ImGui::Text( "FPS: %.1f", getAverageFps() );
 	ImGui::Text( "iTime: %.3f", mTime );
 	ImGui::Text( "iFrame: %d", mFrame );
 	ImGui::Text( "iResolution: %d x %d", mRenderResolution.x, mRenderResolution.y );
@@ -748,21 +775,12 @@ void ShadertoyViewerApp::drawPlaybackPane()
 
 	ImGui::Separator();
 
-	// Date uniforms
-	auto	t = std::time( nullptr );
-	std::tm tm;
-#if defined( CINDER_MSW )
-	localtime_s( &tm, &t );
-#else
-	tm = *std::localtime( &t );
-#endif
-	float seconds = tm.tm_hour * 3600.0f + tm.tm_min * 60.0f + tm.tm_sec;
-
+	// Date uniforms (computed once per frame in update())
 	ImGui::Text( "iDate:" );
-	ImGui::Text( "  Year:  %d", tm.tm_year + 1900 );
-	ImGui::Text( "  Month: %d", tm.tm_mon + 1 );
-	ImGui::Text( "  Day:   %d", tm.tm_mday );
-	ImGui::Text( "  Time:  %.1f seconds", seconds );
+	ImGui::Text( "  Year:  %d", (int)mDate.x );
+	ImGui::Text( "  Month: %d", (int)mDate.y );
+	ImGui::Text( "  Day:   %d", (int)mDate.z );
+	ImGui::Text( "  Time:  %.1f seconds", mDate.w );
 
 	ImGui::End();
 }

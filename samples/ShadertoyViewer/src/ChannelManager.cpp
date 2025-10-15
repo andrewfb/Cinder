@@ -5,6 +5,8 @@
 #include "cinder/ImageIo.h"
 #include "cinder/CinderImGui.h"
 #include "cinder/Log.h"
+#include "cinder/Perlin.h"
+#include "cinder/ip/Checkerboard.h"
 
 using namespace ci;
 using namespace ci::app;
@@ -35,17 +37,9 @@ void ChannelManager::createDefaultTexture( int channelIndex )
 	if( channelIndex < 0 || channelIndex >= 4 )
 		return;
 
-	// Create a simple checkerboard texture
+	// Create a simple checkerboard texture using Cinder's built-in checkerboard function
 	const int size = 64;
-	Surface8u surface( size, size, false );
-
-	for( int y = 0; y < size; ++y ) {
-		for( int x = 0; x < size; ++x ) {
-			bool check = ( ( x / 8 ) + ( y / 8 ) ) % 2 == 0;
-			uint8_t value = check ? 255 : 128;
-			surface.setPixel( ivec2( x, y ), Color8u( value, value, value ) );
-		}
-	}
+	Surface8u surface = ip::checkerboard( size, size, 8, Color8u( 255, 255, 255 ), Color8u( 128, 128, 128 ) );
 
 	mChannels[channelIndex].texture = gl::Texture::create( surface );
 	mChannels[channelIndex].resolution = vec3( size, size, 1.0f );
@@ -150,13 +144,10 @@ void ChannelManager::generateProceduralTexture( int channelIndex )
 
 	switch( ch.proceduralType ) {
 		case ProceduralType::Checkerboard: {
-			for( int y = 0; y < size; ++y ) {
-				for( int x = 0; x < size; ++x ) {
-					bool check = ( ( x / ch.gridSize ) + ( y / ch.gridSize ) ) % 2 == 0;
-					Color col = check ? ch.color1 : ch.color2;
-					surface.setPixel( ivec2( x, y ), Color8u( (uint8_t)( col.r * 255.0f ), (uint8_t)( col.g * 255.0f ), (uint8_t)( col.b * 255.0f ) ) );
-				}
-			}
+			// Use Cinder's built-in checkerboard function
+			Color8u col1( (uint8_t)( ch.color1.r * 255.0f ), (uint8_t)( ch.color1.g * 255.0f ), (uint8_t)( ch.color1.b * 255.0f ) );
+			Color8u col2( (uint8_t)( ch.color2.r * 255.0f ), (uint8_t)( ch.color2.g * 255.0f ), (uint8_t)( ch.color2.b * 255.0f ) );
+			ip::checkerboard( &surface, surface.getBounds(), ch.gridSize, ColorA8u( col1, 255 ), ColorA8u( col2, 255 ) );
 			ch.path = "[Checkerboard]";
 			break;
 		}
@@ -197,10 +188,14 @@ void ChannelManager::generateProceduralTexture( int channelIndex )
 		}
 
 		case ProceduralType::Noise: {
-			// Simple random noise
+			// Use Cinder's built-in Perlin noise with customizable octaves and frequency
+			Perlin perlin( ch.octaves );
 			for( int y = 0; y < size; ++y ) {
 				for( int x = 0; x < size; ++x ) {
-					float t = (float)rand() / (float)RAND_MAX;
+					// Use fBm (fractional Brownian motion) for rich noise patterns
+					float t = perlin.fBm( vec2( x, y ) * ch.frequency / (float)size );
+					t = t * 0.5f + 0.5f; // Map from [-1,1] to [0,1]
+					t = glm::clamp( t, 0.0f, 1.0f );
 					float r = ch.color1.r * ( 1.0f - t ) + ch.color2.r * t;
 					float g = ch.color1.g * ( 1.0f - t ) + ch.color2.g * t;
 					float b = ch.color1.b * ( 1.0f - t ) + ch.color2.b * t;
@@ -208,61 +203,6 @@ void ChannelManager::generateProceduralTexture( int channelIndex )
 				}
 			}
 			ch.path = "[Noise]";
-			break;
-		}
-
-		case ProceduralType::Clouds: {
-			// Multi-octave noise for cloud-like patterns
-			auto smoothNoise = [](float x, float y) -> float {
-				int ix = (int)x;
-				int iy = (int)y;
-				float fx = x - ix;
-				float fy = y - iy;
-
-				// Hash function for pseudo-random values
-				auto hash = [](int x, int y) -> float {
-					int n = x + y * 57;
-					n = (n << 13) ^ n;
-					return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f);
-				};
-
-				// Bilinear interpolation
-				float a = hash(ix, iy);
-				float b = hash(ix + 1, iy);
-				float c = hash(ix, iy + 1);
-				float d = hash(ix + 1, iy + 1);
-
-				float u = fx * fx * (3.0f - 2.0f * fx);
-				float v = fy * fy * (3.0f - 2.0f * fy);
-
-				return glm::mix(glm::mix(a, b, u), glm::mix(c, d, u), v);
-			};
-
-			for( int y = 0; y < size; ++y ) {
-				for( int x = 0; x < size; ++x ) {
-					float value = 0.0f;
-					float amplitude = 1.0f;
-					float frequency = ch.frequency / size;
-					float maxValue = 0.0f;
-
-					// Accumulate octaves
-					for( int oct = 0; oct < ch.octaves; ++oct ) {
-						value += smoothNoise(x * frequency, y * frequency) * amplitude;
-						maxValue += amplitude;
-						amplitude *= 0.5f;
-						frequency *= 2.0f;
-					}
-
-					// Normalize and apply colors
-					float t = (value / maxValue) * 0.5f + 0.5f;
-					t = glm::clamp(t, 0.0f, 1.0f);
-					float r = ch.color1.r * ( 1.0f - t ) + ch.color2.r * t;
-					float g = ch.color1.g * ( 1.0f - t ) + ch.color2.g * t;
-					float b = ch.color1.b * ( 1.0f - t ) + ch.color2.b * t;
-					surface.setPixel( ivec2( x, y ), Color8u( (uint8_t)( r * 255.0f ), (uint8_t)( g * 255.0f ), (uint8_t)( b * 255.0f ) ) );
-				}
-			}
-			ch.path = "[Clouds]";
 			break;
 		}
 
@@ -291,7 +231,7 @@ void ChannelManager::drawChannelsPane( bool *pOpen, App *app )
 		std::string label = "iChannel" + std::to_string( i );
 		if( ImGui::CollapsingHeader( label.c_str(), ImGuiTreeNodeFlags_DefaultOpen ) ) {
 			// Texture type selector
-			const char* typeNames[] = { "Checkerboard", "Linear Gradient", "Radial Gradient", "Noise", "Clouds", "File Texture" };
+			const char* typeNames[] = { "Checkerboard", "Linear Gradient", "Radial Gradient", "Noise", "File Texture" };
 			int currentType = (int)mChannels[i].proceduralType;
 			if( ImGui::Combo( "Type", &currentType, typeNames, IM_ARRAYSIZE( typeNames ) ) ) {
 				mChannels[i].proceduralType = (ProceduralType)currentType;
@@ -350,27 +290,13 @@ void ChannelManager::drawChannelsPane( bool *pOpen, App *app )
 						mChannels[i].color2 = Color( col2[0], col2[1], col2[2] );
 						generateProceduralTexture( i );
 					}
-					if( ImGui::Button( "Regenerate Noise" ) ) {
-						generateProceduralTexture( i );
-					}
-					break;
-				}
-
-				case ProceduralType::Clouds: {
-					float col1[3] = { mChannels[i].color1.r, mChannels[i].color1.g, mChannels[i].color1.b };
-					if( ImGui::ColorEdit3( "Color 0", col1 ) ) {
-						mChannels[i].color1 = Color( col1[0], col1[1], col1[2] );
-						generateProceduralTexture( i );
-					}
-					float col2[3] = { mChannels[i].color2.r, mChannels[i].color2.g, mChannels[i].color2.b };
-					if( ImGui::ColorEdit3( "Color 1", col2 ) ) {
-						mChannels[i].color2 = Color( col2[0], col2[1], col2[2] );
-						generateProceduralTexture( i );
-					}
 					if( ImGui::SliderFloat( "Frequency", &mChannels[i].frequency, 1.0f, 16.0f ) ) {
 						generateProceduralTexture( i );
 					}
 					if( ImGui::SliderInt( "Octaves", &mChannels[i].octaves, 1, 8 ) ) {
+						generateProceduralTexture( i );
+					}
+					if( ImGui::Button( "Regenerate Noise" ) ) {
 						generateProceduralTexture( i );
 					}
 					break;

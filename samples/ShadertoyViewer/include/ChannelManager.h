@@ -18,7 +18,6 @@ enum class ProceduralType {
 	LinearGradient,
 	RadialGradient,
 	Noise,
-	Clouds,
 	FileTexture
 };
 
