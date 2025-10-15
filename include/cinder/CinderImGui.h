@@ -234,7 +234,8 @@ namespace ImGui {
 	//!   });
 	//!   ImGui::End();
 	//!
-	//! Uniforms not in the binding list will be auto-discovered with default widgets.
+	//! User-defined uniforms not in the binding list will be discovered with default widgets.
+	//! Cinder Context uniforms (matrices, etc.) are automatically excluded from the editor.
 	//! Uniform values persist across shader recompilation automatically.
 	CI_API bool	ShaderEditor( const ci::gl::GlslProgRef& shader, bool* pOpen = nullptr );
 	CI_API bool	ShaderEditor( const ci::gl::GlslProgRef& shader, const std::vector<UniformBinding>& bindings, bool* pOpen = nullptr );

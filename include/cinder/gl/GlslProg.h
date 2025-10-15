@@ -496,10 +496,29 @@ class CI_API GlslProg {
 	const std::string&	getFragmentShaderSource() const { return mFragmentShaderSource; }
 	//! Returns the original geometry shader source code (for live editing)
 	const std::string&	getGeometryShaderSource() const { return mGeometryShaderSource; }
+	//! Returns the original compute shader source code (for live editing)
+	const std::string&	getComputeShaderSource() const { return mComputeShaderSource; }
 
 	//! Recompiles the shader with new source code in-place
 	//! Returns true if successful. On failure, the original shader remains active and error is returned via outError
 	bool				recompile( const std::string &vertexSource, const std::string &fragmentSource, const std::string &geometrySource, std::string *outError = nullptr );
+
+	//! Compiles a single shader from source code and returns its handle. Returns 0 on failure.
+	//! Useful for partial shader rebuilds where you only want to recompile changed stages.
+	//! \param shaderType GL_VERTEX_SHADER, GL_FRAGMENT_SHADER, GL_GEOMETRY_SHADER, or GL_COMPUTE_SHADER
+	//! \param shaderSource GLSL source code
+	//! \param outError Optional pointer to receive error message on failure
+	static GLuint		compileShader( GLenum shaderType, const std::string &shaderSource, std::string *outError = nullptr );
+
+	//! Rebuilds the shader program using pre-compiled shader handles. Pass 0 to skip a shader stage.
+	//! This is useful for partial recompilation where only some shaders have changed.
+	//! Returns true if successful. On failure, the original shader remains active and error is returned via outError.
+	//! \param vertexHandle Pre-compiled vertex shader handle (or 0 to skip)
+	//! \param fragmentHandle Pre-compiled fragment shader handle (or 0 to skip)
+	//! \param geometryHandle Pre-compiled geometry shader handle (or 0 to skip)
+	//! \param computeHandle Pre-compiled compute shader handle (or 0 to skip)
+	//! \param outError Optional pointer to receive error message on failure
+	bool				rebuild( GLuint vertexHandle, GLuint fragmentHandle, GLuint geometryHandle = 0, GLuint computeHandle = 0, std::string *outError = nullptr );
 
   protected:
 	GlslProg( const Format &format );
@@ -601,6 +620,7 @@ class CI_API GlslProg {
 	std::string								mVertexShaderSource;
 	std::string								mFragmentShaderSource;
 	std::string								mGeometryShaderSource;
+	std::string								mComputeShaderSource;
 
 	friend class Context;
 	friend CI_API std::ostream& operator<<( std::ostream &os, const GlslProg &rhs );

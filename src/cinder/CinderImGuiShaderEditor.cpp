@@ -15,6 +15,7 @@ struct ShaderEditorState {
 	std::string vertexSource;
 	std::string fragmentSource;
 	std::string geometrySource;
+	std::string computeSource;
 	std::string compileError;
 	bool hasError = false;
 	bool initialized = false;
@@ -56,8 +57,12 @@ static bool ShaderEditorImpl( const gl::GlslProgRef& shader, const std::vector<U
 		state.vertexSource = shader->getVertexShaderSource();
 		state.fragmentSource = shader->getFragmentShaderSource();
 		state.geometrySource = shader->getGeometryShaderSource();
+		state.computeSource = shader->getComputeShaderSource();
 		state.initialized = true;
 	}
+
+	// Push unique ID for this shader editor to avoid conflicts when multiple editors are open
+	ImGui::PushID( shaderId );
 
 	bool recompiled = false;
 
@@ -84,7 +89,23 @@ static bool ShaderEditorImpl( const gl::GlslProgRef& shader, const std::vector<U
 
 		if( shouldCompile ) {
 			std::string error;
-			if( const_cast<gl::GlslProg*>( shader.get() )->recompile( state.vertexSource, state.fragmentSource, state.geometrySource, &error ) ) {
+			bool success = false;
+
+			// Check if this is a compute shader
+			if( ! state.computeSource.empty() ) {
+				// Compute shader: use compileShader + rebuild
+				GLuint compHandle = gl::GlslProg::compileShader( GL_COMPUTE_SHADER, state.computeSource, &error );
+				if( compHandle ) {
+					success = const_cast<gl::GlslProg*>( shader.get() )->rebuild( 0, 0, 0, compHandle, &error );
+					glDeleteShader( compHandle );
+				}
+			}
+			else {
+				// Regular vertex/fragment/geometry shader: use recompile
+				success = const_cast<gl::GlslProg*>( shader.get() )->recompile( state.vertexSource, state.fragmentSource, state.geometrySource, &error );
+			}
+
+			if( success ) {
 				state.hasError = false;
 				state.compileError.clear();
 				recompiled = true;
@@ -103,8 +124,26 @@ static bool ShaderEditorImpl( const gl::GlslProgRef& shader, const std::vector<U
 
 		ImGui::Separator();
 
+		// Compute shader editor (if present)
+		if( ! state.computeSource.empty() ) {
+			if( ImGui::CollapsingHeader( "Compute Shader", ImGuiTreeNodeFlags_DefaultOpen ) ) {
+				static const size_t bufferSize = 1024 * 16;
+				static char computeBuffer[bufferSize];
+
+				if( state.computeSource.size() < bufferSize ) {
+					strcpy_s( computeBuffer, bufferSize, state.computeSource.c_str() );
+				}
+
+				if( ImGui::InputTextMultiline( "##compute", computeBuffer, bufferSize,
+					ImVec2( -FLT_MIN, 300 ), ImGuiInputTextFlags_AllowTabInput ) ) {
+					state.computeSource = computeBuffer;
+					state.sourceChanged = true;
+				}
+			}
+		}
+
 		// Vertex shader editor
-		if( ImGui::CollapsingHeader( "Vertex Shader", ImGuiTreeNodeFlags_DefaultOpen ) ) {
+		if( ! state.vertexSource.empty() && ImGui::CollapsingHeader( "Vertex Shader", ImGuiTreeNodeFlags_DefaultOpen ) ) {
 			static const size_t bufferSize = 1024 * 16;
 			static char vertexBuffer[bufferSize];
 
@@ -120,7 +159,7 @@ static bool ShaderEditorImpl( const gl::GlslProgRef& shader, const std::vector<U
 		}
 
 		// Fragment shader editor
-		if( ImGui::CollapsingHeader( "Fragment Shader", ImGuiTreeNodeFlags_DefaultOpen ) ) {
+		if( ! state.fragmentSource.empty() && ImGui::CollapsingHeader( "Fragment Shader", ImGuiTreeNodeFlags_DefaultOpen ) ) {
 			static const size_t bufferSize = 1024 * 16;
 			static char fragmentBuffer[bufferSize];
 
@@ -200,6 +239,8 @@ static bool ShaderEditorImpl( const gl::GlslProgRef& shader, const std::vector<U
 			ShaderUniformsWithBindings( shader, {} );
 		}
 	}
+
+	ImGui::PopID();
 
 	return recompiled;
 }
@@ -386,10 +427,10 @@ static bool ShaderUniformsWithBindings( const gl::GlslProgRef& shader, const std
 		}
 	}
 
-	// Then, auto-discover and render remaining uniforms
+	// Then, render remaining uniforms (excluding Cinder Context uniforms)
 	if( ! unhintedUniforms.empty() && ! hintedUniforms.empty() ) {
 		ImGui::Separator();
-		ImGui::Text( "Auto-discovered uniforms:" );
+		ImGui::Text( "Other uniforms:" );
 	}
 
 	for( const auto* uniform : unhintedUniforms ) {

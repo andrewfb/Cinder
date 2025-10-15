@@ -678,6 +678,9 @@ GlslProg::GlslProg( const Format &format )
 #if defined( CINDER_GL_HAS_GEOM_SHADER )
 	mGeometryShaderSource = format.getGeometry();
 #endif
+#if defined( CINDER_GL_HAS_COMPUTE_SHADER )
+	mComputeShaderSource = format.getCompute();
+#endif
 
 	gl::context()->glslProgCreated( this );
 }
@@ -2291,12 +2294,10 @@ bool GlslProg::recompile( const std::string &vertexSource, const std::string &fr
 		// Preserve uniform values from old shader (before deleting it)
 		// Store as name->rawbytes map since uniform locations will change
 		std::map<std::string, std::vector<uint8_t>> savedUniformValues;
-		CI_LOG_I( "=== RECOMPILE START ===" );
 		if( mUniformValueCache ) {
 			for( const auto& uniform : mUniforms ) {
-				// Skip automatic Cinder matrices - they're set by gl::setMatrices() every frame
+				// Skip Cinder Context uniforms - they're set by the Context (e.g., matrices from gl::setMatrices())
 				if( uniform.mSemantic != UniformSemantic::UNIFORM_USER_DEFINED ) {
-					CI_LOG_I( "  Skip auto: " << uniform.mName << " (semantic=" << uniform.mSemantic << ")" );
 					continue;
 				}
 
@@ -2304,20 +2305,6 @@ bool GlslProg::recompile( const std::string &vertexSource, const std::string &fr
 				// getValue handles array indexing internally, so pass the base pointer
 				if( mUniformValueCache->getValue( uniform.mBytePointer, uniform.mTypeSize, 0, uniform.mCount, data.data() ) ) {
 					savedUniformValues[uniform.mName] = std::move( data );
-					if( uniform.mType == GL_FLOAT_VEC3 ) {
-						const float* v = reinterpret_cast<const float*>( savedUniformValues[uniform.mName].data() );
-						CI_LOG_I( "  Save: " << uniform.mName << " = (" << v[0] << ", " << v[1] << ", " << v[2] << ")" );
-					}
-					else if( uniform.mType == GL_FLOAT ) {
-						const float* f = reinterpret_cast<const float*>( savedUniformValues[uniform.mName].data() );
-						CI_LOG_I( "  Save: " << uniform.mName << " = " << *f );
-					}
-					else {
-						CI_LOG_I( "  Save: " << uniform.mName << " (" << data.size() << " bytes)" );
-					}
-				}
-				else {
-					CI_LOG_I( "  Save FAILED: " << uniform.mName );
 				}
 			}
 		}
@@ -2348,15 +2335,8 @@ bool GlslProg::recompile( const std::string &vertexSource, const std::string &fr
 #endif
 
 		// Restore uniform values that still exist in the new shader
-		CI_LOG_I( "=== RESTORE UNIFORMS ===" );
-		GLint currentProgram = 0;
-		glGetIntegerv( GL_CURRENT_PROGRAM, &currentProgram );
-		CI_LOG_I( "  Current program before bind: " << currentProgram );
-
 		// Use glUseProgram directly to bypass Context caching - Context still thinks old program is bound
 		glUseProgram( mHandle );
-		glGetIntegerv( GL_CURRENT_PROGRAM, &currentProgram );
-		CI_LOG_I( "  Current program after glUseProgram: " << currentProgram << " (our handle: " << mHandle << ")" );
 
 		for( const auto& uniform : mUniforms ) {
 			auto found = savedUniformValues.find( uniform.mName );
@@ -2365,17 +2345,6 @@ bool GlslProg::recompile( const std::string &vertexSource, const std::string &fr
 				const auto& data = found->second;
 				// Make sure sizes match (might not if type changed)
 				if( data.size() == uniform.mTypeSize * uniform.mCount ) {
-					if( uniform.mType == GL_FLOAT_VEC3 ) {
-						const float* v = reinterpret_cast<const float*>( data.data() );
-						CI_LOG_I( "  Restore: " << uniform.mName << " = (" << v[0] << ", " << v[1] << ", " << v[2] << ") loc=" << uniform.mLoc );
-					}
-					else if( uniform.mType == GL_FLOAT ) {
-						const float* f = reinterpret_cast<const float*>( data.data() );
-						CI_LOG_I( "  Restore: " << uniform.mName << " = " << *f << " loc=" << uniform.mLoc );
-					}
-					else {
-						CI_LOG_I( "  Restore: " << uniform.mName << " loc=" << uniform.mLoc );
-					}
 					// Upload to GPU using raw OpenGL calls
 					switch( uniform.mType ) {
 						case GL_FLOAT:
@@ -2438,22 +2407,237 @@ bool GlslProg::recompile( const std::string &vertexSource, const std::string &fr
 						mUniformValueCache->shouldBuffer( uniform.mBytePointer, uniform.mTypeSize, 0, uniform.mCount, data.data() );
 					}
 				}
-				else {
-					CI_LOG_W( "  SIZE MISMATCH: " << uniform.mName << " expected=" << (uniform.mTypeSize * uniform.mCount) << " got=" << data.size() );
-				}
-			}
-			else {
-				CI_LOG_I( "  Not in saved: " << uniform.mName << " (semantic=" << uniform.mSemantic << ")" );
 			}
 		}
 
 		// The shader is now bound with user uniforms restored.
-		// Set the automatic Cinder uniforms (matrices, etc.) to their current values
-		glGetIntegerv( GL_CURRENT_PROGRAM, &currentProgram );
-		CI_LOG_I( "=== CALLING setDefaultShaderVars, program=" << currentProgram << " ===" );
+		// Set the Cinder Context uniforms (matrices, etc.) to their current values
 		gl::setDefaultShaderVars();
-		glGetIntegerv( GL_CURRENT_PROGRAM, &currentProgram );
-		CI_LOG_I( "=== AFTER setDefaultShaderVars, program=" << currentProgram << " ===" );
+
+		// Update the Context's cached bound shader to reflect reality
+		// (we used glUseProgram directly, so Context doesn't know we're bound)
+		gl::context()->bindGlslProg( this );
+
+		// Restore label
+		setLabel( savedLabel );
+
+		return true;
+	}
+	catch( const std::exception &exc ) {
+		if( outError )
+			*outError = exc.what();
+		return false;
+	}
+}
+
+//static
+GLuint GlslProg::compileShader( GLenum shaderType, const std::string &shaderSource, std::string *outError )
+{
+	GLuint handle = glCreateShader( shaderType );
+	if( handle == 0 ) {
+		if( outError )
+			*outError = "glCreateShader failed";
+		return 0;
+	}
+
+	const char *sourcePtr = shaderSource.c_str();
+	glShaderSource( handle, 1, &sourcePtr, nullptr );
+	glCompileShader( handle );
+
+	GLint status;
+	glGetShaderiv( handle, GL_COMPILE_STATUS, &status );
+	if( status == GL_FALSE ) {
+		std::string log;
+		GLint logLength;
+		glGetShaderiv( handle, GL_INFO_LOG_LENGTH, &logLength );
+		if( logLength > 0 ) {
+			std::vector<GLchar> logData( logLength );
+			glGetShaderInfoLog( handle, logLength, nullptr, logData.data() );
+			log.assign( logData.begin(), logData.end() );
+		}
+
+		glDeleteShader( handle );
+
+		if( outError )
+			*outError = log;
+		return 0;
+	}
+
+	return handle;
+}
+
+bool GlslProg::rebuild( GLuint vertexHandle, GLuint fragmentHandle, GLuint geometryHandle, GLuint computeHandle, std::string *outError )
+{
+	try {
+		// Create a new program
+		GLuint newHandle = glCreateProgram();
+		if( newHandle == 0 ) {
+			throw GlslProgExc( "Failed to create shader program" );
+		}
+
+		// Attach provided shader stages
+		if( vertexHandle != 0 )
+			glAttachShader( newHandle, vertexHandle );
+		if( fragmentHandle != 0 )
+			glAttachShader( newHandle, fragmentHandle );
+		if( geometryHandle != 0 )
+			glAttachShader( newHandle, geometryHandle );
+		if( computeHandle != 0 )
+			glAttachShader( newHandle, computeHandle );
+
+		// Link the program
+		glLinkProgram( newHandle );
+
+		GLint status;
+		glGetProgramiv( newHandle, GL_LINK_STATUS, &status );
+		if( status == GL_FALSE ) {
+			std::string log;
+			GLint logLength;
+			glGetProgramiv( newHandle, GL_INFO_LOG_LENGTH, &logLength );
+			if( logLength > 0 ) {
+				std::vector<GLchar> logData( logLength );
+				glGetProgramInfoLog( newHandle, logLength, nullptr, logData.data() );
+				log.assign( logData.begin(), logData.end() );
+			}
+
+			glDeleteProgram( newHandle );
+			throw GlslProgLinkExc( log );
+		}
+
+		// Detach and delete the temp shaders (caller owns the handles if they want to reuse them)
+		if( vertexHandle != 0 )
+			glDetachShader( newHandle, vertexHandle );
+		if( fragmentHandle != 0 )
+			glDetachShader( newHandle, fragmentHandle );
+		if( geometryHandle != 0 )
+			glDetachShader( newHandle, geometryHandle );
+		if( computeHandle != 0 )
+			glDetachShader( newHandle, computeHandle );
+
+		// Save the label before we swap handles
+		std::string savedLabel = mLabel;
+
+		// Success! Now swap out the old program for the new one
+		GLuint oldHandle = mHandle;
+		mHandle = newHandle;
+
+		// Preserve uniform values from old shader (before deleting it)
+		// Store as name->rawbytes map since uniform locations will change
+		std::map<std::string, std::vector<uint8_t>> savedUniformValues;
+		if( mUniformValueCache ) {
+			for( const auto& uniform : mUniforms ) {
+				// Skip Cinder Context uniforms - they're set by the Context (e.g., matrices from gl::setMatrices())
+				if( uniform.mSemantic != UniformSemantic::UNIFORM_USER_DEFINED ) {
+					continue;
+				}
+
+				std::vector<uint8_t> data( uniform.mTypeSize * uniform.mCount );
+				// getValue handles array indexing internally, so pass the base pointer
+				if( mUniformValueCache->getValue( uniform.mBytePointer, uniform.mTypeSize, 0, uniform.mCount, data.data() ) ) {
+					savedUniformValues[uniform.mName] = std::move( data );
+				}
+			}
+		}
+
+		// Delete the old program
+		if( oldHandle )
+			glDeleteProgram( oldHandle );
+
+		// Note: We don't update stored source code since we don't have it (caller used handles)
+
+		// Re-cache uniforms and attributes
+		mAttributes.clear();
+		mUniforms.clear();
+		mUniformValueCache.reset();
+#if defined( CINDER_GL_HAS_UNIFORM_BLOCKS )
+		mUniformBlocks.clear();
+#endif
+
+		cacheActiveAttribs();
+		cacheActiveUniforms();
+#if defined( CINDER_GL_HAS_UNIFORM_BLOCKS )
+		cacheActiveUniformBlocks();
+#endif
+
+		// Restore uniform values that still exist in the new shader
+		// Use glUseProgram directly to bypass Context caching - Context still thinks old program is bound
+		glUseProgram( mHandle );
+
+		for( const auto& uniform : mUniforms ) {
+			auto found = savedUniformValues.find( uniform.mName );
+			if( found != savedUniformValues.end() ) {
+				// Uniform still exists - restore its value
+				const auto& data = found->second;
+				// Make sure sizes match (might not if type changed)
+				if( data.size() == uniform.mTypeSize * uniform.mCount ) {
+					// Upload to GPU using raw OpenGL calls
+					switch( uniform.mType ) {
+						case GL_FLOAT:
+							glUniform1fv( uniform.mLoc, uniform.mCount, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_FLOAT_VEC2:
+							glUniform2fv( uniform.mLoc, uniform.mCount, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_FLOAT_VEC3:
+							glUniform3fv( uniform.mLoc, uniform.mCount, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_FLOAT_VEC4:
+							glUniform4fv( uniform.mLoc, uniform.mCount, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_INT:
+						case GL_BOOL:
+						case GL_SAMPLER_2D:
+						case GL_SAMPLER_CUBE:
+							glUniform1iv( uniform.mLoc, uniform.mCount, reinterpret_cast<const int*>( data.data() ) );
+							break;
+						case GL_INT_VEC2:
+						case GL_BOOL_VEC2:
+							glUniform2iv( uniform.mLoc, uniform.mCount, reinterpret_cast<const int*>( data.data() ) );
+							break;
+						case GL_INT_VEC3:
+						case GL_BOOL_VEC3:
+							glUniform3iv( uniform.mLoc, uniform.mCount, reinterpret_cast<const int*>( data.data() ) );
+							break;
+						case GL_INT_VEC4:
+						case GL_BOOL_VEC4:
+							glUniform4iv( uniform.mLoc, uniform.mCount, reinterpret_cast<const int*>( data.data() ) );
+							break;
+#if ! defined( CINDER_GL_ES_2 )
+						case GL_UNSIGNED_INT:
+							glUniform1uiv( uniform.mLoc, uniform.mCount, reinterpret_cast<const unsigned int*>( data.data() ) );
+							break;
+						case GL_UNSIGNED_INT_VEC2:
+							glUniform2uiv( uniform.mLoc, uniform.mCount, reinterpret_cast<const unsigned int*>( data.data() ) );
+							break;
+						case GL_UNSIGNED_INT_VEC3:
+							glUniform3uiv( uniform.mLoc, uniform.mCount, reinterpret_cast<const unsigned int*>( data.data() ) );
+							break;
+						case GL_UNSIGNED_INT_VEC4:
+							glUniform4uiv( uniform.mLoc, uniform.mCount, reinterpret_cast<const unsigned int*>( data.data() ) );
+							break;
+#endif
+						case GL_FLOAT_MAT2:
+							glUniformMatrix2fv( uniform.mLoc, uniform.mCount, GL_FALSE, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_FLOAT_MAT3:
+							glUniformMatrix3fv( uniform.mLoc, uniform.mCount, GL_FALSE, reinterpret_cast<const float*>( data.data() ) );
+							break;
+						case GL_FLOAT_MAT4:
+							glUniformMatrix4fv( uniform.mLoc, uniform.mCount, GL_FALSE, reinterpret_cast<const float*>( data.data() ) );
+							break;
+					}
+					// Also update the cache so queries will work
+					if( mUniformValueCache ) {
+						// shouldBuffer handles array indexing internally, so pass the base pointer
+						mUniformValueCache->shouldBuffer( uniform.mBytePointer, uniform.mTypeSize, 0, uniform.mCount, data.data() );
+					}
+				}
+			}
+		}
+
+		// The shader is now bound with user uniforms restored.
+		// Set the Cinder Context uniforms (matrices, etc.) to their current values
+		gl::setDefaultShaderVars();
 
 		// Update the Context's cached bound shader to reflect reality
 		// (we used glUseProgram directly, so Context doesn't know we're bound)
