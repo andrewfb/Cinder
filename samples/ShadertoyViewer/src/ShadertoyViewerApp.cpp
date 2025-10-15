@@ -84,6 +84,8 @@ class ShadertoyViewerApp : public App {
 	// Rendering state
 	ivec2 mRenderResolution = ivec2( 1280, 720 );
 	bool  mResolutionChanged = false;
+	bool  mSupersample = false;		// true = 2x supersampling
+	bool  mSupersampleChanged = false;
 
 	// Mouse state (Shadertoy convention: xy = current pos, zw = click pos)
 	vec4 mMouseState = vec4( 0.0f );
@@ -91,13 +93,14 @@ class ShadertoyViewerApp : public App {
 
 	// Channel manager
 	ChannelManager mChannelManager;
+	TextureType	   mLastChannelTypes[4] = { TextureType::Texture2D, TextureType::Texture2D, TextureType::Texture2D, TextureType::Texture2D };
 
 	// ImGui state
-	bool mShowShaderPane = true;
-	bool mShowPlaybackPane = true;
-	bool mShowChannelsPane = true;
-	bool mAutoCompile = false;
-	char mShaderTextBuffer[1024 * 64]; // 64KB buffer for shader editor
+	bool		mShowShaderPane = true;
+	bool		mShowPlaybackPane = true;
+	bool		mShowChannelsPane = true;
+	bool		mAutoCompile = false;
+	std::string mShaderTextBuffer; // Dynamic buffer for shader editor (no size limit)
 };
 
 void ShadertoyViewerApp::setup()
@@ -146,15 +149,36 @@ void ShadertoyViewerApp::update()
 		mTime += mTimeDelta * mTimeScale;
 		mFrame++;
 
-		// Advance iChannelTime for Shadertoy parity
-		for( int i = 0; i < 4; ++i )
-			mChannelManager.getChannel( i ).time += mTimeDelta * mTimeScale;
+		// Advance iChannelTime ONLY for time-dependent sources (videos, buffers)
+		// Static images/cubemaps stay at 0.0 for Shadertoy parity
+		for( int i = 0; i < 4; ++i ) {
+			if( mChannelManager.getChannel( i ).timeDependent ) {
+				mChannelManager.getChannel( i ).time += mTimeDelta * mTimeScale;
+			}
+		}
 	}
 
-	// Recreate FBO if resolution changed
-	if( mResolutionChanged ) {
-		mRenderFbo = gl::Fbo::create( mRenderResolution.x, mRenderResolution.y, createFboFormat() );
+	// Recreate FBO if resolution or supersampling changed
+	if( mResolutionChanged || mSupersampleChanged ) {
+		// FBO is rendered at supersample resolution (2x if enabled)
+		ivec2 fboSize = mRenderResolution * ( mSupersample ? 2 : 1 );
+		mRenderFbo = gl::Fbo::create( fboSize.x, fboSize.y, createFboFormat() );
 		mResolutionChanged = false;
+		mSupersampleChanged = false;
+	}
+
+	// Auto-recompile if any channel texture type changed
+	bool channelTypeChanged = false;
+	for( int i = 0; i < 4; ++i ) {
+		TextureType currentType = mChannelManager.getChannel( i ).textureType;
+		if( currentType != mLastChannelTypes[i] ) {
+			channelTypeChanged = true;
+			mLastChannelTypes[i] = currentType;
+		}
+	}
+	if( channelTypeChanged && !mCurrentFragmentSource.empty() ) {
+		CI_LOG_I( "Channel texture type changed - auto-recompiling shader" );
+		compileShader( mCurrentFragmentSource );
 	}
 }
 
@@ -162,7 +186,14 @@ gl::Fbo::Format ShadertoyViewerApp::createFboFormat()
 {
 	gl::Fbo::Format format;
 	format.setSamples( 0 );
-	format.setColorTextureFormat( gl::Texture::Format().internalFormat( GL_RGBA8 ) );
+
+	gl::Texture2d::Format texFormat;
+	texFormat.setInternalFormat( GL_RGBA8 );
+	texFormat.setMinFilter( GL_LINEAR );
+	texFormat.setMagFilter( GL_LINEAR );
+	texFormat.setWrap( GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE );
+
+	format.setColorTextureFormat( texFormat );
 	return format;
 }
 
@@ -179,8 +210,8 @@ void ShadertoyViewerApp::draw()
 		gl::ScopedBlendAlpha blend;
 		gl::ScopedColor		 color( 1.0f, 1.0f, 1.0f );
 
-		// Draw at actual size in upper-left corner
-		Rectf destRect( 0, 0, (float)mRenderFbo->getWidth(), (float)mRenderFbo->getHeight() );
+		// Draw at display resolution (downsamples if supersampled)
+		Rectf destRect( 0, 0, (float)mRenderResolution.x, (float)mRenderResolution.y );
 		gl::draw( mRenderFbo->getColorTexture(), destRect );
 	}
 
@@ -207,6 +238,13 @@ void ShadertoyViewerApp::renderShaderToFbo()
 	// Draw fullscreen quad
 	gl::ScopedGlslProg shader( mShaderProg );
 	gl::drawSolidRect( Rectf( 0, 0, (float)mRenderFbo->getWidth(), (float)mRenderFbo->getHeight() ) );
+
+	// Unbind all channel textures to avoid conflicts when drawing FBO to screen
+	for( int i = 0; i < 4; ++i ) {
+		gl::context()->bindTexture( GL_TEXTURE_2D, 0, i );
+		gl::context()->bindTexture( GL_TEXTURE_CUBE_MAP, 0, i );
+		gl::context()->bindTexture( GL_TEXTURE_3D, 0, i );
+	}
 }
 
 void ShadertoyViewerApp::updateUniforms()
@@ -290,8 +328,9 @@ void ShadertoyViewerApp::updateUniforms()
 
 	// Now set all uniforms (shader is bound in renderShaderToFbo via ScopedGlslProg)
 
-	// iResolution: viewport resolution in pixels
-	mShaderProg->uniform( "iResolution", vec3( (float)mRenderResolution.x, (float)mRenderResolution.y, 1.0f ) );
+	// iResolution: viewport resolution in pixels (actual FBO size, accounts for supersampling)
+	ivec2 actualResolution = mRenderResolution * ( mSupersample ? 2 : 1 );
+	mShaderProg->uniform( "iResolution", vec3( (float)actualResolution.x, (float)actualResolution.y, 1.0f ) );
 
 	// iTime: shader playback time in seconds
 	mShaderProg->uniform( "iTime", mTime );
@@ -305,8 +344,10 @@ void ShadertoyViewerApp::updateUniforms()
 	// iFrameRate: frames per second
 	mShaderProg->uniform( "iFrameRate", mFrameRate );
 
-	// iMouse: xy = current position, zw = click position
-	mShaderProg->uniform( "iMouse", mMouseState );
+	// iMouse: xy = current position, zw = click position (scaled for supersampling)
+	float supersampleScale = mSupersample ? 2.0f : 1.0f;
+	vec4 scaledMouseState = mMouseState * supersampleScale;
+	mShaderProg->uniform( "iMouse", scaledMouseState );
 
 	// iDate: year, month, day, time in seconds
 	auto	t = std::time( nullptr );
@@ -380,7 +421,7 @@ std::string ShadertoyViewerApp::wrapShaderSource( const std::string& userFragmen
 	ss << "\n";
 	ss << "out vec4 fragColor;\n";
 	ss << "\n";
-	ss << "// User shader code\n";
+	ss << "#line 1\n"; // Reset line numbering for user code
 	ss << userFragmentCode;
 	ss << "\n";
 	ss << "// Main entry point\n";
@@ -476,13 +517,9 @@ void ShadertoyViewerApp::loadShaderFromFile( const fs::path& path )
 		std::string shaderText = loadString( loadFile( path ) );
 		mCurrentShaderPath = path;
 		mShaderEditorText = shaderText;
+		mShaderTextBuffer = shaderText; // No size limit - dynamic string
 		compileShader( shaderText );
 		mShaderModified = false;
-
-		// Copy to editor buffer
-		size_t copyLen = std::min( shaderText.size(), sizeof( mShaderTextBuffer ) - 1 );
-		memcpy( mShaderTextBuffer, shaderText.c_str(), copyLen );
-		mShaderTextBuffer[copyLen] = '\0';
 	}
 	catch( const std::exception& exc ) {
 		CI_LOG_E( "Failed to load shader file: " << exc.what() );
@@ -599,9 +636,27 @@ void ShadertoyViewerApp::drawShaderPane()
 	// Calculate available height for editor (expand to fill window)
 	float editorHeight = ImGui::GetContentRegionAvail().y - 80.0f; // Leave space for buttons and log
 
-	ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput;
-	if( ImGui::InputTextMultiline( "##shadersource", mShaderTextBuffer, sizeof( mShaderTextBuffer ), ImVec2( -1.0f, editorHeight ), flags ) ) {
-		mShaderEditorText = std::string( mShaderTextBuffer );
+	// Use callback for dynamic resizing - no size limit
+	ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput | ImGuiInputTextFlags_CallbackResize;
+
+	auto callback = []( ImGuiInputTextCallbackData* data ) -> int {
+		if( data->EventFlag == ImGuiInputTextFlags_CallbackResize ) {
+			std::string* str = (std::string*)data->UserData;
+			str->resize( data->BufTextLen );
+			data->Buf = (char*)str->c_str();
+		}
+		return 0;
+	};
+
+	// Ensure buffer has space
+	if( mShaderTextBuffer.capacity() < mShaderTextBuffer.size() + 1 ) {
+		mShaderTextBuffer.reserve( mShaderTextBuffer.size() + 1024 );
+	}
+
+	if( ImGui::InputTextMultiline( "##shadersource", (char*)mShaderTextBuffer.c_str(), mShaderTextBuffer.capacity(),
+								   ImVec2( -1.0f, editorHeight ), flags, callback, &mShaderTextBuffer ) ) {
+		mShaderTextBuffer.resize( strlen( mShaderTextBuffer.c_str() ) );
+		mShaderEditorText = mShaderTextBuffer;
 		mShaderModified = true;
 
 		// Auto-compile if enabled
@@ -647,6 +702,13 @@ void ShadertoyViewerApp::drawPlaybackPane()
 			mRenderResolution = ivec2( res[0], res[1] );
 			mResolutionChanged = true;
 		}
+	}
+
+	// Supersampling controls
+	bool prevSupersample = mSupersample;
+	ImGui::Checkbox( "Supersampling (2x)", &mSupersample );
+	if( mSupersample != prevSupersample ) {
+		mSupersampleChanged = true;
 	}
 
 	ImGui::Separator();
@@ -722,6 +784,11 @@ std::vector<std::string> ShadertoyViewerApp::getExampleShaderPaths()
 
 	for( const auto& entry : fs::directory_iterator( dir ) ) {
 		if( entry.is_regular_file() ) {
+			std::string filename = entry.path().filename().string();
+			// Skip hidden files, .DS_Store, and documentation files
+			if( filename[0] == '.' || filename == "README.md" || entry.path().extension() == ".md" || entry.path().extension() == ".txt" ) {
+				continue;
+			}
 			paths.push_back( entry.path().string() );
 		}
 	}

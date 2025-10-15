@@ -33,6 +33,7 @@ struct ChannelConfig {
 	bool						wrapRepeat = true;		// false = clamp
 	ci::vec3					resolution;				// width, height, depth
 	float						time = 0.0f;			// channel playback time
+	bool						timeDependent = false;	// true for videos/animated sources, false for static images
 
 	// Cache for texture state to avoid redundant GL calls
 	bool			lastFilterLinear = true;

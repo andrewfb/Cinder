@@ -68,6 +68,8 @@ void ChannelManager::loadChannelTexture( int channelIndex, const ci::fs::path &p
 		mChannels[channelIndex].resolution = vec3( surface.getWidth(), surface.getHeight(), 1.0f );
 		mChannels[channelIndex].path = path;
 		mChannels[channelIndex].proceduralType = ProceduralType::FileTexture;
+		mChannels[channelIndex].timeDependent = false;	// Static image - don't advance time
+		mChannels[channelIndex].time = 0.0f;			// Reset to 0
 		CI_LOG_I( "Loaded texture for channel " << channelIndex << ": " << path );
 	}
 	catch( const std::exception &exc ) {
@@ -94,6 +96,8 @@ void ChannelManager::loadChannelCubemap( int channelIndex, const ci::fs::path &p
 		mChannels[channelIndex].resolution = vec3( (float)cubeMap->getWidth(), (float)cubeMap->getHeight(), 1.0f );
 		mChannels[channelIndex].path = path;
 		mChannels[channelIndex].proceduralType = ProceduralType::FileTexture;
+		mChannels[channelIndex].timeDependent = false;	// Static cubemap - don't advance time
+		mChannels[channelIndex].time = 0.0f;			// Reset to 0
 		CI_LOG_I( "Loaded cubemap for channel " << channelIndex << ": " << path );
 	}
 	catch( const std::exception &exc ) {
@@ -270,6 +274,8 @@ void ChannelManager::generateProceduralTexture( int channelIndex )
 	ch.texture = gl::Texture::create( surface );
 	ch.textureType = TextureType::Texture2D;
 	ch.resolution = vec3( size, size, 1.0f );
+	ch.timeDependent = false;	// Procedural textures are static
+	ch.time = 0.0f;				// Reset to 0
 }
 
 void ChannelManager::drawChannelsPane( bool *pOpen, App *app )
