@@ -1,0 +1,144 @@
+#version 430
+
+// Flocking simulation with separation, alignment, and cohesion
+layout( local_size_x = 256 ) in;
+
+struct Boid {
+	vec4 position;  // xyz = position, w = unused
+	vec4 velocity;  // xyz = velocity, w = unused
+	vec4 color;     // rgba = color
+};
+
+layout( std430, binding = 0 ) buffer BoidBuffer {
+	Boid boids[];
+};
+
+// === FLOCKING PARAMETERS - TRY CHANGING THESE! ===
+uniform float uSeparationRadius;    // How close is too close?
+uniform float uAlignmentRadius;     // How far to look for alignment?
+uniform float uCohesionRadius;      // How far to look for group center?
+uniform float uSeparationStrength;  // How much to avoid others?
+uniform float uAlignmentStrength;   // How much to match neighbors?
+uniform float uCohesionStrength;    // How much to move toward center?
+uniform float uMaxSpeed;            // Maximum speed
+uniform float uCenterAttraction;    // Pull toward world center
+uniform float uNoiseStrength;       // Random movement energy
+uniform float uDeltaTime;
+
+// Simple hash function for pseudo-random numbers
+float hash(uint x) {
+	x = x * 1103515245u + 12345u;
+	x = (x >> 16u) ^ x;
+	x = x * 1103515245u + 12345u;
+	return float(x) * (1.0 / 4294967296.0);
+}
+
+vec3 randomVec3(uint seed) {
+	return vec3(
+		hash(seed) * 2.0 - 1.0,
+		hash(seed + 1u) * 2.0 - 1.0,
+		hash(seed + 2u) * 2.0 - 1.0
+	);
+}
+
+void main() {
+	uint id = gl_GlobalInvocationID.x;
+	uint numBoids = boids.length();
+
+	if( id >= numBoids )
+		return;
+
+	Boid me = boids[id];
+
+	// Flocking vectors
+	vec3 separation = vec3(0.0);
+	vec3 alignment = vec3(0.0);
+	vec3 cohesion = vec3(0.0);
+
+	int separationCount = 0;
+	int alignmentCount = 0;
+	int cohesionCount = 0;
+
+	// Check all other boids
+	for( uint i = 0; i < numBoids; ++i ) {
+		if( i == id ) continue;
+
+		Boid other = boids[i];
+		vec3 offset = me.position.xyz - other.position.xyz;
+		float dist = length(offset);
+
+		// Separation: steer away from nearby boids
+		if( dist < uSeparationRadius && dist > 0.0 ) {
+			separation += normalize(offset) / dist;  // Closer = stronger
+			separationCount++;
+		}
+
+		// Alignment: match velocity of nearby boids
+		if( dist < uAlignmentRadius ) {
+			alignment += other.velocity.xyz;
+			alignmentCount++;
+		}
+
+		// Cohesion: move toward center of nearby boids
+		if( dist < uCohesionRadius ) {
+			cohesion += other.position.xyz;
+			cohesionCount++;
+		}
+	}
+
+	// Average the forces
+	if( separationCount > 0 ) separation /= float(separationCount);
+	if( alignmentCount > 0 ) {
+		alignment /= float(alignmentCount);
+		alignment = alignment - me.velocity.xyz;  // Steering force toward average velocity
+	}
+	if( cohesionCount > 0 ) {
+		cohesion /= float(cohesionCount);
+		cohesion = cohesion - me.position.xyz;  // Direction to center
+	}
+
+	// Center attraction: pull boids toward origin if they get too far
+	vec3 toCenter = -me.position.xyz;
+	float distFromCenter = length(toCenter);
+	vec3 centerForce = vec3(0.0);
+	if( distFromCenter > 2.0 ) {
+		centerForce = normalize(toCenter) * (distFromCenter - 2.0) * uCenterAttraction;
+	}
+
+	// Noise: add random perturbations for energy
+	uint seed = id * 12345u + uint(me.position.x * 1000.0) + uint(me.position.y * 2000.0);
+	vec3 noise = randomVec3(seed) * uNoiseStrength;
+
+	// Apply forces as accelerations
+	vec3 velocity = me.velocity.xyz;
+	velocity += separation * uSeparationStrength * uDeltaTime;
+	velocity += alignment * uAlignmentStrength * uDeltaTime;
+	velocity += cohesion * uCohesionStrength * uDeltaTime;
+	velocity += centerForce * uDeltaTime;
+	velocity += noise * uDeltaTime;
+
+	// Add damping to prevent runaway velocities
+	velocity *= 0.99;
+
+	// Limit speed
+	float speed = length(velocity);
+	if( speed > uMaxSpeed ) {
+		velocity = normalize(velocity) * uMaxSpeed;
+	}
+
+	// Wrap around boundaries
+	vec3 position = me.position.xyz + velocity * uDeltaTime;
+	const float bound = 3.0;
+	if( abs(position.x) > bound ) position.x = -sign(position.x) * bound;
+	if( abs(position.y) > bound ) position.y = -sign(position.y) * bound;
+	if( abs(position.z) > bound ) position.z = -sign(position.z) * bound;
+
+	// Update color based on speed (blue = slow, cyan = fast)
+	float speedNorm = speed / uMaxSpeed;
+	me.color = vec4( 0.3, 0.5 + speedNorm * 0.5, 0.9, 1.0 );
+
+	// Write back
+	me.position.xyz = position;
+	me.velocity.xyz = velocity;
+	boids[id] = me;
+}
