@@ -76,6 +76,8 @@
 #include "cinder/Thread.h"
 #include "cinder/Log.h"
 
+#include <mutex>
+
 using namespace std;
 
 
@@ -86,8 +88,89 @@ using namespace ci::android;
 
 namespace cinder { namespace app {
 
+// Forward declare to make it a friend
+class InstrumentationScopeStack;
+
+// Internal helper class that aggregates scopes from multiple instrumenters
+// Destructor iterates in reverse to ensure LIFO semantics
+class InstrumentationScopeStack {
+	friend class AppBase;
+  public:
+	enum class Phase {
+		Setup,
+		Frame,
+		Update,
+		Draw,
+		PostDraw,
+		Cleanup
+	};
+
+	InstrumentationScopeStack( AppBase* app, Phase phase )
+	{
+		if( ! app )
+			return;
+
+		// Copy the registry snapshot while holding the lock to avoid deadlock
+		std::vector<std::shared_ptr<AppInstrumentation>> instrumenters;
+		{
+			std::lock_guard<std::mutex> lock( app->mInstrumentationMutex );
+			instrumenters = app->mInstrumenters;
+		}
+
+		// Reserve space to avoid reallocations
+		mScopes.reserve( instrumenters.size() );
+
+		// Call the appropriate begin* method on each instrumenter (without holding lock)
+		for( const auto& instrumenter : instrumenters ) {
+			AppInstrumentation::ScopePtr scope;
+
+			switch( phase ) {
+				case Phase::Setup:
+					scope = instrumenter->beginSetup( *app );
+					break;
+				case Phase::Frame:
+					scope = instrumenter->beginFrame( *app );
+					break;
+				case Phase::Update:
+					scope = instrumenter->beginUpdate( *app );
+					break;
+				case Phase::Draw:
+					scope = instrumenter->beginDraw( *app );
+					break;
+				case Phase::PostDraw:
+					scope = instrumenter->beginPostDraw( *app );
+					break;
+				case Phase::Cleanup:
+					scope = instrumenter->beginCleanup( *app );
+					break;
+			}
+
+			// Store scope (even if nullptr) to maintain ordering
+			if( scope ) {
+				mScopes.push_back( std::move( scope ) );
+			}
+		}
+	}
+
+	~InstrumentationScopeStack()
+	{
+		// Scopes are destroyed in reverse order (LIFO) automatically
+		// as the vector destructs from back to front
+		mScopes.clear();
+	}
+
+	// Non-copyable, non-movable
+	InstrumentationScopeStack( const InstrumentationScopeStack& ) = delete;
+	InstrumentationScopeStack& operator=( const InstrumentationScopeStack& ) = delete;
+
+  private:
+	std::vector<AppInstrumentation::ScopePtr> mScopes;
+};
+
 AppBase*					AppBase::sInstance = nullptr;			// Static instance of App, effectively a singleton
 AppBase::Settings*			AppBase::sSettingsFromMain = nullptr;
+std::vector<std::function<void(AppBase*)>>*	AppBase::sInitCallbacks = nullptr;
+std::mutex*								AppBase::sInitCallbacksMutex = nullptr;
 static std::thread::id		sPrimaryThreadId = std::this_thread::get_id();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -220,9 +303,110 @@ void AppBase::cleanupLaunch()
 #endif 	
 }
 
+void AppBase::registerAppInitCallback( const std::function<void(AppBase*)> &callback )
+{
+	// Thread-safe initialization using static local variables (guaranteed by C++11)
+	static std::mutex sLocalMutex;
+	static std::vector<std::function<void(AppBase*)>> sLocalCallbacks;
+
+	// Initialize the static pointers to point to the static locals
+	static std::once_flag sInitFlag;
+	std::call_once( sInitFlag, []() {
+		sInitCallbacksMutex = &sLocalMutex;
+		sInitCallbacks = &sLocalCallbacks;
+	});
+
+	std::lock_guard<std::mutex> lock( sLocalMutex );
+	sLocalCallbacks.push_back( callback );
+}
+
+void AppBase::executeInitCallbacks()
+{
+	// Copy callbacks to avoid holding lock while executing user code
+	std::vector<std::function<void(AppBase*)>> callbacksCopy;
+
+	if( sInitCallbacks && sInitCallbacksMutex ) {
+		{
+			std::lock_guard<std::mutex> lock( *sInitCallbacksMutex );
+			callbacksCopy = *sInitCallbacks;
+			// Clear callbacks after copying to free memory
+			sInitCallbacks->clear();
+		}
+
+		// Now execute callbacks without holding the lock
+		for( const auto& callback : callbacksCopy ) {
+			callback( this );
+		}
+	}
+}
+
+void AppBase::addInstrumentation( std::shared_ptr<AppInstrumentation> instrumenter )
+{
+	if( ! instrumenter )
+		return;
+
+	std::lock_guard<std::mutex> lock( mInstrumentationMutex );
+
+	mInstrumenters.push_back( instrumenter );
+	mHasInstrumentation.store( true, std::memory_order_relaxed );
+}
+
+std::shared_ptr<InstrumentationScopeStack> AppBase::makeInstrumentationScope( InstrumentationPhase phase )
+{
+	// Short-circuit if no instrumenters are registered
+	if( ! mHasInstrumentation.load( std::memory_order_relaxed ) )
+		return nullptr;
+
+	// Convert AppBase::InstrumentationPhase to InstrumentationScopeStack::Phase
+	InstrumentationScopeStack::Phase stackPhase;
+
+	switch( phase ) {
+		case InstrumentationPhase::Setup:
+			stackPhase = InstrumentationScopeStack::Phase::Setup;
+			break;
+		case InstrumentationPhase::Frame:
+			stackPhase = InstrumentationScopeStack::Phase::Frame;
+			break;
+		case InstrumentationPhase::Update:
+			stackPhase = InstrumentationScopeStack::Phase::Update;
+			break;
+		case InstrumentationPhase::Draw:
+			stackPhase = InstrumentationScopeStack::Phase::Draw;
+			break;
+		case InstrumentationPhase::PostDraw:
+			stackPhase = InstrumentationScopeStack::Phase::PostDraw;
+			break;
+		case InstrumentationPhase::Cleanup:
+			stackPhase = InstrumentationScopeStack::Phase::Cleanup;
+			break;
+		default:
+			return nullptr;
+	}
+
+	return std::make_shared<InstrumentationScopeStack>( this, stackPhase );
+}
+
+void AppBase::privateBeginFrame__()
+{
+	// Emit beginFrame signal at the start of each frame
+	mSignalBeginFrame.emit();
+}
+
+void AppBase::privateEndFrame__()
+{
+	// Emit endFrame signal at the end of each frame
+	mSignalEndFrame.emit();
+}
+
 void AppBase::privateSetup__()
 {
 	mTimeline->stepTo( static_cast<float>( getElapsedSeconds() ) );
+
+	// Execute init callbacks before setup
+	executeInitCallbacks();
+
+	// Emit preSetup signal
+	mSignalPreSetup.emit();
 
 	setup();
 }
@@ -242,7 +426,13 @@ void AppBase::privateUpdate__()
 
 	mSignalUpdate.emit();
 
+	// Emit preUpdate signal
+	mSignalPreUpdate.emit();
+
 	update();
+
+	// Emit postUpdate signal
+	mSignalPostUpdate.emit();
 
 	mTimeline->stepTo( static_cast<float>( getElapsedSeconds() ) );
 

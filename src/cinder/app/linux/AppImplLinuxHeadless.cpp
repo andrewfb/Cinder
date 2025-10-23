@@ -100,7 +100,10 @@ void AppImplLinux::sleepUntilNextFrame()
 
 void AppImplLinux::run()
 {
-	mApp->privateSetup__();
+	{
+		auto setupScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Setup );
+		mApp->privateSetup__();
+	}
 	mSetupHasBeenCalled = true;
 
 	// issue initial app activation event

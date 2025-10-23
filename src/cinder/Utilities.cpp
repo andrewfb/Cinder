@@ -26,6 +26,7 @@
 #include "cinder/Utilities.h"
 #include "cinder/Unicode.h"
 #include "cinder/app/Platform.h"
+#include "cinder/app/AppBase.h"
 
 #if defined( CINDER_COCOA )
 	#include "cinder/cocoa/CinderCocoa.h"
@@ -215,6 +216,11 @@ vector<string> stackTrace()
 void setThreadName( const std::string &name )
 {
 	app::Platform::get()->setThreadName( name );
+
+	// Emit signal if app exists
+	if( app::AppBase::get() ) {
+		app::AppBase::get()->getSignalThreadName().emit( name );
+	}
 }
 
 int16_t swapEndian( int16_t val )

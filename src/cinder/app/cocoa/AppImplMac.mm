@@ -115,8 +115,11 @@ using namespace cinder::app;
 		[winIt updatePosRelativeToPrimaryDisplay];
 	}
 
-	mApp->privateSetup__();
-	
+	{
+		auto setupScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Setup );
+		mApp->privateSetup__();
+	}
+
 	// call initial window resize signals
 	for( WindowImplBasicCocoa* winIt in mWindows ) {
 		[winIt->mCinderView makeCurrentContext];
@@ -148,22 +151,42 @@ using namespace cinder::app;
 - (void)timerFired:(NSTimer *)t
 {
 	if( ! ((PlatformCocoa*)Platform::get())->isInsideModalLoop() ) {
+		// Begin frame instrumentation
+		auto frameScope = mApp->makeInstrumentationScope( app::AppBase::InstrumentationPhase::Frame );
+
+		mApp->privateBeginFrame__();
+
 		// issue update() event
-		mApp->privateUpdate__();
+		{
+			auto updateScope = mApp->makeInstrumentationScope( app::AppBase::InstrumentationPhase::Update );
+			mApp->privateUpdate__();
+		}
 
 		// if quit() was called from update(), we don't want to issue another draw()
-		if( mApp->getQuitRequested() )
+		if( mApp->getQuitRequested() ) {
+			mApp->privateEndFrame__();
 			return;
+		}
 
 		// mark all windows as ready to draw; this really only matters the first time, to ensure the first update() fires before draw()
 		for( WindowImplBasicCocoa* winIt in mWindows ) {
 			[winIt->mCinderView setReadyToDraw:YES];
 		}
-		
+
 		// walk all windows and draw them
-		for( WindowImplBasicCocoa* winIt in mWindows ) {
-			[winIt->mCinderView draw];
+		{
+			auto drawScope = mApp->makeInstrumentationScope( app::AppBase::InstrumentationPhase::Draw );
+			for( WindowImplBasicCocoa* winIt in mWindows ) {
+				[winIt->mCinderView draw];
+			}
 		}
+
+		{
+			auto postDrawScope = mApp->makeInstrumentationScope( app::AppBase::InstrumentationPhase::PostDraw );
+			// Post-draw is implicit after draw completes
+		}
+
+		mApp->privateEndFrame__();
 	}
 }
 
@@ -308,7 +331,10 @@ using namespace cinder::app;
 		[[mWindows lastObject] close];
 	}
 
-	mApp->emitCleanup();
+	{
+		auto cleanupScope = mApp->makeInstrumentationScope( app::AppBase::InstrumentationPhase::Cleanup );
+		mApp->emitCleanup();
+	}
 	delete mApp;
 }
 

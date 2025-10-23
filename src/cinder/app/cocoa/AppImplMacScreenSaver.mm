@@ -460,7 +460,10 @@ static AppImplMacScreenSaver* getAppImpl()
 	if( ! mSetupCalled ) {
 		// fire setup for the first time
 		[self setActiveWindow:callee];
-		mApp->privateSetup__();
+		{
+			auto setupScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Setup );
+			mApp->privateSetup__();
+		}
 		mSetupCalled = YES;
 	}
 

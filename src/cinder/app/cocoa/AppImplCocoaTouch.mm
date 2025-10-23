@@ -42,7 +42,10 @@ using namespace cinder::app;
 	for( auto &windowImpl : mAppImpl->mWindows )
 		[windowImpl finishLoad];
 
-	mApp->privateSetup__();
+	{
+		auto setupScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Setup );
+		mApp->privateSetup__();
+	}
 	mAppImpl->mSetupHasFired = YES;
 
 	return YES;

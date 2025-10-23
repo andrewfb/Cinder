@@ -412,7 +412,10 @@ void AppImplLinux::sleepUntilNextFrame()
 
 void AppImplLinux::run()
 {
-	mApp->privateSetup__();
+	{
+		auto setupScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Setup );
+		mApp->privateSetup__();
+	}
 	mSetupHasBeenCalled = true;
 
 	// quit() was called from setup()
@@ -431,13 +434,32 @@ void AppImplLinux::run()
 	mNextFrameTime = getElapsedSeconds();	
 
 	while( ! mShouldQuit ) {
+		// Begin frame instrumentation
+		auto frameScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Frame );
+
+		mApp->privateBeginFrame__();
+
 		// update and draw
-		mApp->privateUpdate__();
-		for( auto &window : mWindows ) {
-			if( mShouldQuit ) // test for quit() issued from update() or draw()
-				goto terminate;
-			window->draw();
+		{
+			auto updateScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Update );
+			mApp->privateUpdate__();
 		}
+
+		{
+			auto drawScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Draw );
+			for( auto &window : mWindows ) {
+				if( mShouldQuit ) // test for quit() issued from update() or draw()
+					goto terminate;
+				window->draw();
+			}
+		}
+
+		{
+			auto postDrawScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::PostDraw );
+			// Post-draw is implicit after draw completes
+		}
+
+		mApp->privateEndFrame__();
 
 		glfwPollEvents();
 
@@ -460,7 +482,10 @@ void AppImplLinux::run()
 	}
 
   terminate:
-	mApp->emitCleanup();
+	{
+		auto cleanupScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Cleanup );
+		mApp->emitCleanup();
+	}
 	// Destroy the main window - this should resolve to
 	// a call for ::glfwDestroyWindow( ... );
 	mMainWindow.reset();
