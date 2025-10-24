@@ -7,9 +7,9 @@
  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
  the following conditions are met:
 
-    * Redistributions of source code must retain the above copyright notice, this list of conditions and
+	* Redistributions of source code must retain the above copyright notice, this list of conditions and
 	the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
+	* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
 	the following disclaimer in the documentation and/or other materials provided with the distribution.
 
  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
@@ -28,42 +28,42 @@
 #endif
 
 #if defined( __ANDROID__ ) && defined( __clang__ )
- 	#if defined( __GNUC__ )
- 		#define SAVED__GNUC__ __GNUC__
- 		#undef __GNUC__
- 	#endif
+	#if defined( __GNUC__ )
+		#define SAVED__GNUC__ __GNUC__
+		#undef __GNUC__
+	#endif
 
- 	#if defined( __GNUC_MINOR__ )
- 		#define SAVED__GNUC_MINOR__ __GNUC_MINOR__
- 		#undef __GNUC_MINOR__
- 	#endif
+	#if defined( __GNUC_MINOR__ )
+		#define SAVED__GNUC_MINOR__ __GNUC_MINOR__
+		#undef __GNUC_MINOR__
+	#endif
 
- 	#define __GNUC__ 		4
- 	#define __GNUC_MINOR__	9
+	#define __GNUC__ 4
+	#define __GNUC_MINOR__ 9
 	#include "asio/asio.hpp"
 
- 	#if defined( SAVED__GNUC__ )
- 		#undef  __GNUC__
- 		#define __GNUC__ SAVED__GNUC__
- 		#undef  SAVED__GNUC__
- 	#else
+	#if defined( SAVED__GNUC__ )
 		#undef __GNUC__
- 	#endif 
+		#define __GNUC__ SAVED__GNUC__
+		#undef SAVED__GNUC__
+	#else
+		#undef __GNUC__
+	#endif
 
- 	#if defined( SAVED__GNUC_MINOR__ )
- 		#undef  __GNUC_MINOR__
- 		#define __GNUC_MINOR__ SAVED__GNUC_MINOR__
- 		#undef  SAVED__GNUC_MINOR__
- 	#else
+	#if defined( SAVED__GNUC_MINOR__ )
 		#undef __GNUC_MINOR__
- 	#endif
+		#define __GNUC_MINOR__ SAVED__GNUC_MINOR__
+		#undef SAVED__GNUC_MINOR__
+	#else
+		#undef __GNUC_MINOR__
+	#endif
 #else
-  #if defined( linux ) || defined( __linux ) || defined( __linux__ )
-    #define CINDER_ASIO_CLANG_BUILTIN_OFFSETOF
-  #endif
- 	#if defined( __ANDROID__ )
- 		#include "cinder/android/libc_helper.h"
- 	#endif
+	#if defined( linux ) || defined( __linux ) || defined( __linux__ )
+		#define CINDER_ASIO_CLANG_BUILTIN_OFFSETOF
+	#endif
+	#if defined( __ANDROID__ )
+		#include "cinder/android/libc_helper.h"
+	#endif
 	#include "asio/asio.hpp"
 #endif
 
@@ -82,7 +82,7 @@ using namespace std;
 
 
 #if defined( CINDER_ANDROID )
-#include "cinder/android/AndroidDevLog.h"
+	#include "cinder/android/AndroidDevLog.h"
 using namespace ci::android;
 #endif
 
@@ -95,15 +95,9 @@ class InstrumentationScopeStack;
 // Destructor iterates in reverse to ensure LIFO semantics
 class InstrumentationScopeStack {
 	friend class AppBase;
+
   public:
-	enum class Phase {
-		Setup,
-		Frame,
-		Update,
-		Draw,
-		PostDraw,
-		Cleanup
-	};
+	enum class Phase { Setup, Frame, Update, Draw, PostDraw, Cleanup };
 
 	InstrumentationScopeStack( AppBase* app, Phase phase )
 	{
@@ -123,7 +117,6 @@ class InstrumentationScopeStack {
 		// Call the appropriate begin* method on each instrumenter (without holding lock)
 		for( const auto& instrumenter : instrumenters ) {
 			AppInstrumentation::ScopePtr scope;
-
 			switch( phase ) {
 				case Phase::Setup:
 					scope = instrumenter->beginSetup( *app );
@@ -167,28 +160,38 @@ class InstrumentationScopeStack {
 	std::vector<AppInstrumentation::ScopePtr> mScopes;
 };
 
-AppBase*					AppBase::sInstance = nullptr;			// Static instance of App, effectively a singleton
-AppBase::Settings*			AppBase::sSettingsFromMain = nullptr;
-std::vector<std::function<void(AppBase*)>>*	AppBase::sInitCallbacks = nullptr;
-std::mutex*								AppBase::sInitCallbacksMutex = nullptr;
-static std::thread::id		sPrimaryThreadId = std::this_thread::get_id();
+AppBase*									  AppBase::sInstance = nullptr; // Static instance of App, effectively a singleton
+AppBase::Settings*							  AppBase::sSettingsFromMain = nullptr;
+std::vector<std::function<void( AppBase* )>>* AppBase::sInitCallbacks = nullptr;
+std::mutex*									  AppBase::sInitCallbacksMutex = nullptr;
+static std::thread::id						  sPrimaryThreadId = std::this_thread::get_id();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // AppBase::Settings
 
 #if defined( CINDER_ANDROID )
 AppBase::Settings::Settings()
-	: mShouldQuit( false ), mQuitOnLastWindowClose( true ), mPowerManagementEnabled( false ),
-	  mFrameRate( 60 ), mFrameRateEnabled( true ), mHighDensityDisplayEnabled( false ), mMultiTouchEnabled( true )
+	: mShouldQuit( false )
+	, mQuitOnLastWindowClose( true )
+	, mPowerManagementEnabled( false )
+	, mFrameRate( 60 )
+	, mFrameRateEnabled( true )
+	, mHighDensityDisplayEnabled( false )
+	, mMultiTouchEnabled( true )
 #else
 AppBase::Settings::Settings()
-	: mShouldQuit( false ), mQuitOnLastWindowClose( true ), mPowerManagementEnabled( false ),
-	  mFrameRate( 60 ), mFrameRateEnabled( true ), mHighDensityDisplayEnabled( false ), mMultiTouchEnabled( false )
-#endif		
+	: mShouldQuit( false )
+	, mQuitOnLastWindowClose( true )
+	, mPowerManagementEnabled( false )
+	, mFrameRate( 60 )
+	, mFrameRateEnabled( true )
+	, mHighDensityDisplayEnabled( false )
+	, mMultiTouchEnabled( false )
+#endif
 {
 }
 
-void AppBase::Settings::init( const RendererRef &defaultRenderer, const char *title )
+void AppBase::Settings::init( const RendererRef& defaultRenderer, const char* title )
 {
 	mDefaultRenderer = defaultRenderer;
 	if( title )
@@ -205,7 +208,7 @@ void AppBase::Settings::setFrameRate( float frameRate )
 	mFrameRate = frameRate;
 }
 
-void AppBase::Settings::prepareWindow( const Window::Format &format )
+void AppBase::Settings::prepareWindow( const Window::Format& format )
 {
 	mWindowFormats.push_back( format );
 }
@@ -219,8 +222,15 @@ void AppBase::Settings::setShouldQuit( bool shouldQuit )
 // AppBase
 
 AppBase::AppBase()
-	: mFrameCount( 0 ), mAverageFps( 0 ), mFpsSampleInterval( 1 ), mTimer( true ), mTimeline( Timeline::create() ),
-		mFpsLastSampleFrame( 0 ), mFpsLastSampleTime( 0 ), mLaunchCalled( false ), mQuitRequested( false )
+	: mFrameCount( 0 )
+	, mAverageFps( 0 )
+	, mFpsSampleInterval( 1 )
+	, mTimer( true )
+	, mTimeline( Timeline::create() )
+	, mFpsLastSampleFrame( 0 )
+	, mFpsLastSampleTime( 0 )
+	, mLaunchCalled( false )
+	, mQuitRequested( false )
 {
 	sInstance = this;
 
@@ -231,7 +241,7 @@ AppBase::AppBase()
 	mIo = shared_ptr<asio::io_context>( new asio::io_context() );
 	mIoWork = shared_ptr<asio::io_context::work>( new asio::io_context::work( *mIo ) );
 
-	// due to an issue with boost::filesystem's static initialization on Windows, 
+	// due to an issue with boost::filesystem's static initialization on Windows,
 	// it's necessary to create a fs::path here in case of secondary threads doing the same thing simultaneously
 #if defined( CINDER_MSW )
 	fs::path dummyPath( "dummy" );
@@ -243,20 +253,20 @@ AppBase::~AppBase()
 	mIo->stop();
 }
 
-AppBase* AppBase::get() 
-{ 
-	return sInstance; 
+AppBase* AppBase::get()
+{
+	return sInstance;
 }
 
 // These are called by application instantiation main functions
 // static
 void AppBase::prepareLaunch()
-{	
+{
 	Platform::get()->prepareLaunch();
 }
 
 // static
-void AppBase::initialize( Settings *settings, const RendererRef &defaultRenderer, const char *title )
+void AppBase::initialize( Settings* settings, const RendererRef& defaultRenderer, const char* title )
 {
 	settings->init( defaultRenderer, title );
 
@@ -269,7 +279,7 @@ void AppBase::onTerminate()
 		try {
 			std::rethrow_exception( excptr );
 		}
-		catch( const std::exception & exc ) {
+		catch( const std::exception& exc ) {
 			CI_LOG_F( "Terminating due to uncaught exception, type: " << System::demangleTypeName( typeid( exc ).name() ) << ", what: " << exc.what() );
 		}
 		catch( ... ) {
@@ -297,24 +307,24 @@ void AppBase::cleanupLaunch()
 	Platform::get()->cleanupLaunch();
 
 #if defined( CINDER_ANDROID ) || defined( CINDER_LINUX )
-	// This will delete Platform::sInstance if it's not null. 
+	// This will delete Platform::sInstance if it's not null.
 	// Afterwards Platform::sInstance will be set to null.
 	Platform::set( nullptr );
-#endif 	
+#endif
 }
 
-void AppBase::registerAppInitCallback( const std::function<void(AppBase*)> &callback )
+void AppBase::registerAppInitCallback( const std::function<void( AppBase* )>& callback )
 {
 	// Thread-safe initialization using static local variables (guaranteed by C++11)
-	static std::mutex sLocalMutex;
-	static std::vector<std::function<void(AppBase*)>> sLocalCallbacks;
+	static std::mutex									sLocalMutex;
+	static std::vector<std::function<void( AppBase* )>> sLocalCallbacks;
 
 	// Initialize the static pointers to point to the static locals
 	static std::once_flag sInitFlag;
 	std::call_once( sInitFlag, []() {
 		sInitCallbacksMutex = &sLocalMutex;
 		sInitCallbacks = &sLocalCallbacks;
-	});
+	} );
 
 	std::lock_guard<std::mutex> lock( sLocalMutex );
 	sLocalCallbacks.push_back( callback );
@@ -323,7 +333,7 @@ void AppBase::registerAppInitCallback( const std::function<void(AppBase*)> &call
 void AppBase::executeInitCallbacks()
 {
 	// Copy callbacks to avoid holding lock while executing user code
-	std::vector<std::function<void(AppBase*)>> callbacksCopy;
+	std::vector<std::function<void( AppBase* )>> callbacksCopy;
 
 	if( sInitCallbacks && sInitCallbacksMutex ) {
 		{
@@ -405,9 +415,7 @@ void AppBase::privateSetup__()
 	// Execute init callbacks before setup
 	executeInitCallbacks();
 
-	// Emit preSetup signal
 	mSignalPreSetup.emit();
-
 	setup();
 }
 
@@ -424,23 +432,18 @@ void AppBase::privateUpdate__()
 			mainWin->getRenderer()->makeCurrentContext();
 	}
 
-	mSignalUpdate.emit();
-
-	// Emit preUpdate signal
 	mSignalPreUpdate.emit();
-
+	mSignalUpdate.emit();
 	update();
-
-	// Emit postUpdate signal
 	mSignalPostUpdate.emit();
 
 	mTimeline->stepTo( static_cast<float>( getElapsedSeconds() ) );
 
 	double now = mTimer.getSeconds();
 	if( now > mFpsLastSampleTime + mFpsSampleInterval ) {
-		//calculate average Fps over sample interval
+		// calculate average Fps over sample interval
 		uint32_t framesPassed = mFrameCount - mFpsLastSampleFrame;
-		mAverageFps = (float)(framesPassed / (now - mFpsLastSampleTime));
+		mAverageFps = (float)( framesPassed / ( now - mFpsLastSampleTime ) );
 
 		mFpsLastSampleTime = now;
 		mFpsLastSampleFrame = mFrameCount;
@@ -463,32 +466,32 @@ void AppBase::emitDidBecomeActive()
 	mSignalDidBecomeActive.emit();
 }
 
-void AppBase::emitDisplayConnected( const DisplayRef &display )
+void AppBase::emitDisplayConnected( const DisplayRef& display )
 {
 	mSignalDisplayConnected.emit( display );
 }
 
-void AppBase::emitDisplayDisconnected( const DisplayRef &display )
+void AppBase::emitDisplayDisconnected( const DisplayRef& display )
 {
 	mSignalDisplayDisconnected.emit( display );
 }
 
-void AppBase::emitDisplayChanged( const DisplayRef &display )
+void AppBase::emitDisplayChanged( const DisplayRef& display )
 {
 	mSignalDisplayChanged.emit( display );
 }
 
-fs::path AppBase::getOpenFilePath( const fs::path &initialPath, const vector<string> &extensions )
+fs::path AppBase::getOpenFilePath( const fs::path& initialPath, const vector<string>& extensions )
 {
 	return Platform::get()->getOpenFilePath( initialPath, extensions );
 }
 
-fs::path AppBase::getFolderPath( const fs::path &initialPath )
+fs::path AppBase::getFolderPath( const fs::path& initialPath )
 {
 	return Platform::get()->getFolderPath( initialPath );
 }
 
-fs::path AppBase::getSaveFilePath( const fs::path &initialPath, const vector<string> &extensions )
+fs::path AppBase::getSaveFilePath( const fs::path& initialPath, const vector<string>& extensions )
 {
 	return Platform::get()->getSaveFilePath( initialPath, extensions );
 }
@@ -503,18 +506,17 @@ bool AppBase::isMainThread()
 	return std::this_thread::get_id() == sPrimaryThreadId;
 }
 
-void AppBase::dispatchAsync( const std::function<void()> &fn )
+void AppBase::dispatchAsync( const std::function<void()>& fn )
 {
 	io_context().post( fn );
 }
 
-Surface	AppBase::copyWindowSurface()
+Surface AppBase::copyWindowSurface()
 {
-	return getWindow()->getRenderer()->copyWindowSurface(
-			getWindow()->toPixels( getWindow()->getBounds() ), getWindow()->toPixels( getWindow()->getHeight() ) );
+	return getWindow()->getRenderer()->copyWindowSurface( getWindow()->toPixels( getWindow()->getBounds() ), getWindow()->toPixels( getWindow()->getHeight() ) );
 }
 
-Surface	AppBase::copyWindowSurface( const Area &area )
+Surface AppBase::copyWindowSurface( const Area& area )
 {
 	Area clippedArea = area.getClipBy( getWindow()->toPixels( getWindow()->getBounds() ) );
 	return getWindow()->getRenderer()->copyWindowSurface( clippedArea, getWindow()->toPixels( getWindow()->getHeight() ) );
@@ -525,4 +527,4 @@ void AppBase::restoreWindowContext()
 	getWindow()->getRenderer()->makeCurrentContext();
 }
 
-} } // namespace cinder::app
+}} // namespace cinder::app
