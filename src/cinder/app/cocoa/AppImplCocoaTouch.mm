@@ -144,9 +144,11 @@ using namespace cinder::app;
 	mApp->privateUpdate__();
 	mUpdateHasFired = YES;
 
+	mApp->privatePreDraw__();
 	for( auto &win : mWindows ) {
 		[win->mCinderView drawView];
 	}
+	mApp->privatePostDraw__();
 }
 
 - (void)proximityStateChange:(NSNotificationCenter *)notification

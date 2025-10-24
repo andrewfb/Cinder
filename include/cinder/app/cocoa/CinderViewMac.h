@@ -27,8 +27,9 @@
 #include "cinder/app/AppBase.h"
 
 #import <AppKit/NSView.h>
+#import <AppKit/NSTextInputClient.h>
 #import <Foundation/Foundation.h>
-#import <AppKit/NSTouch.h> 
+#import <AppKit/NSTouch.h>
 #include "cinder/app/TouchEvent.h"
 
 #include <map>
@@ -44,6 +45,7 @@
 - (void)mouseWheel:(cinder::app::MouseEvent*)event;
 - (void)keyDown:(cinder::app::KeyEvent*)event;
 - (void)keyUp:(cinder::app::KeyEvent*)event;
+- (void)keyChar:(cinder::app::KeyEvent*)event;
 - (void)touchesBegan:(cinder::app::TouchEvent*)event;
 - (void)touchesMoved:(cinder::app::TouchEvent*)event;
 - (void)touchesEnded:(cinder::app::TouchEvent*)event;
@@ -51,7 +53,7 @@
 - (cinder::app::WindowRef)getWindowRef;
 @end
 
-@interface CinderViewMac : NSView {
+@interface CinderViewMac : NSView<NSTextInputClient> {
   @private
 	BOOL						mFullScreen;
 	BOOL						mFullScreenModeKiosk;
@@ -60,13 +62,17 @@
 	BOOL						mHighDensityDisplayEnabled;
 	BOOL						mMultiTouchEnabled;
 	cinder::app::RendererRef	mRenderer;
-	
+
 	float						mContentScaleFactor;
 
 	NSMutableDictionary					*mTouchIdMap;
 	std::map<uint32_t,cinder::vec2>	mTouchPrevPointMap;
 	std::vector<cinder::app::TouchEvent::Touch> mActiveTouches;
 	id<CinderViewDelegate>				mDelegate;
+
+	// Text input state
+	NSRange						mMarkedRange;
+	NSMutableAttributedString	*mMarkedText;
 }
 
 @property (readwrite) BOOL readyToDraw;

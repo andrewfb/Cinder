@@ -173,6 +173,9 @@ using namespace cinder::app;
 			[winIt->mCinderView setReadyToDraw:YES];
 		}
 
+		// emit pre-draw signal
+		mApp->privatePreDraw__();
+
 		// walk all windows and draw them
 		{
 			auto drawScope = mApp->makeInstrumentationScope( app::AppBase::InstrumentationPhase::Draw );
@@ -183,7 +186,7 @@ using namespace cinder::app;
 
 		{
 			auto postDrawScope = mApp->makeInstrumentationScope( app::AppBase::InstrumentationPhase::PostDraw );
-			// Post-draw is implicit after draw completes
+			mApp->privatePostDraw__();
 		}
 
 		mApp->privateEndFrame__();
@@ -793,6 +796,15 @@ using namespace cinder::app;
 		[mAppImpl setActiveWindow:self];
 		event->setWindow( mWindowRef );
 		mWindowRef->emitKeyUp( event );
+	}
+}
+
+- (void)keyChar:(KeyEvent *)event
+{
+	if( ! ((PlatformCocoa*)Platform::get())->isInsideModalLoop() ) {
+		[mAppImpl setActiveWindow:self];
+		event->setWindow( mWindowRef );
+		mWindowRef->emitKeyChar( event );
 	}
 }
 

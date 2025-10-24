@@ -433,13 +433,21 @@ void Window::emitKeyUp( KeyEvent *event )
 		getApp()->keyUp( *event );
 }
 
+void Window::emitKeyChar( KeyEvent *event )
+{
+	applyCurrentContext();
+
+	CollectorEvent<KeyEvent> collector( event );
+	mSignalKeyChar.emit( collector, *event );
+	if( ! event->isHandled() )
+		getApp()->keyChar( *event );
+}
+
 void Window::emitDraw()
 {
 	applyCurrentContext();
 
 	mSignalDraw.emit();
-	// Emit preDraw signal before calling draw()
-	getApp()->getSignalPreDraw().emit();
 	getApp()->draw();
 	mSignalPostDraw.emit();
 }

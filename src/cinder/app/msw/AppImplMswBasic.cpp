@@ -95,6 +95,8 @@ void AppImplMswBasic::run()
 			mApp->privateUpdate__();
 		}
 
+		mApp->privatePreDraw__();
+
 		{
 			auto drawScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Draw );
 			for( auto &window : mWindows ) {
@@ -105,7 +107,7 @@ void AppImplMswBasic::run()
 
 		{
 			auto postDrawScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::PostDraw );
-			// Post-draw is implicit after redraw completes
+			mApp->privatePostDraw__();
 		}
 		// get current time in seconds
 		double currentSeconds = mApp->getElapsedSeconds();

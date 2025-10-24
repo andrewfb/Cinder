@@ -408,6 +408,18 @@ void AppBase::privateEndFrame__()
 	mSignalEndFrame.emit();
 }
 
+void AppBase::privatePreDraw__()
+{
+	// Emit preDraw signal before drawing
+	mSignalPreDraw.emit();
+}
+
+void AppBase::privatePostDraw__()
+{
+	// Emit postDraw signal after drawing
+	mSignalPostDraw.emit();
+}
+
 void AppBase::privateSetup__()
 {
 	mTimeline->stepTo( static_cast<float>( getElapsedSeconds() ) );

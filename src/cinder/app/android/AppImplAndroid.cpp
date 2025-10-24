@@ -150,9 +150,11 @@ void AppImplAndroid::sleepUntilNextFrame()
 void AppImplAndroid::updateAndDraw()
 {
 	mApp->privateUpdate__();
+	mApp->privatePreDraw__();
 	for( auto &window : mWindows ) {
 		window->draw();
 	}
+	mApp->privatePostDraw__();
 }
 
 void AppImplAndroid::onTouchBegan( int id, float x, float y )

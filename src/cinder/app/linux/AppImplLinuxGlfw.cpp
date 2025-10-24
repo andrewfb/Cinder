@@ -224,7 +224,28 @@ public:
 		}
 	}
 
-	// onCharInput removed - we now compute characters directly in onKeyboard
+	static void onCharInput( GLFWwindow *glfwWindow, unsigned int codepoint )
+	{
+		auto iter = sWindowMapping.find( glfwWindow );
+		if( sWindowMapping.end() != iter ) {
+			auto& cinderAppImpl = iter->second.first;
+			auto& cinderWindow = iter->second.second;
+			cinderAppImpl->setWindow( cinderWindow );
+
+			// Create a KeyEvent with character information for keyDown
+			char asciiChar = codepoint < 256 ? (char)codepoint : 0;
+			KeyEvent keyDownEvent( cinderWindow, sKeyEvent.getCode(), codepoint, asciiChar, sKeyEvent.getModifiers(), sKeyEvent.getNativeKeyCode() );
+
+			// Emit keyDown with character info
+			cinderWindow->emitKeyDown( &keyDownEvent );
+
+			// Emit keyChar with a separate event (so handled flag doesn't carry over)
+			KeyEvent keyCharEvent( cinderWindow, sKeyEvent.getCode(), codepoint, asciiChar, sKeyEvent.getModifiers(), sKeyEvent.getNativeKeyCode() );
+			cinderWindow->emitKeyChar( &keyCharEvent );
+
+			sKeyEvent = keyDownEvent;
+		}
+	}
 
 	static void onMousePos( GLFWwindow* glfwWindow, double mouseX, double mouseY ) {
 		auto iter = sWindowMapping.find( glfwWindow );
@@ -430,6 +451,8 @@ void AppImplLinux::run()
 			mApp->privateUpdate__();
 		}
 
+		mApp->privatePreDraw__();
+
 		{
 			auto drawScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Draw );
 			for( auto &window : mWindows ) {
@@ -441,7 +464,7 @@ void AppImplLinux::run()
 
 		{
 			auto postDrawScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::PostDraw );
-			// Post-draw is implicit after draw completes
+			mApp->privatePostDraw__();
 		}
 
 		mApp->privateEndFrame__();

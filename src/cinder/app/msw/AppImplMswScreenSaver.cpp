@@ -127,9 +127,11 @@ LRESULT AppImplMswScreenSaver::eventHandler( HWND hWnd, UINT message, WPARAM wPa
 		case WM_TIMER:
 			setWindow( mWindows.front()->getWindow() );
 			mApp->privateUpdate__();
+			mApp->privatePreDraw__();
 			for( auto winIt = mWindows.begin(); winIt != mWindows.end(); ++winIt ) {
 				(*winIt)->draw();
 			}
+			mApp->privatePostDraw__();
 			return 0;
 		break;
 		case WM_DESTROY:
