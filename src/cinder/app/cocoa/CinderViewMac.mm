@@ -50,6 +50,8 @@ using namespace cinder::app;
 	mFullScreen = NO;
 	mHighDensityDisplayEnabled = NO;
 	mMultiTouchEnabled = NO;
+	mMarkedText = nil;
+	mMarkedRange = NSMakeRange(NSNotFound, 0);
 
 	mTouchIdMap = nil;
 	mDelegate = nil;
@@ -67,6 +69,8 @@ using namespace cinder::app;
 	mReceivesEvents = appReceivesEvents;
 	mHighDensityDisplayEnabled = highDensityDisplay;
 	mMultiTouchEnabled = enableMultiTouch;
+	mMarkedText = nil;
+	mMarkedRange = NSMakeRange(NSNotFound, 0);
 
 	mTouchIdMap = nil;
 	mDelegate = nil;
@@ -214,6 +218,7 @@ using namespace cinder::app;
 - (void)dealloc
 {
 	[[NSNotificationCenter defaultCenter] removeObserver:self];
+	[mMarkedText release];
 	[super dealloc];
 }
 
@@ -230,13 +235,19 @@ using namespace cinder::app;
 }
 
 - (int)prepMouseEventModifiers:(NSEvent *)evt
-{	
+{
 	unsigned int result = 0;
 	if( [evt modifierFlags] & NSControlKeyMask ) result |= cinder::app::MouseEvent::CTRL_DOWN;
 	if( [evt modifierFlags] & NSShiftKeyMask ) result |= cinder::app::MouseEvent::SHIFT_DOWN;
 	if( [evt modifierFlags] & NSAlternateKeyMask ) result |= cinder::app::MouseEvent::ALT_DOWN;
 	if( [evt modifierFlags] & NSCommandKeyMask ) result |= cinder::app::MouseEvent::META_DOWN;
-	
+
+	// Check which mouse buttons are currently pressed
+	NSUInteger pressedButtons = [NSEvent pressedMouseButtons];
+	if( pressedButtons & (1 << 0) ) result |= cinder::app::MouseEvent::LEFT_DOWN;   // Left button
+	if( pressedButtons & (1 << 1) ) result |= cinder::app::MouseEvent::RIGHT_DOWN;  // Right button
+	if( pressedButtons & (1 << 2) ) result |= cinder::app::MouseEvent::MIDDLE_DOWN; // Middle button
+
 	return result;
 }
 
@@ -258,13 +269,19 @@ using namespace cinder::app;
 	uint32_t c32	= ([chars length] > 0 ) ? [chars characterAtIndex:0] : 0;
 	NSString *charsNoMods	= [theEvent charactersIgnoringModifiers];
 	char c					= ([charsNoMods length] > 0 ) ? [charsNoMods characterAtIndex:0] : 0;
-	
+
 	int code	= [theEvent keyCode];
 	int mods	= [self prepKeyEventModifiers:theEvent];
-	
+
 	cinder::app::KeyEvent keyEvent( [mDelegate getWindowRef], cinder::app::KeyEvent::translateNativeKeyCode( code ), c32,
-									c, mods, code);	
+									c, mods, code);
 	[mDelegate keyDown:&keyEvent];
+
+	// Use text input system for proper dead key and IME support, but only if the event wasn't handled
+	// This allows users to prevent text input by handling the keyDown event
+	if( ! keyEvent.isHandled() ) {
+		[self interpretKeyEvents:[NSArray arrayWithObject:theEvent]];
+	}
 }
 
 - (void)keyUp:(NSEvent*)theEvent
@@ -286,7 +303,7 @@ using namespace cinder::app;
 {
 	int code = [theEvent keyCode];
 	int mods = [self prepKeyEventModifiers:theEvent];
-	
+
     if (mods == 0) {
 		cinder::app::KeyEvent keyEvent( [mDelegate getWindowRef], cinder::app::KeyEvent::translateNativeKeyCode( code ), 0, 0, mods, code);
 		[mDelegate keyUp:&keyEvent];
@@ -297,14 +314,108 @@ using namespace cinder::app;
     }
 }
 
+// Text input support for dead keys and IME
+- (void)insertText:(id)string
+{
+	NSString *characters;
+	if ([string isKindOfClass:[NSAttributedString class]]) {
+		characters = [string string];
+	}
+	else {
+		characters = (NSString*)string;
+	}
+
+	// Emit keyChar for each composed character
+	for (NSUInteger i = 0; i < [characters length]; i++) {
+		uint32_t c32 = [characters characterAtIndex:i];
+		char c = (c32 < 256) ? (char)c32 : 0;
+
+		// Get current modifier state (no key code for composed characters)
+		NSEvent *currentEvent = [NSApp currentEvent];
+		int mods = currentEvent ? [self prepKeyEventModifiers:currentEvent] : 0;
+
+		cinder::app::KeyEvent charEvent([mDelegate getWindowRef], 0, c32, c, mods, 0);
+		[mDelegate keyChar:&charEvent];
+	}
+}
+
+- (void)doCommandBySelector:(SEL)selector
+{
+	// Forward to super to allow system shortcuts (Cmd+C, Cmd+V, Tab, arrows, etc.)
+	// This ensures normal menu/shortcut handling continues to work
+	[super doCommandBySelector:selector];
+}
+
+#pragma mark - NSTextInputClient Protocol
+
+- (void)insertText:(id)string replacementRange:(NSRange)replacementRange
+{
+	[self insertText:string];
+}
+
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange
+{
+	if (mMarkedText != string) {
+		[mMarkedText release];
+		if ([string isKindOfClass:[NSAttributedString class]]) {
+			mMarkedText = [[NSMutableAttributedString alloc] initWithAttributedString:string];
+		}
+		else {
+			mMarkedText = [[NSMutableAttributedString alloc] initWithString:string];
+		}
+	}
+	mMarkedRange = NSMakeRange(0, [mMarkedText length]);
+}
+
+- (void)unmarkText
+{
+	[mMarkedText release];
+	mMarkedText = nil;
+	mMarkedRange = NSMakeRange(NSNotFound, 0);
+}
+
+- (NSRange)selectedRange
+{
+	return NSMakeRange(NSNotFound, 0);
+}
+
+- (NSRange)markedRange
+{
+	return mMarkedRange;
+}
+
+- (BOOL)hasMarkedText
+{
+	return mMarkedText != nil && mMarkedRange.location != NSNotFound;
+}
+
+- (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange
+{
+	return nil;
+}
+
+- (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText
+{
+	return @[];
+}
+
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange
+{
+	return NSZeroRect;
+}
+
+- (NSUInteger)characterIndexForPoint:(NSPoint)point
+{
+	return NSNotFound;
+}
+
 - (void)mouseDown:(NSEvent*)theEvent
 {
 	NSPoint curPoint		= [theEvent locationInWindow];
 	int x					= (curPoint.x - [self frame].origin.x);
 	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
 	int mods				= [self prepMouseEventModifiers:theEvent];
-	
-	mods |= cinder::app::MouseEvent::LEFT_DOWN;
+
 	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], cinder::app::MouseEvent::LEFT_DOWN, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
 	[mDelegate mouseDown:&mouseEvent];
 }
@@ -315,8 +426,7 @@ using namespace cinder::app;
 	int x					= (curPoint.x - [self frame].origin.x);
 	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
 	int mods				= [self prepMouseEventModifiers:theEvent];
-	
-	mods |= cinder::app::MouseEvent::RIGHT_DOWN;
+
 	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], cinder::app::MouseEvent::RIGHT_DOWN, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
 	[mDelegate mouseDown:&mouseEvent];
 }
@@ -327,9 +437,8 @@ using namespace cinder::app;
 	int x					= (curPoint.x - [self frame].origin.x);
 	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
 	int mods				= [self prepMouseEventModifiers:theEvent];
-	
-	mods |= cinder::app::MouseEvent::MIDDLE_DOWN;
- 	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], cinder::app::MouseEvent::MIDDLE_DOWN, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
+
+	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], cinder::app::MouseEvent::MIDDLE_DOWN, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
 	[mDelegate mouseDown:&mouseEvent];
 }
 
@@ -339,8 +448,7 @@ using namespace cinder::app;
 	int x					= (curPoint.x - [self frame].origin.x);
 	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
 	int mods				= [self prepMouseEventModifiers:theEvent];
-	
-	mods |= cinder::app::MouseEvent::LEFT_DOWN;
+
 	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], cinder::app::MouseEvent::LEFT_DOWN, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
 	[mDelegate mouseUp:&mouseEvent];
 }
@@ -351,8 +459,7 @@ using namespace cinder::app;
 	int x					= (curPoint.x - [self frame].origin.x);
 	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
 	int mods				= [self prepMouseEventModifiers:theEvent];
-	
-	mods |= cinder::app::MouseEvent::RIGHT_DOWN;
+
 	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], cinder::app::MouseEvent::RIGHT_DOWN, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
 	[mDelegate mouseUp:&mouseEvent];
 }
@@ -363,8 +470,7 @@ using namespace cinder::app;
 	int x					= (curPoint.x - [self frame].origin.x);
 	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
 	int mods				= [self prepMouseEventModifiers:theEvent];
-	
-	mods |= cinder::app::MouseEvent::MIDDLE_DOWN;
+
 	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], cinder::app::MouseEvent::MIDDLE_DOWN, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
 	[mDelegate mouseUp:&mouseEvent];
 }
@@ -386,8 +492,7 @@ using namespace cinder::app;
 	int x					= (curPoint.x - [self frame].origin.x);
 	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
 	int mods				= [self prepMouseEventModifiers:theEvent];
-	
-	mods |= cinder::app::MouseEvent::RIGHT_DOWN;
+
 	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], cinder::app::MouseEvent::RIGHT_DOWN, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
 	[mDelegate mouseDrag:&mouseEvent];
 }
@@ -398,8 +503,7 @@ using namespace cinder::app;
 	int x					= (curPoint.x - [self frame].origin.x);
 	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
 	int mods				= [self prepMouseEventModifiers:theEvent];
-	
-	mods |= cinder::app::MouseEvent::MIDDLE_DOWN;
+
 	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], cinder::app::MouseEvent::MIDDLE_DOWN, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
 	[mDelegate mouseDrag:&mouseEvent];
 }
@@ -410,8 +514,7 @@ using namespace cinder::app;
 	int x					= (curPoint.x - [self frame].origin.x);
 	int y					= ([self frame].size.height - ( curPoint.y - [self frame].origin.y ));
 	int mods				= [self prepMouseEventModifiers:theEvent];
-	
-	mods |= cinder::app::MouseEvent::LEFT_DOWN;
+
 	cinder::app::MouseEvent mouseEvent( [mDelegate getWindowRef], cinder::app::MouseEvent::LEFT_DOWN, x, y, mods, 0.0f, (uint32_t)[theEvent modifierFlags] );
 	[mDelegate mouseDrag:&mouseEvent];
 }
@@ -451,7 +554,16 @@ using namespace cinder::app;
 		NSPoint curPoint = [sender draggingLocation];
 		int x = curPoint.x - [self frame].origin.x;
 		int y = [self frame].size.height - ( curPoint.y - [self frame].origin.y );
-		cinder::app::FileDropEvent fileDropEvent( [mDelegate getWindowRef], x, y, paths );
+
+		// Get current modifier key state
+		unsigned int modifiers = 0;
+		NSUInteger nsModifiers = [NSEvent modifierFlags];
+		if( nsModifiers & NSControlKeyMask ) modifiers |= cinder::app::FileDropEvent::CTRL_DOWN;
+		if( nsModifiers & NSShiftKeyMask ) modifiers |= cinder::app::FileDropEvent::SHIFT_DOWN;
+		if( nsModifiers & NSAlternateKeyMask ) modifiers |= cinder::app::FileDropEvent::ALT_DOWN;
+		if( nsModifiers & NSCommandKeyMask ) modifiers |= cinder::app::FileDropEvent::META_DOWN;
+
+		cinder::app::FileDropEvent fileDropEvent( [mDelegate getWindowRef], x, y, paths, modifiers );
 		[mDelegate fileDrop:&fileDropEvent];
 	}
 

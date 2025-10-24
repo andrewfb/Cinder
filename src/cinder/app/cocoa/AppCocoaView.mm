@@ -172,6 +172,13 @@ using namespace cinder::app;
 	mWindowRef->emitKeyUp( event );
 }
 
+- (void)keyChar:(cinder::app::KeyEvent*)event
+{
+	[mAppImpl setActiveWindow:self];
+	event->setWindow( mWindowRef );
+	mWindowRef->emitKeyChar( event );
+}
+
 - (void)touchesBegan:(cinder::app::TouchEvent*)event
 {
 	[mAppImpl setActiveWindow:self];
@@ -461,17 +468,21 @@ using namespace cinder::app;
 {
 	// issue update() event
 	mApp->privateUpdate__();
-	
+
 	// all live windows are ready to draw now that we've fired an update
 	for( auto &win : mWindows ) {
 		[win->mCinderView setReadyToDraw:YES];
-	}	
-	
+	}
+
+	mApp->privatePreDraw__();
+
 	// walk all windows and draw them
 	for( auto &win : mWindows ) {
 		[self setActiveWindow:win];
 		[win->mCinderView draw];
 	}
+
+	mApp->privatePostDraw__();
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification

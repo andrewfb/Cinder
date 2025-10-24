@@ -233,6 +233,8 @@ class CI_API AppBase {
 	virtual void	keyDown( KeyEvent event ) {}
 	//! Override to receive key-up events.
 	virtual void	keyUp( KeyEvent event ) {}
+	//! Override to receive key-char events (character input/text entry).
+	virtual void	keyChar( KeyEvent event ) {}
 	//! Override to receive window resize events.
 	virtual void	resize() {}
 	//! Override to receive file-drop events.	
@@ -257,6 +259,8 @@ class CI_API AppBase {
 	signals::Signal<void()>&	getSignalPostUpdate() { return mSignalPostUpdate; }
 	//! Emitted before draw() is called
 	signals::Signal<void()>&	getSignalPreDraw() { return mSignalPreDraw; }
+	//! Emitted after draw() is called
+	signals::Signal<void()>&	getSignalPostDraw() { return mSignalPostDraw; }
 	//! Emitted when a thread name is set via setThreadName()
 	signals::Signal<void(const std::string&)>&	getSignalThreadName() { return mSignalThreadName; }
 
@@ -446,6 +450,8 @@ class CI_API AppBase {
 	virtual void	privateUpdate__();
 	void			privateBeginFrame__();
 	void			privateEndFrame__();
+	void			privatePreDraw__();
+	void			privatePostDraw__();
 	bool			privateEmitShouldQuit()		{ return mSignalShouldQuit.emit(); }
 
 	//! \brief Internal instrumentation phase enum used by platform implementations
@@ -505,7 +511,7 @@ class CI_API AppBase {
 	std::shared_ptr<Timeline>	mTimeline;
 
 	signals::Signal<void()>		mSignalUpdate, mSignalCleanup, mSignalWillResignActive, mSignalDidBecomeActive;
-	signals::Signal<void()>		mSignalBeginFrame, mSignalEndFrame, mSignalPreSetup, mSignalPreUpdate, mSignalPostUpdate, mSignalPreDraw;
+	signals::Signal<void()>		mSignalBeginFrame, mSignalEndFrame, mSignalPreSetup, mSignalPreUpdate, mSignalPostUpdate, mSignalPreDraw, mSignalPostDraw;
 	signals::Signal<void(const std::string&)>	mSignalThreadName;
 	EventSignalShouldQuit		mSignalShouldQuit;
 

@@ -121,9 +121,11 @@ void AppImplLinux::run()
 
 		// update and draw
 		mApp->privateUpdate__();
+		mApp->privatePreDraw__();
 		for( auto &window : mWindows ) {
 			window->draw();
 		}
+		mApp->privatePostDraw__();
 
 		// Sleep until the next frame
 		if( ! mShouldQuit ) {

@@ -99,8 +99,10 @@ void AppWinRt::run( Windows::UI::Core::CoreWindow^ window )
 		if( mVisible ) { // update and draw
 			privateUpdate__();
 			CoreWindow::GetForCurrentThread()->Dispatcher->ProcessEvents( CoreProcessEventsOption::ProcessAllIfPresent );
+			privatePreDraw__();
 			for( auto &window : mWindows )
 				window->draw();
+			privatePostDraw__();
 		}
 		else {
 			CoreWindow::GetForCurrentThread()->Dispatcher->ProcessEvents( CoreProcessEventsOption::ProcessOneAndAllPending );

@@ -55,6 +55,14 @@ LRESULT CALLBACK BlankingWndProc( HWND mWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 static const wchar_t *WINDOWED_WIN_CLASS_NAME = TEXT("CinderWinClass");
 static const wchar_t *BLANKING_WINDOW_CLASS_NAME = TEXT("CinderBlankingWindow");
 
+// Storage for last key event to preserve key code for WM_CHAR
+struct LastKeyData {
+	int		code = 0;
+	unsigned int nativeKeyCode = 0;
+	unsigned int modifiers = 0;
+};
+static LastKeyData sLastKeyDown;
+
 AppImplMsw::AppImplMsw( AppBase *aApp )
 	: mApp( aApp ), mSetupHasBeenCalled( false ), mActive( true ), mNeedsToRefreshDisplays( false )
 {
@@ -650,8 +658,16 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 		case WM_SYSKEYDOWN:
 		case WM_KEYDOWN: {
 			WCHAR c = mapVirtualKey( wParam );
-			KeyEvent event( impl->getWindow(), KeyEvent::translateNativeKeyCode( prepNativeKeyCode( wParam ) ),
-							c, static_cast<char>( c ), prepKeyEventModifiers(), static_cast<unsigned int>(wParam) );
+			int code = KeyEvent::translateNativeKeyCode( prepNativeKeyCode( wParam ) );
+			unsigned int mods = prepKeyEventModifiers();
+			unsigned int nativeCode = static_cast<unsigned int>(wParam);
+
+			// Store key data for subsequent WM_CHAR
+			sLastKeyDown.code = code;
+			sLastKeyDown.nativeKeyCode = nativeCode;
+			sLastKeyDown.modifiers = mods;
+
+			KeyEvent event( impl->getWindow(), code, c, static_cast<char>( c ), mods, nativeCode );
 			impl->getWindow()->emitKeyDown( &event );
 			if ( event.isHandled() )
 				return 0;
@@ -663,6 +679,17 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 			KeyEvent event( impl->getWindow(), KeyEvent::translateNativeKeyCode( prepNativeKeyCode( wParam ) ),
 							c, static_cast<char>( c ), prepKeyEventModifiers(), static_cast<unsigned int>( wParam ) );
 			impl->getWindow()->emitKeyUp( &event );
+			if ( event.isHandled() )
+				return 0;
+		}
+		break;
+		case WM_CHAR: {
+			// WM_CHAR provides the translated character from the keyboard input
+			// Use key code and modifiers from the preceding WM_KEYDOWN
+			WCHAR c = static_cast<WCHAR>( wParam );
+			KeyEvent event( impl->getWindow(), sLastKeyDown.code, c, static_cast<char>( c ),
+							sLastKeyDown.modifiers, sLastKeyDown.nativeKeyCode );
+			impl->getWindow()->emitKeyChar( &event );
 			if ( event.isHandled() )
 				return 0;
 		}

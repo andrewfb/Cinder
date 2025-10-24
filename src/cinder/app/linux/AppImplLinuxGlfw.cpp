@@ -236,10 +236,18 @@ public:
 			auto& cinderWindow = iter->second.second;
 			cinderAppImpl->setWindow( cinderWindow );
 
-			// create new sKeyEvent that includes same info as previous but also the utf32 char. emit key down signal with that
+			// Create a KeyEvent with character information for keyDown
 			char asciiChar = codepoint < 256 ? (char)codepoint : 0;
-			sKeyEvent = KeyEvent( cinderWindow, sKeyEvent.getCode(), codepoint, asciiChar, sKeyEvent.getModifiers(), sKeyEvent.getNativeKeyCode() );
-			cinderWindow->emitKeyDown( &sKeyEvent );
+			KeyEvent keyDownEvent( cinderWindow, sKeyEvent.getCode(), codepoint, asciiChar, sKeyEvent.getModifiers(), sKeyEvent.getNativeKeyCode() );
+
+			// Emit keyDown with character info
+			cinderWindow->emitKeyDown( &keyDownEvent );
+
+			// Emit keyChar with a separate event (so handled flag doesn't carry over)
+			KeyEvent keyCharEvent( cinderWindow, sKeyEvent.getCode(), codepoint, asciiChar, sKeyEvent.getModifiers(), sKeyEvent.getNativeKeyCode() );
+			cinderWindow->emitKeyChar( &keyCharEvent );
+
+			sKeyEvent = keyDownEvent;
 		}
 	}
 
@@ -445,6 +453,8 @@ void AppImplLinux::run()
 			mApp->privateUpdate__();
 		}
 
+		mApp->privatePreDraw__();
+
 		{
 			auto drawScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Draw );
 			for( auto &window : mWindows ) {
@@ -456,7 +466,7 @@ void AppImplLinux::run()
 
 		{
 			auto postDrawScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::PostDraw );
-			// Post-draw is implicit after draw completes
+			mApp->privatePostDraw__();
 		}
 
 		mApp->privateEndFrame__();
