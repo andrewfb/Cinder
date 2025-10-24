@@ -480,7 +480,6 @@
     <ClCompile Include="..\..\src\cinder\app\AppScreenSaver.cpp">
       <Filter>Source Files\app</Filter>
     </ClCompile>
-    </ClCompile>
     <ClCompile Include="..\..\src\cinder\audio\ChannelRouterNode.cpp">
       <Filter>Source Files\audio</Filter>
     </ClCompile>
@@ -726,8 +725,6 @@
     </ClCompile>
     <ClCompile Include="..\..\src\cinder\Log.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    </ClCompile>
     </ClCompile>
     <ClCompile Include="..\..\src\cinder\gl\Query.cpp">
       <Filter>Source Files\gl</Filter>
@@ -1046,17 +1043,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    </ClInclude>
-    </ClInclude>
-    </ClInclude>
-    </ClInclude>
-    </ClInclude>
-    </ClInclude>
-    </ClInclude>
-    </ClInclude>
-    </ClInclude>
-    </ClInclude>
-    </ClInclude>
     <ClInclude Include="..\..\include\cinder\Arcball.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1374,7 +1360,6 @@
     </ClInclude>
     <ClInclude Include="..\..\include\cinder\dx\PlatformHelpers.h">
       <Filter>Header Files\dx</Filter>
-    </ClInclude>
     </ClInclude>
     <ClInclude Include="..\..\include\cinder\dx\DxRenderTarget.h">
       <Filter>Header Files\dx</Filter>
@@ -1714,8 +1699,6 @@
     </ClInclude>
     <ClInclude Include="..\..\include\cinder\Log.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    </ClInclude>
     </ClInclude>
     <ClInclude Include="..\..\include\cinder\CinderGlm.h">
       <Filter>Header Files</Filter>
