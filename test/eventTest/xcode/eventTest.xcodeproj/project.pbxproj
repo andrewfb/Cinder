@@ -10,10 +10,9 @@
 		00241AEF0E83114D004D34EB /* eventTest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00241AEE0E83114D004D34EB /* eventTest.cpp */; };
 		006D729C1995319F008149E2 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 006D729A1995319F008149E2 /* AVFoundation.framework */; };
 		006D729D1995319F008149E2 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 006D729B1995319F008149E2 /* CoreMedia.framework */; };
-		00BC6ADA0F93DEDD0086A1DC /* QuickTime.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00BC6AD40F93DEDD0086A1DC /* QuickTime.framework */; };
+		007CD5FE2EAC28710060E372 /* CinderApp.icns in Resources */ = {isa = PBXBuildFile; fileRef = 007CD5FD2EAC21810060E372 /* CinderApp.icns */; };
 		00BC6ADB0F93DEDD0086A1DC /* QTKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00BC6AD50F93DEDD0086A1DC /* QTKit.framework */; };
 		00BC6ADC0F93DEDD0086A1DC /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00BC6AD60F93DEDD0086A1DC /* CoreVideo.framework */; };
-		00BC6ADD0F93DEDD0086A1DC /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00BC6AD70F93DEDD0086A1DC /* Carbon.framework */; };
 		00BC6ADE0F93DEDD0086A1DC /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00BC6AD80F93DEDD0086A1DC /* OpenGL.framework */; };
 		00BC6ADF0F93DEDD0086A1DC /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00BC6AD90F93DEDD0086A1DC /* Cocoa.framework */; };
 		00C074DD0FF338E3004801EA /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00C074D90FF338E3004801EA /* Accelerate.framework */; };
@@ -28,6 +27,7 @@
 		00241AEE0E83114D004D34EB /* eventTest.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = eventTest.cpp; path = ../src/eventTest.cpp; sourceTree = SOURCE_ROOT; };
 		006D729A1995319F008149E2 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		006D729B1995319F008149E2 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
+		007CD5FD2EAC21810060E372 /* CinderApp.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; name = CinderApp.icns; path = ../../../samples/data/CinderApp.icns; sourceTree = "<group>"; };
 		00BC6AD40F93DEDD0086A1DC /* QuickTime.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuickTime.framework; path = /System/Library/Frameworks/QuickTime.framework; sourceTree = "<absolute>"; };
 		00BC6AD50F93DEDD0086A1DC /* QTKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QTKit.framework; path = /System/Library/Frameworks/QTKit.framework; sourceTree = "<absolute>"; };
 		00BC6AD60F93DEDD0086A1DC /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = /System/Library/Frameworks/CoreVideo.framework; sourceTree = "<absolute>"; };
@@ -57,10 +57,8 @@
 				113241D21B66DCF30064A24A /* IOKit.framework in Frameworks */,
 				006D729C1995319F008149E2 /* AVFoundation.framework in Frameworks */,
 				006D729D1995319F008149E2 /* CoreMedia.framework in Frameworks */,
-				00BC6ADA0F93DEDD0086A1DC /* QuickTime.framework in Frameworks */,
 				00BC6ADB0F93DEDD0086A1DC /* QTKit.framework in Frameworks */,
 				00BC6ADC0F93DEDD0086A1DC /* CoreVideo.framework in Frameworks */,
-				00BC6ADD0F93DEDD0086A1DC /* Carbon.framework in Frameworks */,
 				00BC6ADE0F93DEDD0086A1DC /* OpenGL.framework in Frameworks */,
 				00BC6ADF0F93DEDD0086A1DC /* Cocoa.framework in Frameworks */,
 				00C074DD0FF338E3004801EA /* Accelerate.framework in Frameworks */,
@@ -139,6 +137,7 @@
 		29B97317FDCFA39411CA2CEA /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				007CD5FD2EAC21810060E372 /* CinderApp.icns */,
 				8D1107310486CEB800E47090 /* Info.plist */,
 			);
 			name = Resources;
@@ -191,6 +190,7 @@
 			developmentRegion = English;
 			hasScannedForEncodings = 1;
 			knownRegions = (
+				English,
 				en,
 			);
 			mainGroup = 29B97314FDCFA39411CA2CEA /* eventTest */;
@@ -207,6 +207,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				007CD5FE2EAC28710060E372 /* CinderApp.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -228,7 +229,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = x86_64;
+				ARCHS = "$(ARCHS_STANDARD)";
 				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
 				CLANG_CXX_LIBRARY = "libc++";
 				COPY_PHASE_STRIP = NO;
@@ -243,7 +244,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "$(HOME)/Applications";
 				LIBRARY_SEARCH_PATHS = "";
-				OTHER_LDFLAGS = ../../../lib/libcinder_d.a;
+				OTHER_LDFLAGS = "$(CINDER_PATH)/lib/macosx/$(CONFIGURATION)/libcinder.a";
 				PRODUCT_NAME = eventTest;
 				WRAPPER_EXTENSION = app;
 				ZERO_LINK = YES;
@@ -254,7 +255,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = x86_64;
+				ARCHS = "$(ARCHS_STANDARD)";
 				CLANG_CXX_LANGUAGE_STANDARD = "c++14";
 				CLANG_CXX_LIBRARY = "libc++";
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
@@ -267,7 +268,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "$(HOME)/Applications";
 				LIBRARY_SEARCH_PATHS = "";
-				OTHER_LDFLAGS = ../../../lib/libcinder.a;
+				OTHER_LDFLAGS = "$(CINDER_PATH)/lib/macosx/$(CONFIGURATION)/libcinder.a";
 				PRODUCT_NAME = eventTest;
 				WRAPPER_EXTENSION = app;
 			};

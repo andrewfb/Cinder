@@ -9,7 +9,7 @@
 	<key>CFBundleIconFile</key>
 	<string>CinderApp.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>org.libcinder.EventTest</string>
+	<string>org.libcinder.CaptureTest</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -20,6 +20,8 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>1.0</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app uses your webcam.</string>
 	<key>NSHighResolutionCapable</key>
 	<false/>
 	<key>NSMainNibFile</key>
