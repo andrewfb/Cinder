@@ -811,7 +811,8 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 			::DragQueryPoint( dropH, &dropPoint );
 			::DragFinish( dropH );
 
-			FileDropEvent dropEvent( impl->getWindow(), impl->toPoints( (int)dropPoint.x ), impl->toPoints( (int)dropPoint.y ), files );
+			uint32_t modifiers = prepKeyEventModifiers();
+			FileDropEvent dropEvent( impl->getWindow(), impl->toPoints( (int)dropPoint.x ), impl->toPoints( (int)dropPoint.y ), files, modifiers );
 			impl->getWindow()->emitFileDrop( &dropEvent );
 			return 0;
 		}
