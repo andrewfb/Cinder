@@ -245,9 +245,15 @@ public:
 			auto& cinderWindow = iter->second.second;
 			cinderAppImpl->setWindow( cinderWindow );
 
+			// Get the last key event data to preserve modifiers and key code
 			auto& lastKey = sLastKeyData[glfwWindow];
+
+			// Create a KeyEvent with character information from the char callback,
+			// but preserve the key code, modifiers, and native key code from the last key down
 			char asciiChar = codepoint < 256 ? (char)codepoint : 0;
 			KeyEvent keyCharEvent( cinderWindow, lastKey.code, codepoint, asciiChar, lastKey.modifiers, lastKey.nativeKeyCode );
+
+			// Emit keyChar event
 			cinderWindow->emitKeyChar( &keyCharEvent );
 		}
 	}
@@ -321,21 +327,35 @@ public:
 
 	static void onFileDrop( GLFWwindow *glfwWindow, int count, const char **paths )
 	{
-		std::vector<fs::path> files;
-		for( int i = 0; i < count; i++ ) {
-			files.push_back( paths[i] );
-		}
+		auto iter = sWindowMapping.find( glfwWindow );
+		if( sWindowMapping.end() != iter ) {
+			auto& cinderAppImpl = iter->second.first;
+			auto& cinderWindow = iter->second.second;
+			cinderAppImpl->setWindow( cinderWindow );
 
-		// Get the cursor position at the time of the drop
-		double xpos, ypos;
-		::glfwGetCursorPos( glfwWindow, &xpos, &ypos );
-		vec2 dropPoint = { static_cast<float>(xpos), static_cast<float>(ypos) };
-		FileDropEvent dropEvent( getWindow(), dropPoint.x, dropPoint.y, files );
-		getWindow()->emitFileDrop( &dropEvent );
+			std::vector<fs::path> files;
+			for( int i = 0; i < count; i++ ) {
+				files.push_back( paths[i] );
+			}
+
+			// Get the cursor position at the time of the drop
+			double xpos, ypos;
+			::glfwGetCursorPos( glfwWindow, &xpos, &ypos );
+			vec2 dropPoint = { static_cast<float>(xpos), static_cast<float>(ypos) };
+
+			// Note: Modifier keys are not supported during file drops on Linux/Wayland due to
+			// security restrictions. On XWayland, modifier state is intentionally stripped for
+			// clients that don't own the keyboard. Native Wayland DND support in GLFW is not
+			// yet implemented. For future-proof cross-platform DND semantics, consider using
+			// XDND action negotiation (copy/move/link) instead of modifier keys.
+			FileDropEvent dropEvent( cinderWindow, dropPoint.x, dropPoint.y, files );
+			cinderWindow->emitFileDrop( &dropEvent );
+		}
 	}
 };
 
 std::map<GLFWwindow*, std::pair<AppImplLinux*,WindowRef>> GlfwCallbacks::sWindowMapping;
+std::map<GLFWwindow*, GlfwCallbacks::LastKeyData> GlfwCallbacks::sLastKeyData;
 bool GlfwCallbacks::sCapsLockDown = false;
 bool GlfwCallbacks::sNumLockDown = false;
 bool GlfwCallbacks::sScrollLockDown = false;
