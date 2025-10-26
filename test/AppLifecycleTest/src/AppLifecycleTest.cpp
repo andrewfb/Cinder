@@ -105,6 +105,7 @@
 #include <thread>
 #include <chrono>
 #include <algorithm>
+#include <map>
 
 using namespace ci;
 using namespace ci::app;
