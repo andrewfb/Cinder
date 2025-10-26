@@ -26,348 +26,455 @@
 #include "cinder/Rect.h"
 #include "cinder/ChanTraits.h"
 
-#include <math.h>
+// Enable SIMD optimizations by default
+#if !defined(STBIR_NO_SIMD)
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+		#define STBIR_SSE2
+	#endif
+	#if defined(__AVX__)
+		#define STBIR_AVX
+	#endif
+	#if defined(__AVX2__)
+		#define STBIR_AVX2
+	#endif
+	#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+		#define STBIR_NEON
+	#endif
+#endif
+
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include "cinder/stb_image_resize2.h"
+
 #include <vector>
-using std::vector;
-using std::pair;
-using std::unique_ptr;
-#include <limits>
-#include <fstream>
 #include <algorithm>
 
 namespace cinder { namespace ip {
 
-template<typename T>
-struct SCALETRAIT {
-	static const uint8_t dataType;
-};
-
-template<>
-struct SCALETRAIT<uint8_t> {
-	typedef int32_t SUMT;
-	static const int32_t WEIGHTBITS = 14;					// # bits in filter coefficients
-	static const int32_t FINALSHIFT = 2 * WEIGHTBITS - 8;	// shift after x&y filter passes
-	static const int32_t HALFFINALSHIFT = 1 << ( FINALSHIFT - 1 );
-	static const int32_t WEIGHTONE = 1 << WEIGHTBITS;		// filter weight of one
-	static uint8_t ACCUMTOCHANNEL( const int32_t in ) {
-		int32_t result = (in + HALFFINALSHIFT) >> FINALSHIFT;
-		if ( result < 0 )
-			result = 0;
-		else if ( result > 255 )
-			result = 255;
-		return static_cast<uint8_t>( result );
-	}
-	static int32_t CHANNELTOBUFFER( const int32_t in ) { return in >> 8; }
-};
-
-template<>
-struct SCALETRAIT<float> {
-	typedef float SUMT;
-	static const float WEIGHTONE;		// filter weight of one
-	static float ACCUMTOCHANNEL( const float in ) { return in; }
-	static float CHANNELTOBUFFER( const float in ) { return in; }
-};
-
-const float SCALETRAIT<float>::WEIGHTONE = 1.0f;
-
-// the mapping from discrete dest coordinates b to continuous source coordinates:
-#define MAP(b, scale, offset)  (((b)+(offset))/(scale))
-
-typedef struct {	/* ZOOM-SPECIFIC FILTER PARAMETERS */
-    float scale;	/* filter scale (spacing between centers in a space) */
-    float supp;	/* scaled filter support radius */
-    int32_t width;		/* filter width: max number of nonzero samples */
-} FilterParams;
-
-typedef struct {	// SOURCE TO DEST COORDINATE MAPPING
-    float sx, sy;	// x and y scales
-    float tx, ty;	// x and y translations
-    float ux, uy;	// x and y offset used by MAP, private fields
-} Mapping;
-
-template<typename T>
-class WeightTable {		/* SAMPLED FILTER WEIGHT TABLE */
- public:
-    int32_t start, end;		/* range of samples is [start..end-1] */
-    T		*weight;		/* weight[i] goes with pixel at start+i */
-};
-
-template<typename LT, typename AT>
-void scanlineAccumulate( LT weight, LT *lineBuffer, int32_t lineBufferWidth, AT *accum );
-template<typename T, typename WT>
-void makeWeightTable( int32_t b, float cen, const FilterBase &filter, const FilterParams *params, int32_t len, bool trimzeros, WeightTable<WT> *wtab );
-
-template<typename AT, typename T>
-void scanlineShiftAccumToChannel( AT *accum, int32_t x1, int32_t y, int32_t width, ChannelT<T> *channel )
+// Custom filter callbacks for filters not built into STB
+static float stbir_sinc_blackman_kernel( float x, float scale, void * user_data )
 {
-	AT result;
-	T *dst;
-
-	dst = channel->getData( x1, y );
-	int8_t pixelStride = channel->getIncrement();
-
-	for( int32_t i = 0; i < width; i++ ) {
-		result = SCALETRAIT<T>::ACCUMTOCHANNEL( *accum++ );
-		*dst = static_cast<T>( result );
-		dst += pixelStride;
-	}
+	float support = *static_cast<float*>( user_data );
+	float v = ( x == 0.0f ) ? 1.0f : sinf( 3.14159265358979323846f * x ) / ( 3.14159265358979323846f * x );
+	// blackman window
+	x /= support;
+	return v * ( 0.42f + 0.50f * cosf( 3.14159265358979323846f * x ) + 0.08f * cosf( 6.2831853071795862f * x ) );
 }
 
-template<typename T, typename WT, typename AT>
-void scanlineFilterChannelToBuffer( WeightTable<WT> *weights, int32_t x, int32_t y, const ChannelT<T> &channel, AT *lineBuffer, int32_t width )
+static float stbir_sinc_blackman_support( float scale, void * user_data )
 {
-	int32_t b, af;
-	AT sum;
-	AT *wp;
-	const T *srcLine, *src;
+	return *static_cast<float*>( user_data );
+}
 
-	srcLine = channel.getData( x, y );
+static float stbir_quadratic_kernel( float x, float scale, void * user_data )
+{
+	float t;
+	if ( x < -1.5f ) return 0.0f;
+	else if ( x < -0.5f ) { t = x + 1.5f; return 0.5f * t * t; }
+	else if ( x < 0.5f ) return 0.75f - x * x;
+	else if ( x < 1.5f ) { t = x - 1.5f; return 0.5f * t * t; }
+	return 0.0f;
+}
 
-	int8_t pixelStride = channel.getIncrement();
-	for ( b = 0; b < width; b++ ) {
-		if( std::numeric_limits<AT>::is_integer )
-			sum = 1 << 7;
+static float stbir_quadratic_support( float scale, void * user_data )
+{
+	return *static_cast<float*>( user_data );
+}
+
+static float stbir_gaussian_kernel( float x, float scale, void * user_data )
+{
+	return expf( -2.0f * x * x ) * sqrtf( 2.0f / 3.14159265358979323846f );
+}
+
+static float stbir_gaussian_support( float scale, void * user_data )
+{
+	return *static_cast<float*>( user_data );
+}
+
+static float stbir_bessel_blackman_kernel( float x, float scale, void * user_data )
+{
+	float support = *static_cast<float*>( user_data );
+#if defined( CINDER_MSW )
+	float v = ( x == 0.0f ) ? ( 3.14159265358979323846f / 4.0f ) : static_cast<float>( _j1( 3.14159265358979323846f * x ) ) / ( 2.0f * x );
+#else
+	float v = ( x == 0.0f ) ? ( 3.14159265358979323846f / 4.0f ) : static_cast<float>( j1( 3.14159265358979323846f * x ) ) / ( 2.0f * x );
+#endif
+	// blackman window
+	x /= support;
+	return v * ( 0.42f + 0.50f * cosf( 3.14159265358979323846f * x ) + 0.08f * cosf( 6.2831853071795862f * x ) );
+}
+
+static float stbir_bessel_blackman_support( float scale, void * user_data )
+{
+	return *static_cast<float*>( user_data );
+}
+
+// Map Cinder filters to STB filters
+static stbir_filter mapFilterToStbir( const FilterBase &filter )
+{
+	const std::type_info &type = typeid( filter );
+
+	if( type == typeid( FilterBox ) )
+		return STBIR_FILTER_BOX;
+	else if( type == typeid( FilterTriangle ) )
+		return STBIR_FILTER_TRIANGLE;
+	else if( type == typeid( FilterCubic ) )
+		return STBIR_FILTER_CUBICBSPLINE;
+	else if( type == typeid( FilterCatmullRom ) )
+		return STBIR_FILTER_CATMULLROM;
+	else if( type == typeid( FilterMitchell ) )
+		return STBIR_FILTER_MITCHELL;
+	else if( type == typeid( FilterQuadratic ) || type == typeid( FilterSincBlackman ) || type == typeid( FilterGaussian ) || type == typeid( FilterBesselBlackman ) )
+		return STBIR_FILTER_OTHER; // Use custom filter callbacks
+	else
+		return STBIR_FILTER_DEFAULT;
+}
+
+// Check if filter needs custom callbacks
+static bool needsCustomFilter( const FilterBase &filter )
+{
+	const std::type_info &type = typeid( filter );
+	return ( type == typeid( FilterQuadratic ) || type == typeid( FilterSincBlackman ) || type == typeid( FilterGaussian ) || type == typeid( FilterBesselBlackman ) );
+}
+
+// Determine pixel layout based on channel order and alpha presence
+static stbir_pixel_layout getPixelLayout( const SurfaceChannelOrder &channelOrder, bool hasAlpha, bool isPremultiplied )
+{
+	int code = channelOrder.getCode();
+
+	// Handle padded 4-channel formats (RGBX, etc.) - these have no real alpha, just padding
+	if( code == SurfaceChannelOrder::RGBX || code == SurfaceChannelOrder::BGRX ||
+	    code == SurfaceChannelOrder::XRGB || code == SurfaceChannelOrder::XBGR ) {
+		return STBIR_4CHANNEL; // 4 bytes per pixel, no alpha weighting
+	}
+
+	if( !hasAlpha ) {
+		// 3-channel formats
+		if( code == SurfaceChannelOrder::RGB )
+			return STBIR_RGB;
+		else if( code == SurfaceChannelOrder::BGR )
+			return STBIR_BGR;
 		else
-			sum = 0;
-		src = srcLine + weights->start * pixelStride;
-		wp = weights->weight;
-		for ( af = weights->start; af < weights->end; af++ ) {
-			sum += *wp++ * *src;
-			src += pixelStride;
+			return STBIR_RGB; // Default for unspecified
+	}
+	else {
+		// Has real alpha channel - check if premultiplied
+		if( isPremultiplied ) {
+			if( code == SurfaceChannelOrder::RGBA )
+				return STBIR_RGBA_PM;
+			else if( code == SurfaceChannelOrder::BGRA )
+				return STBIR_BGRA_PM;
+			else if( code == SurfaceChannelOrder::ARGB )
+				return STBIR_ARGB_PM;
+			else if( code == SurfaceChannelOrder::ABGR )
+				return STBIR_ABGR_PM;
+			else
+				return STBIR_RGBA_PM; // Default
 		}
-		*lineBuffer++ = SCALETRAIT<T>::CHANNELTOBUFFER( sum );
-		weights++;
-	}	
+		else {
+			if( code == SurfaceChannelOrder::RGBA )
+				return STBIR_RGBA;
+			else if( code == SurfaceChannelOrder::BGRA )
+				return STBIR_BGRA;
+			else if( code == SurfaceChannelOrder::ARGB )
+				return STBIR_ARGB;
+			else if( code == SurfaceChannelOrder::ABGR )
+				return STBIR_ABGR;
+			else
+				return STBIR_RGBA; // Default
+		}
+	}
 }
 
-// assumes channels are of same dimensions
+// Resize implementation for Surface types
 template<typename T>
-void resample( const vector<const ChannelT<T>*> &srcChannels, const FilterBase &filter, const Area &srcArea, const Area &dstArea, const vector<ChannelT<T>*> &dstChannels )
+void resizeSurface( const SurfaceT<T> &srcSurface, const Area &srcArea, SurfaceT<T> *dstSurface, const Area &dstArea, const FilterBase &filter, stbir_datatype dataType )
 {
 	Rectf clippedSrcRect;
 	Area clippedDstArea;
-	getClippedScaledRects( srcChannels[0]->getBounds(), Rectf( srcArea ), dstChannels[0]->getBounds(), dstArea, &clippedSrcRect, &clippedDstArea );
-	
-	if ( ( clippedSrcRect.getWidth() <= 0 ) || ( clippedDstArea.getWidth() <= 0 ) 
+	getClippedScaledRects( srcSurface.getBounds(), Rectf( srcArea ), dstSurface->getBounds(), dstArea, &clippedSrcRect, &clippedDstArea );
+
+	if( ( clippedSrcRect.getWidth() <= 0 ) || ( clippedDstArea.getWidth() <= 0 )
 		|| ( clippedSrcRect.getHeight() <= 0 ) || ( clippedDstArea.getHeight() <= 0 ) )
 		return;
-	
-	FilterParams filterParamsX, filterParamsY;
-	Mapping m;
-	int32_t dstWidth = (int32_t)clippedDstArea.getWidth(), dstHeight = (int32_t)clippedDstArea.getHeight();
-	int32_t srcWidth = (int32_t)clippedSrcRect.getWidth(), srcHeight = (int32_t)clippedSrcRect.getHeight();
+
+	int32_t srcWidth = (int32_t)clippedSrcRect.getWidth();
+	int32_t srcHeight = (int32_t)clippedSrcRect.getHeight();
 	int32_t srcOffsetX = static_cast<int32_t>( floor( clippedSrcRect.getX1() ) );
 	int32_t srcOffsetY = static_cast<int32_t>( floor( clippedSrcRect.getY1() ) );
-	vector<pair<int32_t,unique_ptr<typename SCALETRAIT<T>::SUMT[]>>> linesBuffer;
+	int32_t dstWidth = (int32_t)clippedDstArea.getWidth();
+	int32_t dstHeight = (int32_t)clippedDstArea.getHeight();
+	int32_t dstOffsetX = clippedDstArea.getX1();
+	int32_t dstOffsetY = clippedDstArea.getY1();
 
-	m.sx = dstWidth / (float)srcWidth;
-	m.sy = dstHeight / (float)srcHeight;
-	m.tx = clippedDstArea.getX1() - 0.5f - m.sx * ( clippedSrcRect.getX1() - 0.5f );
-	m.ty = clippedDstArea.getY1() - 0.5f - m.sy * ( clippedSrcRect.getY1() - 0.5f );
-	m.ux = clippedDstArea.getX1() - m.sx * ( clippedSrcRect.getX1()- 0.5f ) - m.tx;
-	m.uy = clippedDstArea.getY1() - m.sy * ( clippedSrcRect.getY1()- 0.5f ) - m.ty;
-
-	filterParamsX.scale = std::max( 1.0f, 1.0f / m.sx );
-	filterParamsX.supp = std::max( 0.5f, filterParamsX.scale * filter.getSupport() );
-	filterParamsX.width = (int32_t)ceil( 2.0f * filterParamsX.supp );
-
-	filterParamsY.scale = std::max( 1.0f, 1.0f / m.sy );
-	filterParamsY.supp = std::max( 0.5f, filterParamsY.scale * filter.getSupport() );
-	filterParamsY.width = (int32_t)ceil( 2.0f * filterParamsY.supp );
-
-	for( int32_t i = 0; i < filterParamsY.width; i++ )
-		linesBuffer.push_back( std::make_pair( -1, unique_ptr<typename SCALETRAIT<T>::SUMT[]>( new typename SCALETRAIT<T>::SUMT[dstWidth] ) ) );
-
-	WeightTable<typename SCALETRAIT<T>::SUMT> *xWeights, yWeights;
-	typename SCALETRAIT<T>::SUMT *xWeightBuffer, *xWeightPtr;
-	xWeights = (WeightTable<typename SCALETRAIT<T>::SUMT>*)malloc( sizeof(WeightTable<int32_t>) * dstWidth );
-	xWeightBuffer = (typename SCALETRAIT<T>::SUMT*)malloc( sizeof(typename SCALETRAIT<T>::SUMT) * dstWidth * filterParamsX.width );
-	yWeights.weight = (typename SCALETRAIT<T>::SUMT*)malloc( sizeof(typename SCALETRAIT<T>::SUMT) * filterParamsY.width );
-	unique_ptr<typename SCALETRAIT<T>::SUMT[]> accum = unique_ptr<typename SCALETRAIT<T>::SUMT[]>( new typename SCALETRAIT<T>::SUMT[dstWidth] );
-
-	xWeightPtr = xWeightBuffer;
-	for ( int32_t bx = 0; bx < dstWidth; bx++, xWeightPtr += filterParamsX.width ) {
-		xWeights[bx].weight = xWeightPtr;
-		makeWeightTable<T,typename SCALETRAIT<T>::SUMT>( MAP(bx, m.sx, m.ux), filter, &filterParamsX, srcWidth, true, &xWeights[bx] );
+	// If source and destination have different channel orders, we need to handle conversion
+	// STB doesn't automatically convert between different pixel layouts, so we resize to an
+	// intermediate surface with source's channel order, then copy to destination
+	if( srcSurface.getChannelOrder().getCode() != dstSurface->getChannelOrder().getCode() ) {
+		SurfaceT<T> intermediate( dstWidth, dstHeight, srcSurface.hasAlpha(), srcSurface.getChannelOrder() );
+		intermediate.setPremultiplied( srcSurface.isPremultiplied() );
+		resizeSurface( srcSurface, srcArea, &intermediate, intermediate.getBounds(), filter, dataType );
+		dstSurface->copyFrom( intermediate, intermediate.getBounds(), ivec2( dstOffsetX, dstOffsetY ) );
+		return;
 	}
 
-	for( size_t chan = 0; chan < srcChannels.size(); ++chan ) {
-		for ( int32_t dstY = 0; dstY < dstHeight; ++dstY ) {     // loop over dest scanlines
-			// prepare a weight table for dest y position by
-			makeWeightTable<T,typename SCALETRAIT<T>::SUMT>( MAP(dstY, m.sy, m.uy), filter, &filterParamsY, srcHeight, false, &yWeights );
+	// Get pixel layout
+	stbir_pixel_layout pixelLayout = getPixelLayout( srcSurface.getChannelOrder(), srcSurface.hasAlpha(), srcSurface.isPremultiplied() );
 
-			memset( accum.get(), 0, sizeof(int32_t) * dstWidth );
+	// Get filter
+	stbir_filter stbirFilter = mapFilterToStbir( filter );
 
-			// loop over source scanlines that influence this dest scanline
-			for ( int32_t ayf = yWeights.start; ayf < yWeights.end; ayf++ ) {
-				typename SCALETRAIT<T>::SUMT *line = linesBuffer[ayf % filterParamsY.width].second.get();
-				if( linesBuffer[ayf % filterParamsY.width].first != ayf ) {
-					scanlineFilterChannelToBuffer( xWeights, srcOffsetX, srcOffsetY + ayf, *(srcChannels[chan]), line, dstWidth );
-					linesBuffer[ayf % filterParamsY.width].first = ayf;
-				}
-				scanlineAccumulate<typename SCALETRAIT<T>::SUMT,typename SCALETRAIT<T>::SUMT>( yWeights.weight[ayf - yWeights.start], line, dstWidth, accum.get() );
-			}
+	// Get source and destination pointers
+	const T *srcData = reinterpret_cast<const T*>( srcSurface.getData( ivec2( srcOffsetX, srcOffsetY ) ) );
+	T *dstData = reinterpret_cast<T*>( dstSurface->getData( ivec2( dstOffsetX, dstOffsetY ) ) );
 
-			scanlineShiftAccumToChannel( accum.get(), clippedDstArea.getX1(), clippedDstArea.getY1() + dstY, dstWidth, dstChannels[chan] );
+	// Get strides
+	int srcStride = static_cast<int>( srcSurface.getRowBytes() );
+	int dstStride = static_cast<int>( dstSurface->getRowBytes() );
+
+	// Check if we need custom filter
+	if( needsCustomFilter( filter ) ) {
+		// Use extended API for custom filters
+		STBIR_RESIZE resize;
+		stbir_resize_init( &resize, srcData, srcWidth, srcHeight, srcStride,
+		                   dstData, dstWidth, dstHeight, dstStride,
+		                   pixelLayout, dataType );
+
+		const std::type_info &type = typeid( filter );
+		float support = filter.getSupport();
+
+		if( type == typeid( FilterQuadratic ) ) {
+			stbir_set_filter_callbacks( &resize,
+			                             stbir_quadratic_kernel, stbir_quadratic_support,
+			                             stbir_quadratic_kernel, stbir_quadratic_support );
 		}
-	}
-
-	free( xWeights );
-	free( xWeightBuffer );
-	free( yWeights.weight );
-}
-
-template<typename LT, typename AT>
-void scanlineAccumulate( LT weight, LT *lineBuffer, int32_t width, AT *accum )
-{
-	AT *dest = accum;
-	int32_t x;
-
-	for ( x = 0; x < width; x++ )
-		*dest++ += *lineBuffer++ * weight;
-}
-
-template<typename T, typename WT>
-void makeWeightTable( float cen, const FilterBase &filter, const FilterParams *params, int32_t len, bool trimzeros, WeightTable<WT> *wtab )
-{
-	int32_t start, end, i, stillzero, lastnonzero, nz;
-	WT *wp, t, sum;
-	float den, sc, tr;
-
-	// find the source coord range of this positioned filter: [start..end-1]
-	start = (int32_t)( cen - params->supp + 0.5f );
-	end = (int32_t)( cen + params->supp + 0.5f );
-	if ( start < 0 )
-		start = 0;
-	if ( end > len )
-		end = len;
-
-	// the range of source samples to buffer:
-	wtab->start = start;
-	wtab->end = end;
-
-	// find scale factor sc to normalize the filter
-	for ( den = 0, i=start; i < end; i++ )
-		den += filter( ( i + 0.5f - cen ) / params->scale );
-
-	// set sc so that sum of sc*func() is approximately WEIGHTONE
-	sc = ( den == 0.0f ) ? ( SCALETRAIT<T>::WEIGHTONE ) : ( SCALETRAIT<T>::WEIGHTONE / den );
-
-	// compute the discrete, sampled filter coefficients
-	stillzero = trimzeros;
-	for ( sum = 0, wp = wtab->weight, i = start; i < end; i++ ) {
-		// evaluate the filter function:
-		tr = sc * filter( ( i + 0.5f - cen ) / params->scale );
-
-		if( std::numeric_limits<WT>::is_integer )
-			t = (WT)floor( tr + 0.5f );
-		else
-			t = (WT)tr;
-		if ( stillzero && ( t == 0 ) )
-			start++;	// find first nonzero
-		else {
-			stillzero = 0;
-			*wp++ = t;			// add weight to table
-			sum += t;
-			if ( t != 0 )
-				lastnonzero = i;	// find last nonzero
+		else if( type == typeid( FilterSincBlackman ) ) {
+			stbir_set_filter_callbacks( &resize,
+			                             stbir_sinc_blackman_kernel, stbir_sinc_blackman_support,
+			                             stbir_sinc_blackman_kernel, stbir_sinc_blackman_support );
 		}
-	}
-		
-	if ( sum == 0 ) {
-		nz = wtab->end-wtab->start;
-		wtab->start = (wtab->start+wtab->end) >> 1;
-		wtab->end = wtab->start+1;
-		wtab->weight[0] = SCALETRAIT<T>::WEIGHTONE;
+		else if( type == typeid( FilterGaussian ) ) {
+			stbir_set_filter_callbacks( &resize,
+			                             stbir_gaussian_kernel, stbir_gaussian_support,
+			                             stbir_gaussian_kernel, stbir_gaussian_support );
+		}
+		else if( type == typeid( FilterBesselBlackman ) ) {
+			stbir_set_filter_callbacks( &resize,
+			                             stbir_bessel_blackman_kernel, stbir_bessel_blackman_support,
+			                             stbir_bessel_blackman_kernel, stbir_bessel_blackman_support );
+		}
+
+		resize.user_data = &support;
+		stbir_set_edgemodes( &resize, STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP );
+		stbir_resize_extended( &resize );
 	}
 	else {
-		if ( trimzeros ) {		/* skip leading and trailing zeros */
-			/* set wtab->start and ->end to the nonzero support of the filter */
-			nz = wtab->end-wtab->start-(lastnonzero-start+1);
-			wtab->start = start;
-			wtab->end = end = lastnonzero+1;
-		}
-		else				/* keep leading and trailing zeros */
-			nz = 0;
-
-		if ( sum != SCALETRAIT<T>::WEIGHTONE ) {
-			/*
-				* Fudge the center slightly to make sum=WEIGHTONE exactly.
-				* Is this the best way to normalize a discretely sampled
-				* continuous filter?
-			*/
-			i = (int32_t)( cen + 0.5f );
-			if ( i < start )
-				i = start;
-			else if ( i >= end )
-				i = end - 1;
-			t = SCALETRAIT<T>::WEIGHTONE - sum;
-			wtab->weight[i - start] += t;	/* fudge center sample */
-		}
-	}   
-}
-
-template<typename T>
-void resize( const SurfaceT<T> &srcSurface, const Area &srcArea, SurfaceT<T> *dstSurface, const Area &dstArea, const FilterBase &filter )
-{
-	vector<const ChannelT<T>*> srcChannels;
-	vector<ChannelT<T>*> dstChannels;
-
-	srcChannels.push_back( &srcSurface.getChannelRed() );
-	dstChannels.push_back( &dstSurface->getChannelRed() );
-	srcChannels.push_back( &srcSurface.getChannelGreen() );
-	dstChannels.push_back( &dstSurface->getChannelGreen() );
-	srcChannels.push_back( &srcSurface.getChannelBlue() );
-	dstChannels.push_back( &dstSurface->getChannelBlue() );
-	if ( srcSurface.hasAlpha() && dstSurface->hasAlpha() ) {
-		srcChannels.push_back( &srcSurface.getChannelAlpha() );
-		dstChannels.push_back( &dstSurface->getChannelAlpha() );	
+		// Use medium API for built-in filters
+		stbir_resize( srcData, srcWidth, srcHeight, srcStride,
+		              dstData, dstWidth, dstHeight, dstStride,
+		              pixelLayout, dataType, STBIR_EDGE_CLAMP, stbirFilter );
 	}
-
-	resample( srcChannels, filter, srcArea, dstArea, dstChannels );
 }
 
+// Resize implementation for Channel types
 template<typename T>
-void resize( const ChannelT<T> &srcChannel, const Area &srcArea, ChannelT<T> *dstChannel, const Area &dstArea, const FilterBase &filter )
+void resizeChannel( const ChannelT<T> &srcChannel, const Area &srcArea, ChannelT<T> *dstChannel, const Area &dstArea, const FilterBase &filter, stbir_datatype dataType )
 {
-	vector<const ChannelT<T>*> srcChannels;
-	vector<ChannelT<T>*> dstChannels;
-	
-	srcChannels.push_back( &srcChannel );
-	dstChannels.push_back( dstChannel );
-	
-	resample( srcChannels, filter, srcArea, dstArea, dstChannels );
+	Rectf clippedSrcRect;
+	Area clippedDstArea;
+	getClippedScaledRects( srcChannel.getBounds(), Rectf( srcArea ), dstChannel->getBounds(), dstArea, &clippedSrcRect, &clippedDstArea );
+
+	if( ( clippedSrcRect.getWidth() <= 0 ) || ( clippedDstArea.getWidth() <= 0 )
+		|| ( clippedSrcRect.getHeight() <= 0 ) || ( clippedDstArea.getHeight() <= 0 ) )
+		return;
+
+	int32_t srcWidth = (int32_t)clippedSrcRect.getWidth();
+	int32_t srcHeight = (int32_t)clippedSrcRect.getHeight();
+	int32_t srcOffsetX = static_cast<int32_t>( floor( clippedSrcRect.getX1() ) );
+	int32_t srcOffsetY = static_cast<int32_t>( floor( clippedSrcRect.getY1() ) );
+	int32_t dstWidth = (int32_t)clippedDstArea.getWidth();
+	int32_t dstHeight = (int32_t)clippedDstArea.getHeight();
+	int32_t dstOffsetX = clippedDstArea.getX1();
+	int32_t dstOffsetY = clippedDstArea.getY1();
+
+	// Single channel
+	stbir_pixel_layout pixelLayout = STBIR_1CHANNEL;
+
+	// Get filter
+	stbir_filter stbirFilter = mapFilterToStbir( filter );
+
+	// Get source and destination pointers
+	const T *srcData = srcChannel.getData( ivec2( srcOffsetX, srcOffsetY ) );
+	T *dstData = dstChannel->getData( ivec2( dstOffsetX, dstOffsetY ) );
+
+	// Get strides
+	int srcStride = static_cast<int>( srcChannel.getRowBytes() );
+	int dstStride = static_cast<int>( dstChannel->getRowBytes() );
+
+	// Check if we need custom filter
+	if( needsCustomFilter( filter ) ) {
+		// Use extended API for custom filters
+		STBIR_RESIZE resize;
+		stbir_resize_init( &resize, srcData, srcWidth, srcHeight, srcStride,
+		                   dstData, dstWidth, dstHeight, dstStride,
+		                   pixelLayout, dataType );
+
+		const std::type_info &type = typeid( filter );
+		float support = filter.getSupport();
+
+		if( type == typeid( FilterQuadratic ) ) {
+			stbir_set_filter_callbacks( &resize,
+			                             stbir_quadratic_kernel, stbir_quadratic_support,
+			                             stbir_quadratic_kernel, stbir_quadratic_support );
+		}
+		else if( type == typeid( FilterSincBlackman ) ) {
+			stbir_set_filter_callbacks( &resize,
+			                             stbir_sinc_blackman_kernel, stbir_sinc_blackman_support,
+			                             stbir_sinc_blackman_kernel, stbir_sinc_blackman_support );
+		}
+		else if( type == typeid( FilterGaussian ) ) {
+			stbir_set_filter_callbacks( &resize,
+			                             stbir_gaussian_kernel, stbir_gaussian_support,
+			                             stbir_gaussian_kernel, stbir_gaussian_support );
+		}
+		else if( type == typeid( FilterBesselBlackman ) ) {
+			stbir_set_filter_callbacks( &resize,
+			                             stbir_bessel_blackman_kernel, stbir_bessel_blackman_support,
+			                             stbir_bessel_blackman_kernel, stbir_bessel_blackman_support );
+		}
+
+		resize.user_data = &support;
+		stbir_set_edgemodes( &resize, STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP );
+		stbir_resize_extended( &resize );
+	}
+	else {
+		// Use medium API for built-in filters
+		stbir_resize( srcData, srcWidth, srcHeight, srcStride,
+		              dstData, dstWidth, dstHeight, dstStride,
+		              pixelLayout, dataType, STBIR_EDGE_CLAMP, stbirFilter );
+	}
 }
 
-template<typename T>
-void resize( const SurfaceT<T> &srcSurface, SurfaceT<T> *dstSurface, const FilterBase &filter )
+// Template specializations for uint8_t
+template<>
+void resize( const SurfaceT<uint8_t> &srcSurface, const Area &srcArea, SurfaceT<uint8_t> *dstSurface, const Area &dstArea, const FilterBase &filter )
+{
+	// Default to linear color space for backward compatibility
+	// Use resizeSrgb() for sRGB-aware filtering
+	resizeSurface( srcSurface, srcArea, dstSurface, dstArea, filter, STBIR_TYPE_UINT8 );
+}
+
+template<>
+void resize( const SurfaceT<uint8_t> &srcSurface, SurfaceT<uint8_t> *dstSurface, const FilterBase &filter )
 {
 	resize( srcSurface, srcSurface.getBounds(), dstSurface, dstSurface->getBounds(), filter );
 }
 
-template<typename T>
-SurfaceT<T> resizeCopy( const SurfaceT<T> &srcSurface, const Area &srcArea, const ivec2 &dstSize, const FilterBase &filter )
+template<>
+SurfaceT<uint8_t> resizeCopy( const SurfaceT<uint8_t> &srcSurface, const Area &srcArea, const ivec2 &dstSize, const FilterBase &filter )
 {
-	SurfaceT<T> result( dstSize.x, dstSize.y, srcSurface.hasAlpha(), srcSurface.getChannelOrder() );
+	SurfaceT<uint8_t> result( dstSize.x, dstSize.y, srcSurface.hasAlpha(), srcSurface.getChannelOrder() );
+	result.setPremultiplied( srcSurface.isPremultiplied() );
 	resize( srcSurface, srcArea, &result, result.getBounds(), filter );
 	return result;
 }
 
-template<typename T>
-void resize( const ChannelT<T> &srcChannel, ChannelT<T> *dstChannel, const FilterBase &filter )
+template<>
+void resize( const ChannelT<uint8_t> &srcChannel, const Area &srcArea, ChannelT<uint8_t> *dstChannel, const Area &dstArea, const FilterBase &filter )
+{
+	resizeChannel( srcChannel, srcArea, dstChannel, dstArea, filter, STBIR_TYPE_UINT8 );
+}
+
+template<>
+void resize( const ChannelT<uint8_t> &srcChannel, ChannelT<uint8_t> *dstChannel, const FilterBase &filter )
 {
 	resize( srcChannel, srcChannel.getBounds(), dstChannel, dstChannel->getBounds(), filter );
 }
 
-#define resize_PROTOTYPES(T)\
-	template CI_API void resize( const SurfaceT<T> &srcSurface, SurfaceT<T> *dstSurface, const FilterBase &filter ); \
-	template CI_API void resize( const SurfaceT<T> &srcSurface, const Area &srcArea, SurfaceT<T> *dstSurface, const Area &dstArea, const FilterBase &filter ); \
-	template CI_API void resize( const ChannelT<T> &srcChannel, ChannelT<T> *dstChannel, const FilterBase &filter ); \
-	template CI_API SurfaceT<T> resizeCopy( const SurfaceT<T> &srcSurface, const Area &srcArea, const ivec2 &dstSize, const FilterBase &filter ); \
-	template CI_API void resize( const ChannelT<T> &srcChannel, const Area &srcArea, ChannelT<T> *dstChannel, const Area &dstArea, const FilterBase &filter );
+// Template specializations for float
+template<>
+void resize( const SurfaceT<float> &srcSurface, const Area &srcArea, SurfaceT<float> *dstSurface, const Area &dstArea, const FilterBase &filter )
+{
+	resizeSurface( srcSurface, srcArea, dstSurface, dstArea, filter, STBIR_TYPE_FLOAT );
+}
 
-// These should match CHANNEL_TYPES
-resize_PROTOTYPES(uint8_t)
-resize_PROTOTYPES(float)
+template<>
+void resize( const SurfaceT<float> &srcSurface, SurfaceT<float> *dstSurface, const FilterBase &filter )
+{
+	resize( srcSurface, srcSurface.getBounds(), dstSurface, dstSurface->getBounds(), filter );
+}
+
+template<>
+SurfaceT<float> resizeCopy( const SurfaceT<float> &srcSurface, const Area &srcArea, const ivec2 &dstSize, const FilterBase &filter )
+{
+	SurfaceT<float> result( dstSize.x, dstSize.y, srcSurface.hasAlpha(), srcSurface.getChannelOrder() );
+	result.setPremultiplied( srcSurface.isPremultiplied() );
+	resize( srcSurface, srcArea, &result, result.getBounds(), filter );
+	return result;
+}
+
+template<>
+void resize( const ChannelT<float> &srcChannel, const Area &srcArea, ChannelT<float> *dstChannel, const Area &dstArea, const FilterBase &filter )
+{
+	resizeChannel( srcChannel, srcArea, dstChannel, dstArea, filter, STBIR_TYPE_FLOAT );
+}
+
+template<>
+void resize( const ChannelT<float> &srcChannel, ChannelT<float> *dstChannel, const FilterBase &filter )
+{
+	resize( srcChannel, srcChannel.getBounds(), dstChannel, dstChannel->getBounds(), filter );
+}
+
+// Template specializations for uint16_t
+template<>
+void resize( const SurfaceT<uint16_t> &srcSurface, const Area &srcArea, SurfaceT<uint16_t> *dstSurface, const Area &dstArea, const FilterBase &filter )
+{
+	resizeSurface( srcSurface, srcArea, dstSurface, dstArea, filter, STBIR_TYPE_UINT16 );
+}
+
+template<>
+void resize( const SurfaceT<uint16_t> &srcSurface, SurfaceT<uint16_t> *dstSurface, const FilterBase &filter )
+{
+	resize( srcSurface, srcSurface.getBounds(), dstSurface, dstSurface->getBounds(), filter );
+}
+
+template<>
+SurfaceT<uint16_t> resizeCopy( const SurfaceT<uint16_t> &srcSurface, const Area &srcArea, const ivec2 &dstSize, const FilterBase &filter )
+{
+	SurfaceT<uint16_t> result( dstSize.x, dstSize.y, srcSurface.hasAlpha(), srcSurface.getChannelOrder() );
+	result.setPremultiplied( srcSurface.isPremultiplied() );
+	resize( srcSurface, srcArea, &result, result.getBounds(), filter );
+	return result;
+}
+
+template<>
+void resize( const ChannelT<uint16_t> &srcChannel, const Area &srcArea, ChannelT<uint16_t> *dstChannel, const Area &dstArea, const FilterBase &filter )
+{
+	resizeChannel( srcChannel, srcArea, dstChannel, dstArea, filter, STBIR_TYPE_UINT16 );
+}
+
+template<>
+void resize( const ChannelT<uint16_t> &srcChannel, ChannelT<uint16_t> *dstChannel, const FilterBase &filter )
+{
+	resize( srcChannel, srcChannel.getBounds(), dstChannel, dstChannel->getBounds(), filter );
+}
+
+// sRGB-aware resize functions for uint8_t surfaces
+void resizeSrgb( const Surface8u &srcSurface, const Area &srcArea, Surface8u *dstSurface, const Area &dstArea, const FilterBase &filter )
+{
+	resizeSurface( srcSurface, srcArea, dstSurface, dstArea, filter, STBIR_TYPE_UINT8_SRGB );
+}
+
+void resizeSrgb( const Surface8u &srcSurface, Surface8u *dstSurface, const FilterBase &filter )
+{
+	resizeSrgb( srcSurface, srcSurface.getBounds(), dstSurface, dstSurface->getBounds(), filter );
+}
+
+Surface8u resizeSrgbCopy( const Surface8u &srcSurface, const Area &srcArea, const ivec2 &dstSize, const FilterBase &filter )
+{
+	Surface8u result( dstSize.x, dstSize.y, srcSurface.hasAlpha(), srcSurface.getChannelOrder() );
+	result.setPremultiplied( srcSurface.isPremultiplied() );
+	resizeSrgb( srcSurface, srcArea, &result, result.getBounds(), filter );
+	return result;
+}
 
 } } // namespace cinder::ip

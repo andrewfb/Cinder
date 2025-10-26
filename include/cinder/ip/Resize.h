@@ -40,4 +40,10 @@ CI_API SurfaceT<T> resizeCopy( const SurfaceT<T> &srcSurface, const Area &srcAre
 template<typename T>
 CI_API void resize( const ChannelT<T> &srcChannel, const Area &srcArea, ChannelT<T> *dstChannel, const Area &dstArea, const FilterBase &filter = FilterTriangle() );
 
+//! Resizes \a srcSurface into \a dstSurface using sRGB-aware filtering. Automatically handles premultiplied alpha based on Surface properties.
+CI_API void resizeSrgb( const Surface8u &srcSurface, const Area &srcArea, Surface8u *dstSurface, const Area &dstArea, const FilterBase &filter = FilterTriangle() );
+CI_API void resizeSrgb( const Surface8u &srcSurface, Surface8u *dstSurface, const FilterBase &filter = FilterTriangle() );
+//! Returns a new Surface which is a copy of \a srcSurface's area \a srcArea scaled to size \a dstSize using sRGB-aware filter \a filter
+CI_API Surface8u resizeSrgbCopy( const Surface8u &srcSurface, const Area &srcArea, const ivec2 &dstSize, const FilterBase &filter = FilterTriangle() );
+
 } } // namespace cinder::ip
