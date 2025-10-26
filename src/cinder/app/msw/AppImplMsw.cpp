@@ -612,7 +612,7 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 		impl = reinterpret_cast<WindowImplMsw*>( ::GetWindowLongPtr( mWnd, GWLP_USERDATA ) );
 
 	if( ! impl )
-		return DefWindowProc( mWnd, uMsg, wParam, lParam );		
+		return DefWindowProc( mWnd, uMsg, wParam, lParam );
 	impl->mAppImpl->setWindow( impl->mWindowRef );
 
 	switch( uMsg ) {
@@ -657,10 +657,15 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 		break;
 		case WM_SYSKEYDOWN:
 		case WM_KEYDOWN: {
-			WCHAR c = mapVirtualKey( wParam );
-			int code = KeyEvent::translateNativeKeyCode( prepNativeKeyCode( wParam ) );
-			unsigned int mods = prepKeyEventModifiers();
 			unsigned int nativeCode = static_cast<unsigned int>(wParam);
+			unsigned int mods = prepKeyEventModifiers();
+
+			// Don't call mapVirtualKey() for numpad keys when Alt is down
+			// ToUnicode() consumes keyboard state needed for alt code accumulation
+			bool isAltCodeKey = (uMsg == WM_SYSKEYDOWN) && (wParam >= VK_NUMPAD0 && wParam <= VK_NUMPAD9);
+			WCHAR c = isAltCodeKey ? 0 : mapVirtualKey( wParam );
+
+			int code = KeyEvent::translateNativeKeyCode( prepNativeKeyCode( wParam ) );
 
 			// Store key data for subsequent WM_CHAR
 			sLastKeyDown.code = code;
@@ -669,16 +674,32 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 
 			KeyEvent event( impl->getWindow(), code, c, static_cast<char>( c ), mods, nativeCode );
 			impl->getWindow()->emitKeyDown( &event );
+
+			// For WM_SYSKEYDOWN, always pass to DefWindowProc so Windows can track alt codes
+			if( uMsg == WM_SYSKEYDOWN ) {
+				break;  // Fall through to DefWindowProc
+			}
+
 			if ( event.isHandled() )
 				return 0;
 		}
 		break;
 		case WM_SYSKEYUP:
 		case WM_KEYUP: {
-			WCHAR c = mapVirtualKey( wParam );
+			// Don't call mapVirtualKey() for numpad keys when handling system keys
+			// ToUnicode() consumes keyboard state needed for alt code accumulation
+			bool isAltCodeKey = (uMsg == WM_SYSKEYUP) && (wParam >= VK_NUMPAD0 && wParam <= VK_NUMPAD9);
+			WCHAR c = isAltCodeKey ? 0 : mapVirtualKey( wParam );
+
 			KeyEvent event( impl->getWindow(), KeyEvent::translateNativeKeyCode( prepNativeKeyCode( wParam ) ),
 							c, static_cast<char>( c ), prepKeyEventModifiers(), static_cast<unsigned int>( wParam ) );
 			impl->getWindow()->emitKeyUp( &event );
+
+			// For WM_SYSKEYUP, always pass to DefWindowProc so Windows can generate alt code characters
+			if( uMsg == WM_SYSKEYUP ) {
+				break;  // Fall through to DefWindowProc
+			}
+
 			if ( event.isHandled() )
 				return 0;
 		}

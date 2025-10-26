@@ -584,19 +584,9 @@ static void ImGui_ImplCinder_KeyDown( ci::app::KeyEvent& event )
 {
 	ImGuiIO& io = ImGui::GetIO();
 
-#if defined CINDER_LINUX
-	auto character = event.getChar();
-#else
-	uint32_t character = event.getCharUtf32();
-#endif
-
 	ImGuiKey key = CinderKeyToImGuiKey( event.getCode() );
 	if( key != ImGuiKey_None )
 		io.AddKeyEvent( key, true );
-
-	if( ! event.isAccelDown() && character > 0 && character <= 255 ) {
-		io.AddInputCharacter( (char)character );
-	}
 
 	io.AddKeyEvent( ImGuiMod_Ctrl, event.isControlDown() );
 	io.AddKeyEvent( ImGuiMod_Shift, event.isShiftDown() );
@@ -618,6 +608,30 @@ static void ImGui_ImplCinder_KeyUp( ci::app::KeyEvent& event )
 	io.AddKeyEvent( ImGuiMod_Shift, event.isShiftDown() );
 	io.AddKeyEvent( ImGuiMod_Alt, event.isAltDown() );
 	io.AddKeyEvent( ImGuiMod_Super, event.isMetaDown() );
+
+	event.setHandled( io.WantCaptureKeyboard );
+}
+
+static void ImGui_ImplCinder_KeyChar( ci::app::KeyEvent& event )
+{
+	ImGuiIO& io = ImGui::GetIO();
+
+	uint32_t character = event.getCharUtf32();
+	if( ! event.isAccelDown() && character > 0 ) {
+		// Handle surrogate pairs for characters beyond the Basic Multilingual Plane
+		if( character > 0xFFFF ) {
+			// Encode as UTF-16 surrogate pair
+			character -= 0x10000;
+			ImWchar utf16[2];
+			utf16[0] = (ImWchar)(0xD800 + (character >> 10));
+			utf16[1] = (ImWchar)(0xDC00 + (character & 0x3FF));
+			io.AddInputCharacterUTF16( utf16[0] );
+			io.AddInputCharacterUTF16( utf16[1] );
+		}
+		else {
+			io.AddInputCharacter( (ImWchar)character );
+		}
+	}
 
 	event.setHandled( io.WantCaptureKeyboard );
 }
@@ -704,6 +718,7 @@ static bool ImGui_ImplCinder_Init( const ci::app::WindowRef& window, const ImGui
 	sWindowConnections[window] += window->getSignalMouseWheel().connect( signalPriority, ImGui_ImplCinder_MouseWheel );
 	sWindowConnections[window] += window->getSignalKeyDown().connect( signalPriority, ImGui_ImplCinder_KeyDown );
 	sWindowConnections[window] += window->getSignalKeyUp().connect( signalPriority, ImGui_ImplCinder_KeyUp );
+	sWindowConnections[window] += window->getSignalKeyChar().connect( signalPriority, ImGui_ImplCinder_KeyChar );
 	sWindowConnections[window] += window->getSignalResize().connect( signalPriority, std::bind( ImGui_ImplCinder_Resize, window ) );
 	if( options.isAutoRenderEnabled() ) {
 		sWindowConnections[window] += ci::app::App::get()->getSignalUpdate().connect( std::bind( ImGui_ImplCinder_NewFrameGuard, window ) );

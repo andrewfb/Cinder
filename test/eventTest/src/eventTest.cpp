@@ -48,6 +48,7 @@ private:
 	void addEvent( const EventRecord& record );
 	void drawModifierBadge( const char* text, const ImVec4& color );
 	void drawEventList();
+	void drawTextInputPanel();
 	string utf32ToUtf8( uint32_t codepoint );
 
 	deque<EventRecord> mEvents;
@@ -63,11 +64,14 @@ private:
 	bool mAutoScroll = true;
 	float mBadgeRounding = 4.0f;
 	float mBadgePadding = 6.0f;
+
+	// Text input testing
+	char mTextBuffer[256] = "Type here to test Unicode...";
 };
 
 void EventTestApp::setup()
 {
-	ImGui::Initialize( ImGui::Options().window( getWindow() ).enableKeyboard( false ) );  // Disable ImGui keyboard handling
+	ImGui::Initialize( ImGui::Options().window( getWindow() ) );  // Enable ImGui keyboard handling
 	ImGui::GetStyle().ScaleAllSizes( getWindowContentScale() );
 	ImGui::GetStyle().FontScaleMain = getWindowContentScale();
 
@@ -147,7 +151,7 @@ void EventTestApp::drawModifierBadge( const char* text, const ImVec4& color )
 
 void EventTestApp::drawEventList()
 {
-	float windowWidth = (float)getWindowWidth() * 0.5f;  // Half the window width
+	float windowWidth = (float)getWindowWidth() * 0.7f;  // 70% of window width
 	ImGui::SetNextWindowPos( ImVec2( 0, 0 ) );
 	ImGui::SetNextWindowSize( ImVec2( windowWidth, (float)getWindowHeight() ) );
 
@@ -191,7 +195,7 @@ void EventTestApp::drawEventList()
 		ImGui::TableSetupColumn( "Type", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoResize, typeColWidth );
 		ImGui::TableSetupColumn( "Init/Key", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoResize, initiatorWidth );
 		ImGui::TableSetupColumn( "Pos/Code", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoResize, coordWidth );
-		ImGui::TableSetupColumn( "Mods", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoResize, 180.0f );
+		ImGui::TableSetupColumn( "Mods", ImGuiTableColumnFlags_WidthStretch );
 
 		int row = 0;
 		for( auto it = mEvents.rbegin(); it != mEvents.rend(); ++it ) {
@@ -262,10 +266,48 @@ void EventTestApp::drawEventList()
 	ImGui::End();
 }
 
+void EventTestApp::drawTextInputPanel()
+{
+	float windowWidth = (float)getWindowWidth() * 0.3f;
+	float leftPanelWidth = (float)getWindowWidth() * 0.7f;
+
+	ImGui::SetNextWindowPos( ImVec2( leftPanelWidth, 0 ) );
+	ImGui::SetNextWindowSize( ImVec2( windowWidth, (float)getWindowHeight() ) );
+
+	ImGui::Begin( "Text Input Test", nullptr,
+				 ImGuiWindowFlags_NoTitleBar |
+				 ImGuiWindowFlags_NoResize |
+				 ImGuiWindowFlags_NoMove |
+				 ImGuiWindowFlags_NoCollapse );
+
+	ImGui::Text( "Unicode Input Test" );
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	ImGui::TextWrapped( "Test alt codes and Unicode input:" );
+	ImGui::Spacing();
+	ImGui::BulletText( "alt+0233 = e-acute (é)" );
+	ImGui::BulletText( "alt+0169 = copyright (©)" );
+	ImGui::BulletText( "alt+0189 = one-half (½)" );
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	ImGui::Text( "Single-line input:" );
+	ImGui::InputText( "##input1", mTextBuffer, sizeof(mTextBuffer) );
+	ImGui::Spacing();
+
+	ImGui::Text( "Multi-line input:" );
+	ImGui::InputTextMultiline( "##input2", mTextBuffer, sizeof(mTextBuffer), ImVec2( -1, 200 ) );
+
+	ImGui::End();
+}
+
 void EventTestApp::draw()
 {
 	gl::clear( Color( 0.1f, 0.1f, 0.12f ) );
 	drawEventList();
+	drawTextInputPanel();
 }
 
 void EventTestApp::mouseDown( MouseEvent event )
