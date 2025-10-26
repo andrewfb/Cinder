@@ -1002,6 +1002,8 @@
   <ItemGroup>
     <ClInclude Include="..\..\include\cinder\app\App.h" />
     <ClInclude Include="..\..\include\cinder\app\AppBase.h" />
+    <ClInclude Include="..\..\include\cinder\app\AppInitCallbacks.h" />
+    <ClInclude Include="..\..\include\cinder\app\AppInstrumentation.h" />
     <ClInclude Include="..\..\include\cinder\app\AppScreenSaver.h" />
     <ClInclude Include="..\..\include\cinder\app\Event.h" />
     <ClInclude Include="..\..\include\cinder\app\FileDropEvent.h" />

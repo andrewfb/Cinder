@@ -112,41 +112,41 @@ using namespace ci::app;
 using namespace std;
 
 // State machine to track lifecycle events
-enum class LifecycleState {
-	INIT,
-	PRE_SETUP,
-	SETUP,
-	BEGIN_FRAME,
-	PRE_UPDATE,
-	UPDATE,
-	POST_UPDATE,
-	PRE_DRAW,
-	DRAW,
-	POST_DRAW,
-	END_FRAME,
-	CLEANUP
-};
+enum class LifecycleState { INIT, PRE_SETUP, SETUP, BEGIN_FRAME, PRE_UPDATE, UPDATE, POST_UPDATE, PRE_DRAW, DRAW, POST_DRAW, END_FRAME, CLEANUP };
 
-const char* stateToString( LifecycleState state ) {
+const char* stateToString( LifecycleState state )
+{
 	switch( state ) {
-		case LifecycleState::INIT:        return "INIT";
-		case LifecycleState::PRE_SETUP:   return "PRE_SETUP";
-		case LifecycleState::SETUP:       return "SETUP";
-		case LifecycleState::BEGIN_FRAME: return "BEGIN_FRAME";
-		case LifecycleState::PRE_UPDATE:  return "PRE_UPDATE";
-		case LifecycleState::UPDATE:      return "UPDATE";
-		case LifecycleState::POST_UPDATE: return "POST_UPDATE";
-		case LifecycleState::PRE_DRAW:    return "PRE_DRAW";
-		case LifecycleState::DRAW:        return "DRAW";
-		case LifecycleState::POST_DRAW:   return "POST_DRAW";
-		case LifecycleState::END_FRAME:   return "END_FRAME";
-		case LifecycleState::CLEANUP:     return "CLEANUP";
+		case LifecycleState::INIT:
+			return "INIT";
+		case LifecycleState::PRE_SETUP:
+			return "PRE_SETUP";
+		case LifecycleState::SETUP:
+			return "SETUP";
+		case LifecycleState::BEGIN_FRAME:
+			return "BEGIN_FRAME";
+		case LifecycleState::PRE_UPDATE:
+			return "PRE_UPDATE";
+		case LifecycleState::UPDATE:
+			return "UPDATE";
+		case LifecycleState::POST_UPDATE:
+			return "POST_UPDATE";
+		case LifecycleState::PRE_DRAW:
+			return "PRE_DRAW";
+		case LifecycleState::DRAW:
+			return "DRAW";
+		case LifecycleState::POST_DRAW:
+			return "POST_DRAW";
+		case LifecycleState::END_FRAME:
+			return "END_FRAME";
+		case LifecycleState::CLEANUP:
+			return "CLEANUP";
 	}
 	return "UNKNOWN";
 }
 
 class AppLifecycleTest : public App {
-public:
+  public:
 	AppLifecycleTest();
 
 	void setup() override;
@@ -155,7 +155,7 @@ public:
 	void cleanup() override;
 	void keyDown( KeyEvent event ) override;
 
-private:
+  private:
 	void recordState( LifecycleState state, const string& source );
 	void verifyStateTransition( LifecycleState from, LifecycleState to );
 	void verifySequence();
@@ -163,26 +163,26 @@ private:
 
 	struct StateRecord {
 		LifecycleState state;
-		string source;
-		double timestamp;
+		string		   source;
+		double		   timestamp;
 	};
 
 	vector<StateRecord> mStateHistory;
-	LifecycleState mCurrentState = LifecycleState::INIT;
-	int mFrameCount = 0;
-	int mMaxFrames = 5; // Run for 5 frames then print summary
-	bool mTestsPassed = true;
-	bool mSetupComplete = false; // Only count draws after setup completes
-	vector<string> mErrors;
+	LifecycleState		mCurrentState = LifecycleState::INIT;
+	int					mFrameCount = 0;
+	int					mMaxFrames = 5; // Run for 5 frames then print summary
+	bool				mTestsPassed = true;
+	bool				mSetupComplete = false; // Only count draws after setup completes
+	vector<string>		mErrors;
 
 	// Multi-window tracking
-	WindowRef mSecondWindow;
-	int mPreDrawCountThisFrame = 0;
-	int mPostDrawCountThisFrame = 0;
+	WindowRef			mSecondWindow;
+	int					mPreDrawCountThisFrame = 0;
+	int					mPostDrawCountThisFrame = 0;
 	map<WindowRef, int> mDrawCallsPerWindow;
-	WindowRef mActiveWindowDuringDraw;
-	WindowRef mLastWindowDrawn;
-	int mWindowDrawCountThisFrame = 0;
+	WindowRef			mActiveWindowDuringDraw;
+	WindowRef			mLastWindowDrawn;
+	int					mWindowDrawCountThisFrame = 0;
 
 	// Signal connections
 	signals::Connection mPreSetupConn;
@@ -209,14 +209,15 @@ AppLifecycleTest::AppLifecycleTest()
 	mPreSetupConn = getSignalPreSetup().connect( [this]() {
 		verifyStateTransition( LifecycleState::INIT, LifecycleState::PRE_SETUP );
 		recordState( LifecycleState::PRE_SETUP, "Signal" );
-	});
+	} );
 
 	mBeginFrameConn = getSignalBeginFrame().connect( [this]() {
 		if( mFrameCount < mMaxFrames ) {
 			// Should come from either SETUP (first frame) or END_FRAME (subsequent frames)
 			if( mFrameCount == 0 ) {
 				verifyStateTransition( LifecycleState::SETUP, LifecycleState::BEGIN_FRAME );
-			} else {
+			}
+			else {
 				// After first frame, the last recorded state is END_FRAME from the previous frame
 				verifyStateTransition( LifecycleState::END_FRAME, LifecycleState::BEGIN_FRAME );
 			}
@@ -228,7 +229,7 @@ AppLifecycleTest::AppLifecycleTest()
 			mWindowDrawCountThisFrame = 0;
 			mLastWindowDrawn.reset();
 		}
-	});
+	} );
 
 	mPreUpdateConn = getSignalPreUpdate().connect( [this]() {
 		if( mFrameCount < mMaxFrames ) {
@@ -236,7 +237,7 @@ AppLifecycleTest::AppLifecycleTest()
 			verifyStateTransition( LifecycleState::BEGIN_FRAME, LifecycleState::PRE_UPDATE );
 			recordState( LifecycleState::PRE_UPDATE, "Signal" );
 		}
-	});
+	} );
 
 	// NOTE: There's also a getSignalUpdate() that fires between PreUpdate and the update() override
 	// We don't track this as a separate state since update() override is the main event
@@ -246,14 +247,14 @@ AppLifecycleTest::AppLifecycleTest()
 			// We just log it but don't change state since UPDATE override is more important
 			cout << "[Signal] Update signal fired (between PreUpdate signal and update() override)" << endl;
 		}
-	});
+	} );
 
 	mPostUpdateConn = getSignalPostUpdate().connect( [this]() {
 		if( mFrameCount < mMaxFrames ) {
 			verifyStateTransition( LifecycleState::UPDATE, LifecycleState::POST_UPDATE );
 			recordState( LifecycleState::POST_UPDATE, "Signal" );
 		}
-	});
+	} );
 
 	mPreDrawConn = getSignalPreDraw().connect( [this]() {
 		if( mFrameCount < mMaxFrames ) {
@@ -261,8 +262,7 @@ AppLifecycleTest::AppLifecycleTest()
 
 			// CRITICAL: PreDraw should fire exactly ONCE per frame (app-level signal)
 			if( mPreDrawCountThisFrame > 1 ) {
-				string error = "PreDraw signal fired " + to_string(mPreDrawCountThisFrame) +
-				               " times in frame " + to_string(mFrameCount) + " (should be exactly 1)";
+				string error = "PreDraw signal fired " + to_string( mPreDrawCountThisFrame ) + " times in frame " + to_string( mFrameCount ) + " (should be exactly 1)";
 				mErrors.push_back( error );
 				mTestsPassed = false;
 				cerr << "ERROR: " << error << endl;
@@ -271,7 +271,7 @@ AppLifecycleTest::AppLifecycleTest()
 			verifyStateTransition( LifecycleState::POST_UPDATE, LifecycleState::PRE_DRAW );
 			recordState( LifecycleState::PRE_DRAW, "Signal" );
 		}
-	});
+	} );
 
 	mPostDrawConn = getSignalPostDraw().connect( [this]() {
 		if( mFrameCount < mMaxFrames ) {
@@ -279,8 +279,7 @@ AppLifecycleTest::AppLifecycleTest()
 
 			// CRITICAL: PostDraw should fire exactly ONCE per frame (app-level signal)
 			if( mPostDrawCountThisFrame > 1 ) {
-				string error = "PostDraw signal fired " + to_string(mPostDrawCountThisFrame) +
-				               " times in frame " + to_string(mFrameCount) + " (should be exactly 1)";
+				string error = "PostDraw signal fired " + to_string( mPostDrawCountThisFrame ) + " times in frame " + to_string( mFrameCount ) + " (should be exactly 1)";
 				mErrors.push_back( error );
 				mTestsPassed = false;
 				cerr << "ERROR: " << error << endl;
@@ -289,9 +288,7 @@ AppLifecycleTest::AppLifecycleTest()
 			// CRITICAL: PostDraw should fire AFTER all windows have drawn
 			int expectedWindowDraws = 2; // We have 2 windows
 			if( mWindowDrawCountThisFrame < expectedWindowDraws ) {
-				string error = "PostDraw signal fired after only " + to_string(mWindowDrawCountThisFrame) +
-				               " window draws (expected " + to_string(expectedWindowDraws) + ") in frame " +
-				               to_string(mFrameCount);
+				string error = "PostDraw signal fired after only " + to_string( mWindowDrawCountThisFrame ) + " window draws (expected " + to_string( expectedWindowDraws ) + ") in frame " + to_string( mFrameCount );
 				mErrors.push_back( error );
 				mTestsPassed = false;
 				cerr << "ERROR: " << error << endl;
@@ -300,21 +297,19 @@ AppLifecycleTest::AppLifecycleTest()
 			verifyStateTransition( LifecycleState::DRAW, LifecycleState::POST_DRAW );
 			recordState( LifecycleState::POST_DRAW, "Signal" );
 		}
-	});
+	} );
 
 	mEndFrameConn = getSignalEndFrame().connect( [this]() {
 		if( mFrameCount < mMaxFrames ) {
 			// CRITICAL: Verify PreDraw and PostDraw fired exactly once this frame
 			if( mPreDrawCountThisFrame != 1 ) {
-				string error = "PreDraw signal fired " + to_string(mPreDrawCountThisFrame) +
-				               " times in frame " + to_string(mFrameCount) + " (should be exactly 1)";
+				string error = "PreDraw signal fired " + to_string( mPreDrawCountThisFrame ) + " times in frame " + to_string( mFrameCount ) + " (should be exactly 1)";
 				mErrors.push_back( error );
 				mTestsPassed = false;
 				cerr << "ERROR: " << error << endl;
 			}
 			if( mPostDrawCountThisFrame != 1 ) {
-				string error = "PostDraw signal fired " + to_string(mPostDrawCountThisFrame) +
-				               " times in frame " + to_string(mFrameCount) + " (should be exactly 1)";
+				string error = "PostDraw signal fired " + to_string( mPostDrawCountThisFrame ) + " times in frame " + to_string( mFrameCount ) + " (should be exactly 1)";
 				mErrors.push_back( error );
 				mTestsPassed = false;
 				cerr << "ERROR: " << error << endl;
@@ -336,31 +331,24 @@ AppLifecycleTest::AppLifecycleTest()
 				quit();
 			}
 		}
-	});
+	} );
 
 	mCleanupConn = getSignalCleanup().connect( [this]() {
 		cout << "\n[Signal] Cleanup signal received" << endl;
 		recordState( LifecycleState::CLEANUP, "Signal" );
-	});
+	} );
 
 	mThreadNameConn = getSignalThreadName().connect( [this]( const std::string& name ) {
-		cout << "[ThreadName] Thread named: \"" << name << "\" (thread ID: "
-		     << std::this_thread::get_id() << ")" << endl;
+		cout << "[ThreadName] Thread named: \"" << name << "\" (thread ID: " << std::this_thread::get_id() << ")" << endl;
 		mThreadNames.push_back( name );
-	});
+	} );
 
 	// Also test priority-based signal execution
-	getSignalPreSetup().connect( 100, []() {
-		cout << "[Priority Test] HIGH priority (100) PreSetup handler" << endl;
-	});
+	getSignalPreSetup().connect( 100, []() { cout << "[Priority Test] HIGH priority (100) PreSetup handler" << endl; } );
 
-	getSignalPreSetup().connect( -100, []() {
-		cout << "[Priority Test] LOW priority (-100) PreSetup handler" << endl;
-	});
+	getSignalPreSetup().connect( -100, []() { cout << "[Priority Test] LOW priority (-100) PreSetup handler" << endl; } );
 
-	getSignalPreSetup().connect( 0, []() {
-		cout << "[Priority Test] DEFAULT priority (0) PreSetup handler" << endl;
-	});
+	getSignalPreSetup().connect( 0, []() { cout << "[Priority Test] DEFAULT priority (0) PreSetup handler" << endl; } );
 }
 
 void AppLifecycleTest::setup()
@@ -370,12 +358,13 @@ void AppLifecycleTest::setup()
 	recordState( LifecycleState::SETUP, "Override" );
 
 	// VERIFY: App init callbacks should have been executed before setup()
-	if( !test::wereCallbacksExecutedBeforeSetup() ) {
+	if( ! test::wereCallbacksExecutedBeforeSetup() ) {
 		string error = "CRITICAL: App init callbacks were NOT executed before setup()!";
 		mErrors.push_back( error );
 		mTestsPassed = false;
 		cerr << "ERROR: " << error << endl;
-	} else {
+	}
+	else {
 		cout << "[VERIFIED] App init callbacks executed before setup()" << endl;
 	}
 
@@ -386,7 +375,8 @@ void AppLifecycleTest::setup()
 		mErrors.push_back( error );
 		mTestsPassed = false;
 		cerr << "ERROR: " << error << endl;
-	} else {
+	}
+	else {
 		cout << "[VERIFIED] Correct number of init callbacks: " << initCount << endl;
 	}
 
@@ -406,14 +396,14 @@ void AppLifecycleTest::setup()
 	std::thread testThread( []() {
 		ci::setThreadName( "TestWorkerThread" );
 		std::this_thread::sleep_for( std::chrono::milliseconds( 10 ) );
-	});
+	} );
 	testThread.join();
 
 	// Create another thread with a different name
 	std::thread audioThread( []() {
 		ci::setThreadName( "AudioProcessingThread" );
 		std::this_thread::sleep_for( std::chrono::milliseconds( 10 ) );
-	});
+	} );
 	audioThread.join();
 
 	// Create a second window for multi-window testing
@@ -432,7 +422,7 @@ void AppLifecycleTest::setup()
 void AppLifecycleTest::update()
 {
 	// Mark setup as complete on first update - only count draws after this point
-	if( !mSetupComplete ) {
+	if( ! mSetupComplete ) {
 		mSetupComplete = true;
 	}
 
@@ -440,7 +430,7 @@ void AppLifecycleTest::update()
 		verifyStateTransition( LifecycleState::PRE_UPDATE, LifecycleState::UPDATE );
 		recordState( LifecycleState::UPDATE, "Override" );
 
-		cout << "\n--- Frame " << (mFrameCount + 1) << " ---" << endl;
+		cout << "\n--- Frame " << ( mFrameCount + 1 ) << " ---" << endl;
 	}
 }
 
@@ -460,7 +450,7 @@ void AppLifecycleTest::draw()
 		int displayFrameNum = mFrameCount + 1;
 
 		// PreDraw signal should have been called before draw() - but only once for the first window
-		if( currentWindow == getWindowIndex(0) ) {
+		if( currentWindow == getWindowIndex( 0 ) ) {
 			verifyStateTransition( LifecycleState::PRE_DRAW, LifecycleState::DRAW );
 			recordState( LifecycleState::DRAW, "Override" );
 		}
@@ -472,16 +462,18 @@ void AppLifecycleTest::draw()
 		gl::drawString( "Press ESC to quit", vec2( 10, 50 ) );
 
 		// Show which window this is
-		if( currentWindow == getWindowIndex(0) ) {
+		if( currentWindow == getWindowIndex( 0 ) ) {
 			gl::drawString( "Window: Main (1 of 2)", vec2( 10, 90 ) );
-		} else {
+		}
+		else {
 			gl::drawString( "Window: Second (2 of 2)", vec2( 10, 90 ) );
 		}
 
 		if( mTestsPassed ) {
 			gl::color( 0, 1, 0 );
 			gl::drawString( "All tests passing!", vec2( 10, 70 ) );
-		} else {
+		}
+		else {
 			gl::color( 1, 0, 0 );
 			gl::drawString( "Test failures detected!", vec2( 10, 70 ) );
 		}
@@ -509,8 +501,7 @@ void AppLifecycleTest::recordState( LifecycleState state, const string& source )
 	mCurrentState = state;
 
 	if( mFrameCount < mMaxFrames ) {
-		cout << "[" << source << "] " << stateToString( state ) << " at "
-		     << fixed << setprecision( 4 ) << getElapsedSeconds() << "s" << endl;
+		cout << "[" << source << "] " << stateToString( state ) << " at " << fixed << setprecision( 4 ) << getElapsedSeconds() << "s" << endl;
 	}
 }
 
@@ -518,9 +509,7 @@ void AppLifecycleTest::verifyStateTransition( LifecycleState from, LifecycleStat
 {
 	// Now that we call verify BEFORE record, mCurrentState contains the previous state
 	if( mCurrentState != from ) {
-		string error = "Invalid state transition: expected " + string( stateToString( from ) ) +
-		               " -> " + string( stateToString( to ) ) +
-		               ", but current state is " + string( stateToString( mCurrentState ) );
+		string error = "Invalid state transition: expected " + string( stateToString( from ) ) + " -> " + string( stateToString( to ) ) + ", but current state is " + string( stateToString( mCurrentState ) );
 		mErrors.push_back( error );
 		mTestsPassed = false;
 		cerr << "ERROR: " << error << endl;
@@ -531,36 +520,19 @@ void AppLifecycleTest::verifySequence()
 {
 	// Define the expected sequence for the first frame
 	// This is the EXACT order events should occur
-	vector<pair<LifecycleState, string>> expectedFirstFrame = {
-		{ LifecycleState::PRE_SETUP,   "Signal" },
-		{ LifecycleState::SETUP,       "Override" },
-		{ LifecycleState::BEGIN_FRAME, "Signal" },
-		{ LifecycleState::PRE_UPDATE,  "Signal" },
-		{ LifecycleState::UPDATE,      "Override" },
-		{ LifecycleState::POST_UPDATE, "Signal" },
-		{ LifecycleState::PRE_DRAW,    "Signal" },
-		{ LifecycleState::DRAW,        "Override" },
-		{ LifecycleState::POST_DRAW,   "Signal" },
-		{ LifecycleState::END_FRAME,   "Signal" }
-	};
+	vector<pair<LifecycleState, string>> expectedFirstFrame
+		= { { LifecycleState::PRE_SETUP, "Signal" }, { LifecycleState::SETUP, "Override" }, { LifecycleState::BEGIN_FRAME, "Signal" }, { LifecycleState::PRE_UPDATE, "Signal" }, { LifecycleState::UPDATE, "Override" },
+			  { LifecycleState::POST_UPDATE, "Signal" }, { LifecycleState::PRE_DRAW, "Signal" }, { LifecycleState::DRAW, "Override" }, { LifecycleState::POST_DRAW, "Signal" }, { LifecycleState::END_FRAME, "Signal" } };
 
 	// Expected sequence for subsequent frames
-	vector<pair<LifecycleState, string>> expectedSubsequentFrame = {
-		{ LifecycleState::BEGIN_FRAME, "Signal" },
-		{ LifecycleState::PRE_UPDATE,  "Signal" },
-		{ LifecycleState::UPDATE,      "Override" },
-		{ LifecycleState::POST_UPDATE, "Signal" },
-		{ LifecycleState::PRE_DRAW,    "Signal" },
-		{ LifecycleState::DRAW,        "Override" },
-		{ LifecycleState::POST_DRAW,   "Signal" },
-		{ LifecycleState::END_FRAME,   "Signal" }
-	};
+	vector<pair<LifecycleState, string>> expectedSubsequentFrame = { { LifecycleState::BEGIN_FRAME, "Signal" }, { LifecycleState::PRE_UPDATE, "Signal" }, { LifecycleState::UPDATE, "Override" }, { LifecycleState::POST_UPDATE, "Signal" },
+		{ LifecycleState::PRE_DRAW, "Signal" }, { LifecycleState::DRAW, "Override" }, { LifecycleState::POST_DRAW, "Signal" }, { LifecycleState::END_FRAME, "Signal" } };
 
 	cout << "\n=== Sequence Verification ===" << endl;
 
 	// Extract frames
 	vector<vector<pair<LifecycleState, string>>> actualFrames;
-	vector<pair<LifecycleState, string>> currentFrame;
+	vector<pair<LifecycleState, string>>		 currentFrame;
 
 	for( const auto& record : mStateHistory ) {
 		currentFrame.push_back( { record.state, record.source } );
@@ -573,37 +545,31 @@ void AppLifecycleTest::verifySequence()
 	bool allFramesMatch = true;
 
 	// Verify first frame
-	if( !actualFrames.empty() ) {
+	if( ! actualFrames.empty() ) {
 		cout << "\n--- First Frame ---" << endl;
 		cout << "Expected sequence:" << endl;
 		for( size_t i = 0; i < expectedFirstFrame.size(); i++ ) {
-			cout << "  " << (i+1) << ". " << stateToString( expectedFirstFrame[i].first )
-			     << " [" << expectedFirstFrame[i].second << "]" << endl;
+			cout << "  " << ( i + 1 ) << ". " << stateToString( expectedFirstFrame[i].first ) << " [" << expectedFirstFrame[i].second << "]" << endl;
 		}
 
 		cout << "\nActual sequence:" << endl;
 		const auto& actualFirstFrame = actualFrames[0];
 		for( size_t i = 0; i < actualFirstFrame.size(); i++ ) {
-			cout << "  " << (i+1) << ". " << stateToString( actualFirstFrame[i].first )
-			     << " [" << actualFirstFrame[i].second << "]" << endl;
+			cout << "  " << ( i + 1 ) << ". " << stateToString( actualFirstFrame[i].first ) << " [" << actualFirstFrame[i].second << "]" << endl;
 		}
 
 		if( expectedFirstFrame.size() != actualFirstFrame.size() ) {
-			string error = "Frame 1: Sequence length mismatch: expected " + to_string( expectedFirstFrame.size() ) +
-			               " events, got " + to_string( actualFirstFrame.size() );
+			string error = "Frame 1: Sequence length mismatch: expected " + to_string( expectedFirstFrame.size() ) + " events, got " + to_string( actualFirstFrame.size() );
 			mErrors.push_back( error );
 			mTestsPassed = false;
 			allFramesMatch = false;
 			cerr << "ERROR: " << error << endl;
-		} else {
+		}
+		else {
 			for( size_t i = 0; i < expectedFirstFrame.size(); i++ ) {
-				if( expectedFirstFrame[i].first != actualFirstFrame[i].first ||
-				    expectedFirstFrame[i].second != actualFirstFrame[i].second ) {
-					string error = "Frame 1: Sequence mismatch at position " + to_string(i+1) +
-					               ": expected " + string(stateToString( expectedFirstFrame[i].first )) +
-					               " [" + expectedFirstFrame[i].second + "], got " +
-					               string(stateToString( actualFirstFrame[i].first )) +
-					               " [" + actualFirstFrame[i].second + "]";
+				if( expectedFirstFrame[i].first != actualFirstFrame[i].first || expectedFirstFrame[i].second != actualFirstFrame[i].second ) {
+					string error = "Frame 1: Sequence mismatch at position " + to_string( i + 1 ) + ": expected " + string( stateToString( expectedFirstFrame[i].first ) ) + " [" + expectedFirstFrame[i].second + "], got "
+						+ string( stateToString( actualFirstFrame[i].first ) ) + " [" + actualFirstFrame[i].second + "]";
 					mErrors.push_back( error );
 					mTestsPassed = false;
 					allFramesMatch = false;
@@ -615,28 +581,22 @@ void AppLifecycleTest::verifySequence()
 
 	// Verify subsequent frames
 	for( size_t frameIdx = 1; frameIdx < actualFrames.size() && frameIdx < (size_t)mMaxFrames; frameIdx++ ) {
-		cout << "\n--- Frame " << (frameIdx + 1) << " ---" << endl;
+		cout << "\n--- Frame " << ( frameIdx + 1 ) << " ---" << endl;
 		const auto& actualFrame = actualFrames[frameIdx];
 
 		if( expectedSubsequentFrame.size() != actualFrame.size() ) {
-			string error = "Frame " + to_string(frameIdx + 1) + ": Sequence length mismatch: expected " +
-			               to_string( expectedSubsequentFrame.size() ) + " events, got " +
-			               to_string( actualFrame.size() );
+			string error = "Frame " + to_string( frameIdx + 1 ) + ": Sequence length mismatch: expected " + to_string( expectedSubsequentFrame.size() ) + " events, got " + to_string( actualFrame.size() );
 			mErrors.push_back( error );
 			mTestsPassed = false;
 			allFramesMatch = false;
 			cerr << "ERROR: " << error << endl;
-		} else {
+		}
+		else {
 			bool frameMatches = true;
 			for( size_t i = 0; i < expectedSubsequentFrame.size(); i++ ) {
-				if( expectedSubsequentFrame[i].first != actualFrame[i].first ||
-				    expectedSubsequentFrame[i].second != actualFrame[i].second ) {
-					string error = "Frame " + to_string(frameIdx + 1) + ": Sequence mismatch at position " +
-					               to_string(i+1) + ": expected " +
-					               string(stateToString( expectedSubsequentFrame[i].first )) +
-					               " [" + expectedSubsequentFrame[i].second + "], got " +
-					               string(stateToString( actualFrame[i].first )) +
-					               " [" + actualFrame[i].second + "]";
+				if( expectedSubsequentFrame[i].first != actualFrame[i].first || expectedSubsequentFrame[i].second != actualFrame[i].second ) {
+					string error = "Frame " + to_string( frameIdx + 1 ) + ": Sequence mismatch at position " + to_string( i + 1 ) + ": expected " + string( stateToString( expectedSubsequentFrame[i].first ) ) + " ["
+						+ expectedSubsequentFrame[i].second + "], got " + string( stateToString( actualFrame[i].first ) ) + " [" + actualFrame[i].second + "]";
 					mErrors.push_back( error );
 					mTestsPassed = false;
 					allFramesMatch = false;
@@ -645,13 +605,12 @@ void AppLifecycleTest::verifySequence()
 				}
 			}
 			if( frameMatches ) {
-				cout << "[PASS] Frame " << (frameIdx + 1) << " sequence correct" << endl;
+				cout << "[PASS] Frame " << ( frameIdx + 1 ) << " sequence correct" << endl;
 			}
 		}
 	}
 
-	cout << "\n[" << (allFramesMatch ? "PASS" : "FAIL") << "] Event sequence verification for all "
-	     << actualFrames.size() << " frames" << endl;
+	cout << "\n[" << ( allFramesMatch ? "PASS" : "FAIL" ) << "] Event sequence verification for all " << actualFrames.size() << " frames" << endl;
 }
 
 void AppLifecycleTest::printSummary()
@@ -667,9 +626,7 @@ void AppLifecycleTest::printSummary()
 	cout << "\nLifecycle Event History:" << endl;
 	cout << "------------------------" << endl;
 	for( const auto& record : mStateHistory ) {
-		cout << setw( 15 ) << left << stateToString( record.state )
-		     << " [" << setw( 8 ) << record.source << "] at "
-		     << fixed << setprecision( 4 ) << record.timestamp << "s" << endl;
+		cout << setw( 15 ) << left << stateToString( record.state ) << " [" << setw( 8 ) << record.source << "] at " << fixed << setprecision( 4 ) << record.timestamp << "s" << endl;
 	}
 
 	// Verify expected patterns
@@ -710,22 +667,22 @@ void AppLifecycleTest::printSummary()
 			hasPostDraw = true;
 	}
 
-	cout << "[" << (hasPreSetup ? "PASS" : "FAIL") << "] PreSetup signal fired" << endl;
-	cout << "[" << (hasSetup ? "PASS" : "FAIL") << "] setup() override called" << endl;
-	cout << "[" << (hasBeginFrame ? "PASS" : "FAIL") << "] BeginFrame signal fired" << endl;
-	cout << "[" << (hasPreUpdate ? "PASS" : "FAIL") << "] PreUpdate signal fired" << endl;
-	cout << "[" << (hasUpdate ? "PASS" : "FAIL") << "] update() override called" << endl;
-	cout << "[" << (hasPostUpdate ? "PASS" : "FAIL") << "] PostUpdate signal fired" << endl;
-	cout << "[" << (hasPreDraw ? "PASS" : "FAIL") << "] PreDraw signal fired" << endl;
-	cout << "[" << (hasDraw ? "PASS" : "FAIL") << "] draw() override called" << endl;
-	cout << "[" << (hasPostDraw ? "PASS" : "FAIL") << "] PostDraw signal fired" << endl;
-	cout << "[" << (hasEndFrame ? "PASS" : "FAIL") << "] EndFrame signal fired" << endl;
+	cout << "[" << ( hasPreSetup ? "PASS" : "FAIL" ) << "] PreSetup signal fired" << endl;
+	cout << "[" << ( hasSetup ? "PASS" : "FAIL" ) << "] setup() override called" << endl;
+	cout << "[" << ( hasBeginFrame ? "PASS" : "FAIL" ) << "] BeginFrame signal fired" << endl;
+	cout << "[" << ( hasPreUpdate ? "PASS" : "FAIL" ) << "] PreUpdate signal fired" << endl;
+	cout << "[" << ( hasUpdate ? "PASS" : "FAIL" ) << "] update() override called" << endl;
+	cout << "[" << ( hasPostUpdate ? "PASS" : "FAIL" ) << "] PostUpdate signal fired" << endl;
+	cout << "[" << ( hasPreDraw ? "PASS" : "FAIL" ) << "] PreDraw signal fired" << endl;
+	cout << "[" << ( hasDraw ? "PASS" : "FAIL" ) << "] draw() override called" << endl;
+	cout << "[" << ( hasPostDraw ? "PASS" : "FAIL" ) << "] PostDraw signal fired" << endl;
+	cout << "[" << ( hasEndFrame ? "PASS" : "FAIL" ) << "] EndFrame signal fired" << endl;
 
 	// Verify thread name signal
 	cout << "\nThread Name Signal Verification:" << endl;
 	cout << "--------------------------------" << endl;
-	bool hasThreadNames = !mThreadNames.empty();
-	cout << "[" << (hasThreadNames ? "PASS" : "FAIL") << "] Thread name signal fired" << endl;
+	bool hasThreadNames = ! mThreadNames.empty();
+	cout << "[" << ( hasThreadNames ? "PASS" : "FAIL" ) << "] Thread name signal fired" << endl;
 	if( hasThreadNames ) {
 		cout << "Captured thread names (" << mThreadNames.size() << "):" << endl;
 		for( const auto& name : mThreadNames ) {
@@ -735,42 +692,37 @@ void AppLifecycleTest::printSummary()
 		bool hasMain = std::find( mThreadNames.begin(), mThreadNames.end(), "MainThread" ) != mThreadNames.end();
 		bool hasWorker = std::find( mThreadNames.begin(), mThreadNames.end(), "TestWorkerThread" ) != mThreadNames.end();
 		bool hasAudio = std::find( mThreadNames.begin(), mThreadNames.end(), "AudioProcessingThread" ) != mThreadNames.end();
-		cout << "[" << (hasMain ? "PASS" : "FAIL") << "] MainThread captured" << endl;
-		cout << "[" << (hasWorker ? "PASS" : "FAIL") << "] TestWorkerThread captured" << endl;
-		cout << "[" << (hasAudio ? "PASS" : "FAIL") << "] AudioProcessingThread captured" << endl;
+		cout << "[" << ( hasMain ? "PASS" : "FAIL" ) << "] MainThread captured" << endl;
+		cout << "[" << ( hasWorker ? "PASS" : "FAIL" ) << "] TestWorkerThread captured" << endl;
+		cout << "[" << ( hasAudio ? "PASS" : "FAIL" ) << "] AudioProcessingThread captured" << endl;
 	}
 
 	// Verify app init callbacks
 	cout << "\nApp Init Callback Verification:" << endl;
 	cout << "-------------------------------" << endl;
-	bool initCallbacksPassed = test::wereCallbacksExecutedBeforeSetup() && (test::getInitCallbackCount() == 2);
-	cout << "[" << (test::wereCallbacksExecutedBeforeSetup() ? "PASS" : "FAIL")
-	     << "] Init callbacks executed before setup()" << endl;
-	cout << "[" << (test::getInitCallbackCount() == 2 ? "PASS" : "FAIL")
-	     << "] Expected 2 init callbacks, got " << test::getInitCallbackCount() << endl;
-	cout << "[" << (test::getPreSetupCallbackCount() > 0 ? "PASS" : "FAIL")
-	     << "] PreSetup callbacks from init were called: " << test::getPreSetupCallbackCount() << endl;
-	cout << "[" << (test::getPreUpdateCallbackCount() > 0 ? "PASS" : "FAIL")
-	     << "] PreUpdate callbacks from init were called: " << test::getPreUpdateCallbackCount() << endl;
+	bool initCallbacksPassed = test::wereCallbacksExecutedBeforeSetup() && ( test::getInitCallbackCount() == 2 );
+	cout << "[" << ( test::wereCallbacksExecutedBeforeSetup() ? "PASS" : "FAIL" ) << "] Init callbacks executed before setup()" << endl;
+	cout << "[" << ( test::getInitCallbackCount() == 2 ? "PASS" : "FAIL" ) << "] Expected 2 init callbacks, got " << test::getInitCallbackCount() << endl;
+	cout << "[" << ( test::getPreSetupCallbackCount() > 0 ? "PASS" : "FAIL" ) << "] PreSetup callbacks from init were called: " << test::getPreSetupCallbackCount() << endl;
+	cout << "[" << ( test::getPreUpdateCallbackCount() > 0 ? "PASS" : "FAIL" ) << "] PreUpdate callbacks from init were called: " << test::getPreUpdateCallbackCount() << endl;
 
 	// Verify multi-window behavior
 	cout << "\nMulti-Window Verification:" << endl;
 	cout << "--------------------------" << endl;
 
-	int expectedDrawsPerWindow = mMaxFrames;
+	int	 expectedDrawsPerWindow = mMaxFrames;
 	bool multiWindowTestPassed = true;
 
 	// Check that each window was drawn the correct number of times
 	for( const auto& pair : mDrawCallsPerWindow ) {
 		WindowRef window = pair.first;
-		int drawCount = pair.second;
-		bool isCorrect = (drawCount == expectedDrawsPerWindow);
+		int		  drawCount = pair.second;
+		bool	  isCorrect = ( drawCount == expectedDrawsPerWindow );
 
-		string windowName = (window == getWindowIndex(0)) ? "Main window" : "Second window";
-		cout << "[" << (isCorrect ? "PASS" : "FAIL") << "] " << windowName << " drawn "
-		     << drawCount << " times (expected " << expectedDrawsPerWindow << ")" << endl;
+		string windowName = ( window == getWindowIndex( 0 ) ) ? "Main window" : "Second window";
+		cout << "[" << ( isCorrect ? "PASS" : "FAIL" ) << "] " << windowName << " drawn " << drawCount << " times (expected " << expectedDrawsPerWindow << ")" << endl;
 
-		if( !isCorrect ) {
+		if( ! isCorrect ) {
 			multiWindowTestPassed = false;
 		}
 	}
@@ -781,19 +733,19 @@ void AppLifecycleTest::printSummary()
 	bool preDrawTestPassed = true;
 	bool postDrawTestPassed = true;
 	for( const auto& error : mErrors ) {
-		if( error.find("PreDraw signal fired") != string::npos ) {
+		if( error.find( "PreDraw signal fired" ) != string::npos ) {
 			preDrawTestPassed = false;
 		}
-		if( error.find("PostDraw signal fired") != string::npos ) {
+		if( error.find( "PostDraw signal fired" ) != string::npos ) {
 			postDrawTestPassed = false;
 		}
 	}
-	cout << "[" << (preDrawTestPassed ? "PASS" : "FAIL") << "] PreDraw signal fired exactly once per frame" << endl;
-	cout << "[" << (postDrawTestPassed ? "PASS" : "FAIL") << "] PostDraw signal fired exactly once per frame" << endl;
-	cout << "[" << (postDrawTestPassed ? "PASS" : "FAIL") << "] PostDraw signal fired after all windows drawn" << endl;
+	cout << "[" << ( preDrawTestPassed ? "PASS" : "FAIL" ) << "] PreDraw signal fired exactly once per frame" << endl;
+	cout << "[" << ( postDrawTestPassed ? "PASS" : "FAIL" ) << "] PostDraw signal fired exactly once per frame" << endl;
+	cout << "[" << ( postDrawTestPassed ? "PASS" : "FAIL" ) << "] PostDraw signal fired after all windows drawn" << endl;
 
 	// Check for errors
-	if( !mErrors.empty() ) {
+	if( ! mErrors.empty() ) {
 		cout << "\nErrors Detected:" << endl;
 		cout << "---------------" << endl;
 		for( const auto& error : mErrors ) {
@@ -803,21 +755,16 @@ void AppLifecycleTest::printSummary()
 
 	// Final result
 	cout << "\n========================================" << endl;
-	bool allTestsPassed = mTestsPassed &&
-	                      hasPreSetup && hasSetup &&
-	                      hasBeginFrame &&
-	                      hasPreUpdate && hasUpdate && hasPostUpdate &&
-	                      hasPreDraw && hasDraw && hasPostDraw &&
-	                      hasEndFrame &&
-	                      initCallbacksPassed &&
-	                      hasThreadNames &&
-	                      mThreadNames.size() >= 3 &&
-	                      multiWindowTestPassed;
+	bool allTestsPassed = mTestsPassed && hasPreSetup && hasSetup && hasBeginFrame && hasPreUpdate && hasUpdate && hasPostUpdate && hasPreDraw && hasDraw && hasPostDraw && hasEndFrame && initCallbacksPassed && hasThreadNames
+		&& mThreadNames.size() >= 3 && multiWindowTestPassed;
 
 	if( allTestsPassed ) {
 		cout << "         ALL TESTS PASSED!" << endl;
-	} else {
+		console() << "         ALL TESTS PASSED!" << endl;
+	}
+	else {
 		cout << "         SOME TESTS FAILED!" << endl;
+		console() << "         ALL TESTS PASSED!" << endl;
 	}
 	cout << "========================================" << endl;
 }
@@ -826,9 +773,6 @@ void AppLifecycleTest::printSummary()
 void prepareSettings( AppLifecycleTest::Settings* settings )
 {
 	settings->setWindowSize( 400, 200 );
-#if defined( CINDER_MSW )
-	settings->setConsoleWindowEnabled( true );
-#endif
 }
 
 CINDER_APP( AppLifecycleTest, RendererGl, prepareSettings )

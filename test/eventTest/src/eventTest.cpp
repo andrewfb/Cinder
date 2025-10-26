@@ -240,7 +240,7 @@ void EventTestApp::drawEventList()
 				if( evt.shift ) drawModifierBadge( "shift", ImVec4( 0.3f, 0.5f, 0.7f, 0.9f ) );
 				if( evt.ctrl ) drawModifierBadge( "ctrl", ImVec4( 0.7f, 0.3f, 0.5f, 0.9f ) );
 				if( evt.alt ) drawModifierBadge( "alt", ImVec4( 0.5f, 0.7f, 0.3f, 0.9f ) );
-				if( evt.meta ) drawModifierBadge( "cmd", ImVec4( 0.7f, 0.5f, 0.3f, 0.9f ) );
+				if( evt.meta ) drawModifierBadge( "meta", ImVec4( 0.7f, 0.5f, 0.3f, 0.9f ) );
 				if( evt.leftMouse ) drawModifierBadge( "L", ImVec4( 0.5f, 0.5f, 0.5f, 0.9f ) );
 				if( evt.rightMouse ) drawModifierBadge( "R", ImVec4( 0.5f, 0.5f, 0.5f, 0.9f ) );
 				if( evt.middleMouse ) drawModifierBadge( "M", ImVec4( 0.5f, 0.5f, 0.5f, 0.9f ) );
