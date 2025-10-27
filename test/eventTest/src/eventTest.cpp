@@ -34,11 +34,6 @@ public:
 	void update() override;
 	void draw() override;
 
-	void mouseDown( MouseEvent event ) override;
-	void mouseUp( MouseEvent event ) override;
-	void mouseWheel( MouseEvent event ) override;
-	void mouseMove( MouseEvent event ) override;
-	void mouseDrag( MouseEvent event ) override;
 	void fileDrop( FileDropEvent event ) override;
 
 private:
@@ -48,18 +43,28 @@ private:
 	void drawTextInputPanel();
 	string utf32ToUtf8( uint32_t codepoint );
 
-	// Signal handlers for keyboard events (connected at high priority to observe all events)
+	// Signal handlers for events (connected at high priority to observe all events)
 	void handleKeyDown( KeyEvent& event );
 	void handleKeyUp( KeyEvent& event );
 	void handleKeyChar( KeyEvent& event );
+	void handleMouseDown( MouseEvent& event );
+	void handleMouseUp( MouseEvent& event );
+	void handleMouseWheel( MouseEvent& event );
+	void handleMouseMove( MouseEvent& event );
+	void handleMouseDrag( MouseEvent& event );
 
 	deque<EventRecord> mEvents;
 	static const size_t MAX_EVENTS = 10000;
 
-	// Signal connections for keyboard monitoring
+	// Signal connections for event monitoring
 	signals::Connection mKeyDownConnection;
 	signals::Connection mKeyUpConnection;
 	signals::Connection mKeyCharConnection;
+	signals::Connection mMouseDownConnection;
+	signals::Connection mMouseUpConnection;
+	signals::Connection mMouseWheelConnection;
+	signals::Connection mMouseMoveConnection;
+	signals::Connection mMouseDragConnection;
 
 	// Filter options
 	bool mShowMouse = true;
@@ -87,14 +92,25 @@ void EventTestApp::setup()
 	ImGui::GetStyle().WindowPadding = ImVec2( 8, 8 );
 	ImGui::GetStyle().WindowBorderSize = 0.0f;
 
-	// Connect keyboard event monitors at priority 2 (higher than ImGui's priority 1)
-	// This lets us observe all keyboard events while still allowing ImGui to consume them
+	// Connect event monitors at priority 2 (higher than ImGui's priority 1)
+	// This lets us observe all events while still allowing ImGui to consume them
 	mKeyDownConnection = getWindow()->getSignalKeyDown().connect( 2,
 		[this]( KeyEvent& event ) { handleKeyDown( event ); } );
 	mKeyUpConnection = getWindow()->getSignalKeyUp().connect( 2,
 		[this]( KeyEvent& event ) { handleKeyUp( event ); } );
 	mKeyCharConnection = getWindow()->getSignalKeyChar().connect( 2,
 		[this]( KeyEvent& event ) { handleKeyChar( event ); } );
+
+	mMouseDownConnection = getWindow()->getSignalMouseDown().connect( 2,
+		[this]( MouseEvent& event ) { handleMouseDown( event ); } );
+	mMouseUpConnection = getWindow()->getSignalMouseUp().connect( 2,
+		[this]( MouseEvent& event ) { handleMouseUp( event ); } );
+	mMouseWheelConnection = getWindow()->getSignalMouseWheel().connect( 2,
+		[this]( MouseEvent& event ) { handleMouseWheel( event ); } );
+	mMouseMoveConnection = getWindow()->getSignalMouseMove().connect( 2,
+		[this]( MouseEvent& event ) { handleMouseMove( event ); } );
+	mMouseDragConnection = getWindow()->getSignalMouseDrag().connect( 2,
+		[this]( MouseEvent& event ) { handleMouseDrag( event ); } );
 
 	// Start with a welcome message
 	EventRecord welcome;
@@ -314,7 +330,7 @@ void EventTestApp::draw()
 	drawTextInputPanel();
 }
 
-void EventTestApp::mouseDown( MouseEvent event )
+void EventTestApp::handleMouseDown( MouseEvent& event )
 {
 	EventRecord rec;
 	rec.type = "MouseDown";
@@ -339,7 +355,7 @@ void EventTestApp::mouseDown( MouseEvent event )
 	addEvent( rec );
 }
 
-void EventTestApp::mouseUp( MouseEvent event )
+void EventTestApp::handleMouseUp( MouseEvent& event )
 {
 	EventRecord rec;
 	rec.type = "MouseUp";
@@ -362,7 +378,7 @@ void EventTestApp::mouseUp( MouseEvent event )
 	addEvent( rec );
 }
 
-void EventTestApp::mouseWheel( MouseEvent event )
+void EventTestApp::handleMouseWheel( MouseEvent& event )
 {
 	EventRecord rec;
 	rec.type = "MouseWheel";
@@ -387,7 +403,7 @@ void EventTestApp::mouseWheel( MouseEvent event )
 	addEvent( rec );
 }
 
-void EventTestApp::mouseMove( MouseEvent event )
+void EventTestApp::handleMouseMove( MouseEvent& event )
 {
 	EventRecord rec;
 	rec.type = "MouseMove";
@@ -410,7 +426,7 @@ void EventTestApp::mouseMove( MouseEvent event )
 	addEvent( rec );
 }
 
-void EventTestApp::mouseDrag( MouseEvent event )
+void EventTestApp::handleMouseDrag( MouseEvent& event )
 {
 	EventRecord rec;
 	rec.type = "MouseDrag";
