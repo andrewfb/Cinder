@@ -28,7 +28,6 @@
 #include "cinder/app/Platform.h"
 #include "cinder/app/Renderer.h"
 #include "cinder/app/Window.h"
-#include "cinder/app/AppInstrumentation.h"
 #include "cinder/Vector.h"
 #include "cinder/app/MouseEvent.h"
 #include "cinder/app/KeyEvent.h"
@@ -55,6 +54,8 @@ class io_context;
 } // namespace asio
 
 namespace cinder { namespace app {
+
+class AppInstrumentation;
 
 #if defined( CINDER_COCOA_TOUCH ) || defined( CINDER_ANDROID )
 enum InterfaceOrientation {
@@ -543,9 +544,6 @@ class CI_API AppBase {
 	Convenience methods which mirror App member-functions and apply to the active application
 **/
 //@{
-//! Registers a callback to be executed after app construction but before setup()
-inline void registerAppInitCallback( const std::function<void(AppBase*)> &callback ) { AppBase::registerAppInitCallback( callback ); }
-
 inline WindowRef	getWindow() { return AppBase::get()->getWindow(); }
 //! Returns the number of Windows the app has open
 inline size_t		getNumWindows() { return AppBase::get()->getNumWindows(); }

@@ -1756,8 +1756,6 @@
 		007A7B16158D09A600BEAD18 /* Window.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Window.h; path = app/Window.h; sourceTree = "<group>"; };
 		007B09730E9559960052257E /* Rand.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Rand.cpp; sourceTree = "<group>"; };
 		007B09830E957B9A0052257E /* KeyEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = KeyEvent.cpp; path = app/KeyEvent.cpp; sourceTree = "<group>"; };
-		007CD5FB2EAB0E6D0060E372 /* AppInstrumentation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AppInstrumentation.h; path = app/AppInstrumentation.h; sourceTree = "<group>"; };
-		007CD5FC2EAB0E6D0060E372 /* AppInitCallbacks.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AppInitCallbacks.h; path = app/AppInitCallbacks.h; sourceTree = "<group>"; };
 		007CE1F5127BB13B00799071 /* rapidxml_print.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = rapidxml_print.hpp; path = ../../include/rapidxml/rapidxml_print.hpp; sourceTree = SOURCE_ROOT; };
 		007CE1F6127BB13B00799071 /* rapidxml.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = rapidxml.hpp; path = ../../include/rapidxml/rapidxml.hpp; sourceTree = SOURCE_ROOT; };
 		008876550F957E7300FD55C5 /* Arcball.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Arcball.h; sourceTree = "<group>"; };
@@ -2370,8 +2368,6 @@
 				00BFB0501A99175000DDC921 /* winrt */,
 				002419CD0E8035D3004D34EB /* App.h */,
 				1181F7C31A7F8760001BBFA2 /* AppBase.h */,
-				007CD5FC2EAB0E6D0060E372 /* AppInitCallbacks.h */,
-				007CD5FB2EAB0E6D0060E372 /* AppInstrumentation.h */,
 				00AA5C860F64851C009CD67F /* AppScreenSaver.h */,
 				0053819915A8CDF90019BA91 /* Event.h */,
 				0088773B0F96671600FD55C5 /* FileDropEvent.h */,

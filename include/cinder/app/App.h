@@ -62,3 +62,35 @@
     } } // namespace cinder::app
 	#define CINDER_APP( APP, RENDERER, ... )	CINDER_APP_LINUX( APP, RENDERER, ##__VA_ARGS__ )
 #endif
+
+namespace cinder { namespace app {
+
+//! Base class for application instrumentation (profiling, tracing, etc.)
+class AppInstrumentation {
+  public:
+	virtual ~AppInstrumentation() = 0;
+
+	//! RAII scope object for instrumentation regions
+	struct Scope {
+		virtual ~Scope() = default;
+	};
+
+	using ScopePtr = std::unique_ptr<Scope>;
+
+	virtual ScopePtr beginSetup( AppBase &app ) { return nullptr; }
+	virtual ScopePtr beginFrame( AppBase &app ) { return nullptr; }
+	virtual ScopePtr beginUpdate( AppBase &app ) { return nullptr; }
+	virtual ScopePtr beginDraw( AppBase &app ) { return nullptr; }
+	virtual ScopePtr beginPostDraw( AppBase &app ) { return nullptr; }
+	virtual ScopePtr beginCleanup( AppBase &app ) { return nullptr; }
+};
+
+// Provide default implementation for pure virtual destructor
+inline AppInstrumentation::~AppInstrumentation() = default;
+
+//! Registers a callback to be executed after app construction but before setup()
+inline void registerAppInitCallback( const std::function<void(AppBase*)> &callback ) {
+	AppBase::registerAppInitCallback( callback );
+}
+
+} } // namespace cinder::app
