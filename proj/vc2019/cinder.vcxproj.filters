@@ -2221,12 +2221,6 @@
     <ClInclude Include="..\..\include\cinder\ImageTargetFileQoi.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\include\cinder\app\AppInitCallbacks.h">
-      <Filter>Header Files\app</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\include\cinder\app\AppInstrumentation.h">
-      <Filter>Header Files\app</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="nlohmann_json.natvis" />

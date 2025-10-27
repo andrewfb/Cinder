@@ -68,6 +68,7 @@
 #endif
 
 #include "cinder/app/AppBase.h"
+#include "cinder/app/App.h"
 #include "cinder/app/Renderer.h"
 #include "cinder/Camera.h"
 #include "cinder/System.h"
