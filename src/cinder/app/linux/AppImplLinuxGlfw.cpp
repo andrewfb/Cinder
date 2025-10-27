@@ -37,6 +37,14 @@ public:
 	
 	static std::map<GLFWwindow*, std::pair<AppImplLinux*,WindowRef>> sWindowMapping;
 	static bool sCapsLockDown, sNumLockDown, sScrollLockDown;
+
+	// Store last key event data for use in keyChar callback
+	struct LastKeyData {
+		int32_t code = 0;
+		uint32_t modifiers = 0;
+		uint32_t nativeKeyCode = 0;
+	};
+	static std::map<GLFWwindow*, LastKeyData> sLastKeyData;
 		
 	static void registerWindowEvents( GLFWwindow *glfwWindow, AppImplLinux* cinderAppImpl, const WindowRef& cinderWindow ) {
 		sWindowMapping[glfwWindow] = std::make_pair( cinderAppImpl, cinderWindow );
@@ -53,6 +61,7 @@ public:
 
 	static void unregisterWindowEvents( GLFWwindow *glfwWindow ) {
 		sWindowMapping.erase( glfwWindow );
+		sLastKeyData.erase( glfwWindow );
 	}
 
 	static void onError( int error, const char* description ) {
@@ -216,6 +225,10 @@ public:
 			KeyEvent keyEvent( cinderWindow, nativeKeyCode, charUtf32, convertedChar, modifiers, scancode );
 
 			if( GLFW_PRESS == action || GLFW_REPEAT == action ) {
+				// Store key data for use in onCharInput callback
+				sLastKeyData[glfwWindow].code = nativeKeyCode;
+				sLastKeyData[glfwWindow].modifiers = modifiers;
+				sLastKeyData[glfwWindow].nativeKeyCode = scancode;
 				cinderWindow->emitKeyDown( &keyEvent );
 			}
 			else if( GLFW_RELEASE == action ) {
@@ -232,18 +245,16 @@ public:
 			auto& cinderWindow = iter->second.second;
 			cinderAppImpl->setWindow( cinderWindow );
 
-			// Create a KeyEvent with character information for keyDown
+			// Get the last key event data to preserve modifiers and key code
+			auto& lastKey = sLastKeyData[glfwWindow];
+
+			// Create a KeyEvent with character information from the char callback,
+			// but preserve the key code, modifiers, and native key code from the last key down
 			char asciiChar = codepoint < 256 ? (char)codepoint : 0;
-			KeyEvent keyDownEvent( cinderWindow, sKeyEvent.getCode(), codepoint, asciiChar, sKeyEvent.getModifiers(), sKeyEvent.getNativeKeyCode() );
+			KeyEvent keyCharEvent( cinderWindow, lastKey.code, codepoint, asciiChar, lastKey.modifiers, lastKey.nativeKeyCode );
 
-			// Emit keyDown with character info
-			cinderWindow->emitKeyDown( &keyDownEvent );
-
-			// Emit keyChar with a separate event (so handled flag doesn't carry over)
-			KeyEvent keyCharEvent( cinderWindow, sKeyEvent.getCode(), codepoint, asciiChar, sKeyEvent.getModifiers(), sKeyEvent.getNativeKeyCode() );
+			// Emit keyChar event
 			cinderWindow->emitKeyChar( &keyCharEvent );
-
-			sKeyEvent = keyDownEvent;
 		}
 	}
 
@@ -316,21 +327,35 @@ public:
 
 	static void onFileDrop( GLFWwindow *glfwWindow, int count, const char **paths )
 	{
-		std::vector<fs::path> files;
-		for( int i = 0; i < count; i++ ) {
-			files.push_back( paths[i] );
-		}
+		auto iter = sWindowMapping.find( glfwWindow );
+		if( sWindowMapping.end() != iter ) {
+			auto& cinderAppImpl = iter->second.first;
+			auto& cinderWindow = iter->second.second;
+			cinderAppImpl->setWindow( cinderWindow );
 
-		// Get the cursor position at the time of the drop
-		double xpos, ypos;
-		::glfwGetCursorPos( glfwWindow, &xpos, &ypos );
-		vec2 dropPoint = { static_cast<float>(xpos), static_cast<float>(ypos) };
-		FileDropEvent dropEvent( getWindow(), dropPoint.x, dropPoint.y, files );
-		getWindow()->emitFileDrop( &dropEvent );
+			std::vector<fs::path> files;
+			for( int i = 0; i < count; i++ ) {
+				files.push_back( paths[i] );
+			}
+
+			// Get the cursor position at the time of the drop
+			double xpos, ypos;
+			::glfwGetCursorPos( glfwWindow, &xpos, &ypos );
+			vec2 dropPoint = { static_cast<float>(xpos), static_cast<float>(ypos) };
+
+			// Note: Modifier keys are not supported during file drops on Linux/Wayland due to
+			// security restrictions. On XWayland, modifier state is intentionally stripped for
+			// clients that don't own the keyboard. Native Wayland DND support in GLFW is not
+			// yet implemented. For future-proof cross-platform DND semantics, consider using
+			// XDND action negotiation (copy/move/link) instead of modifier keys.
+			FileDropEvent dropEvent( cinderWindow, dropPoint.x, dropPoint.y, files );
+			cinderWindow->emitFileDrop( &dropEvent );
+		}
 	}
 };
 
 std::map<GLFWwindow*, std::pair<AppImplLinux*,WindowRef>> GlfwCallbacks::sWindowMapping;
+std::map<GLFWwindow*, GlfwCallbacks::LastKeyData> GlfwCallbacks::sLastKeyData;
 bool GlfwCallbacks::sCapsLockDown = false;
 bool GlfwCallbacks::sNumLockDown = false;
 bool GlfwCallbacks::sScrollLockDown = false;

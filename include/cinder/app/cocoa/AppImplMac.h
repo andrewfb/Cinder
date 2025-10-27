@@ -45,17 +45,21 @@
   @public
 	NSTimer*						mAnimationTimer;
 	class cinder::app::AppMac*		mApp;
-	
+
 	BOOL							mNeedsUpdate;
 	BOOL							mQuitOnLastWindowClosed;
 	BOOL							mFrameRateEnabled;
 	float							mFrameRate;
-	
+
 	NSMutableArray*					mWindows;
 	WindowImplBasicCocoa*			mActiveWindow;
 
 	::IOPMAssertionID				mIdleSleepAssertionID;
 	::IOPMAssertionID				mDisplaySleepAssertionID;
+
+	// Monitor to re-dispatch key-ups when Command is down
+	// (AppKit swallows them otherwise, causing stuck keys)
+	id								mKeyUpMonitor;
 }
 
 @property(retain, nonatomic) NSMutableArray *windows;

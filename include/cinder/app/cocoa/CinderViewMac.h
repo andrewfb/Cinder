@@ -73,6 +73,9 @@
 	// Text input state
 	NSRange						mMarkedRange;
 	NSMutableAttributedString	*mMarkedText;
+
+	// Modifier key state tracking (to prevent duplicate events during window switching)
+	BOOL						mModifierKeyPressed[256];  // Indexed by keyCode
 }
 
 @property (readwrite) BOOL readyToDraw;

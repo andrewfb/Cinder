@@ -56,6 +56,9 @@ using namespace cinder::app;
 	mTouchIdMap = nil;
 	mDelegate = nil;
 
+	// Initialize modifier key state tracking
+	memset(mModifierKeyPressed, 0, sizeof(mModifierKeyPressed));
+
 	return self;
 }
 
@@ -75,8 +78,11 @@ using namespace cinder::app;
 	mTouchIdMap = nil;
 	mDelegate = nil;
 
+	// Initialize modifier key state tracking
+	memset(mModifierKeyPressed, 0, sizeof(mModifierKeyPressed));
+
 	[self setupRendererWithFrame:frame renderer:renderer sharedRenderer:sharedRenderer];
-	
+
 	return self;
 }
 
@@ -277,11 +283,10 @@ using namespace cinder::app;
 									c, mods, code);
 	[mDelegate keyDown:&keyEvent];
 
-	// Use text input system for proper dead key and IME support, but only if the event wasn't handled
-	// This allows users to prevent text input by handling the keyDown event
-	if( ! keyEvent.isHandled() ) {
-		[self interpretKeyEvents:[NSArray arrayWithObject:theEvent]];
-	}
+	// Always call interpretKeyEvents for IME and dead key support
+	// The text input system will call insertText: with composed characters
+	// Applications can ignore keyChar events if they don't want text input
+	[self interpretKeyEvents:[NSArray arrayWithObject:theEvent]];
 }
 
 - (void)keyUp:(NSEvent*)theEvent
@@ -303,15 +308,68 @@ using namespace cinder::app;
 {
 	int code = [theEvent keyCode];
 	int mods = [self prepKeyEventModifiers:theEvent];
+	NSEventModifierFlags flags = [theEvent modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
 
-    if (mods == 0) {
-		cinder::app::KeyEvent keyEvent( [mDelegate getWindowRef], cinder::app::KeyEvent::translateNativeKeyCode( code ), 0, 0, mods, code);
-		[mDelegate keyUp:&keyEvent];
-    }
-    else {
-		cinder::app::KeyEvent keyEvent( [mDelegate getWindowRef], cinder::app::KeyEvent::translateNativeKeyCode( code ), 0, 0, mods, code);
+	// Determine which modifier key changed by checking its specific bit
+	// Map key codes to their corresponding modifier flags
+	// Left/Right Command: 55, 54
+	// Left/Right Option: 58, 61
+	// Left/Right Shift: 56, 60
+	// Left/Right Control: 59, 62
+	NSEventModifierFlags keyFlag = 0;
+	if (code == 55 || code == 54) {
+		keyFlag = NSEventModifierFlagCommand;
+	}
+	else if (code == 58 || code == 61) {
+		keyFlag = NSEventModifierFlagOption;
+	}
+	else if (code == 56 || code == 60) {
+		keyFlag = NSEventModifierFlagShift;
+	}
+	else if (code == 59 || code == 62) {
+		keyFlag = NSEventModifierFlagControl;
+	}
+
+	// Guard against invalid key codes
+	if (code >= 256 || keyFlag == 0) {
+		return;
+	}
+
+	// Determine action using toggle detection
+	// When a modifier flag is set but we already recorded it as pressed,
+	// treat this as a toggle to release. This handles spurious duplicate
+	// flagsChanged events that macOS sometimes sends.
+	// State is cleared on focus loss (applicationWillResignActive) to prevent stuck keys.
+	BOOL action; // YES = press, NO = release
+
+	if (keyFlag & flags) {
+		// Flag is currently set
+		if (mModifierKeyPressed[code]) {
+			// Already pressed - this is a duplicate event (window switching)
+			// Treat as release to clean up state
+			action = NO;
+		}
+		else {
+			// First time seeing it pressed
+			action = YES;
+		}
+	}
+	else {
+		// Flag is cleared - this is a release
+		action = NO;
+	}
+
+	// Update state tracking
+	mModifierKeyPressed[code] = action;
+
+	// Emit the event
+	cinder::app::KeyEvent keyEvent( [mDelegate getWindowRef], cinder::app::KeyEvent::translateNativeKeyCode( code ), 0, 0, mods, code);
+	if (action) {
 		[mDelegate keyDown:&keyEvent];
-    }
+	}
+	else {
+		[mDelegate keyUp:&keyEvent];
+	}
 }
 
 // Text input support for dead keys and IME
@@ -328,6 +386,14 @@ using namespace cinder::app;
 	// Emit keyChar for each composed character
 	for (NSUInteger i = 0; i < [characters length]; i++) {
 		uint32_t c32 = [characters characterAtIndex:i];
+
+		// Filter out function key sentinels (0xF700-0xF7FF)
+		// These are private-use Unicode codepoints that macOS uses for non-printable keys
+		// We already delivered these via keyDown, so don't emit them as characters
+		if (c32 >= 0xF700 && c32 <= 0xF7FF) {
+			continue;
+		}
+
 		char c = (c32 < 256) ? (char)c32 : 0;
 
 		// Get current modifier state (no key code for composed characters)
@@ -341,9 +407,9 @@ using namespace cinder::app;
 
 - (void)doCommandBySelector:(SEL)selector
 {
-	// Forward to super to allow system shortcuts (Cmd+C, Cmd+V, Tab, arrows, etc.)
-	// This ensures normal menu/shortcut handling continues to work
-	[super doCommandBySelector:selector];
+	// Make this a no-op to prevent AppKit from executing navigation commands
+	// that would swallow key-up events and cause stuck keys.
+	// Applications handle their own keyboard shortcuts via the raw key events.
 }
 
 #pragma mark - NSTextInputClient Protocol
@@ -572,6 +638,10 @@ using namespace cinder::app;
 
 - (void)applicationWillResignActive:(NSNotification *)aNotification
 {
+	// Clear modifier key state to prevent stuck keys when focus is lost
+	// This prevents issues when user switches windows while holding modifier keys
+	memset(mModifierKeyPressed, 0, sizeof(mModifierKeyPressed));
+
    	std::vector<cinder::app::TouchEvent::Touch> touchList;
 	double eventTime = cinder::app::getElapsedSeconds();
 	for( const auto &prevPt : mTouchPrevPointMap ) {

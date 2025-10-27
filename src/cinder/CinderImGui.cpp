@@ -603,7 +603,8 @@ static void ImGui_ImplCinder_KeyDown( ci::app::KeyEvent& event )
 	io.AddKeyEvent( ImGuiMod_Alt, event.isAltDown() );
 	io.AddKeyEvent( ImGuiMod_Super, event.isMetaDown() );
 
-	event.setHandled( io.WantCaptureKeyboard );
+	// Don't call setHandled() - let the platform handle text input
+	// Applications that don't want character events can ignore them
 }
 
 static void ImGui_ImplCinder_KeyUp( ci::app::KeyEvent& event )
@@ -619,7 +620,31 @@ static void ImGui_ImplCinder_KeyUp( ci::app::KeyEvent& event )
 	io.AddKeyEvent( ImGuiMod_Alt, event.isAltDown() );
 	io.AddKeyEvent( ImGuiMod_Super, event.isMetaDown() );
 
-	event.setHandled( io.WantCaptureKeyboard );
+	// Don't call setHandled() - let the platform handle text input
+}
+
+static void ImGui_ImplCinder_KeyChar( ci::app::KeyEvent& event )
+{
+	ImGuiIO& io = ImGui::GetIO();
+
+	uint32_t character = event.getCharUtf32();
+	if( ! event.isAccelDown() && character > 0 ) {
+		// Handle surrogate pairs for characters beyond the Basic Multilingual Plane
+		if( character > 0xFFFF ) {
+			// Encode as UTF-16 surrogate pair
+			character -= 0x10000;
+			ImWchar utf16[2];
+			utf16[0] = (ImWchar)(0xD800 + (character >> 10));
+			utf16[1] = (ImWchar)(0xDC00 + (character & 0x3FF));
+			io.AddInputCharacterUTF16( utf16[0] );
+			io.AddInputCharacterUTF16( utf16[1] );
+		}
+		else {
+			io.AddInputCharacter( (ImWchar)character );
+		}
+	}
+
+	// Don't call setHandled() - ImGui just processes the characters it receives
 }
 
 static void ImGui_ImplCinder_NewFrameGuard( const ci::app::WindowRef& window );

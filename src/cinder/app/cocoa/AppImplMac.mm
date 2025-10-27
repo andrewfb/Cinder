@@ -100,6 +100,15 @@ using namespace cinder::app;
 	mFrameRate = settings.getFrameRate();
 	mFrameRateEnabled = settings.isFrameRateEnabled();
 
+	// Install local event monitor to re-dispatch key-ups when Command is down
+	// (AppKit swallows them otherwise, causing stuck keys)
+	mKeyUpMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp handler:^NSEvent*(NSEvent* event) {
+		if ([event modifierFlags] & NSEventModifierFlagCommand) {
+			[[NSApp keyWindow] sendEvent:event];
+		}
+		return event;
+	}];
+
 	// lastly, ensure the first window is the currently active context
 	[((WindowImplBasicCocoa *)[mWindows firstObject])->mCinderView makeCurrentContext];
 
@@ -328,6 +337,12 @@ using namespace cinder::app;
 
 - (void)applicationWillTerminate:(NSNotification *)notification
 {
+	// Remove key-up monitor if it was installed
+	if (mKeyUpMonitor) {
+		[NSEvent removeMonitor:mKeyUpMonitor];
+		mKeyUpMonitor = nil;
+	}
+
 	// we need to close all existing windows
 	while( [mWindows count] > 0 ) {
 		// this counts on windowWillCloseNotification: firing and in turn calling releaseWindow
