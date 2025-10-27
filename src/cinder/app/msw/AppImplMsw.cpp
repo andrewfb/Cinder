@@ -675,13 +675,14 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 			KeyEvent event( impl->getWindow(), code, c, static_cast<char>( c ), mods, nativeCode );
 			impl->getWindow()->emitKeyDown( &event );
 
-			// For WM_SYSKEYDOWN, always pass to DefWindowProc so Windows can track alt codes
-			if( uMsg == WM_SYSKEYDOWN ) {
-				break;  // Fall through to DefWindowProc
-			}
-
 			if ( event.isHandled() )
 				return 0;
+
+			// For WM_SYSKEYDOWN with numpad keys, pass to DefWindowProc so Windows can track alt codes
+			// Only fall through if the event was NOT handled by the app
+			if( uMsg == WM_SYSKEYDOWN && isAltCodeKey ) {
+				break;  // Fall through to DefWindowProc for alt code accumulation
+			}
 		}
 		break;
 		case WM_SYSKEYUP:
@@ -695,13 +696,14 @@ LRESULT CALLBACK WndProc(	HWND	mWnd,			// Handle For This Window
 							c, static_cast<char>( c ), prepKeyEventModifiers(), static_cast<unsigned int>( wParam ) );
 			impl->getWindow()->emitKeyUp( &event );
 
-			// For WM_SYSKEYUP, always pass to DefWindowProc so Windows can generate alt code characters
-			if( uMsg == WM_SYSKEYUP ) {
-				break;  // Fall through to DefWindowProc
-			}
-
 			if ( event.isHandled() )
 				return 0;
+
+			// For WM_SYSKEYUP with numpad keys, pass to DefWindowProc so Windows can generate alt code characters
+			// Only fall through if the event was NOT handled by the app
+			if( uMsg == WM_SYSKEYUP && isAltCodeKey ) {
+				break;  // Fall through to DefWindowProc for alt code generation
+			}
 		}
 		break;
 		case WM_CHAR: {

@@ -593,7 +593,8 @@ static void ImGui_ImplCinder_KeyDown( ci::app::KeyEvent& event )
 	io.AddKeyEvent( ImGuiMod_Alt, event.isAltDown() );
 	io.AddKeyEvent( ImGuiMod_Super, event.isMetaDown() );
 
-	event.setHandled( io.WantCaptureKeyboard );
+	// Don't call setHandled() - let the platform handle text input
+	// Applications that don't want character events can ignore them
 }
 
 static void ImGui_ImplCinder_KeyUp( ci::app::KeyEvent& event )
@@ -609,7 +610,7 @@ static void ImGui_ImplCinder_KeyUp( ci::app::KeyEvent& event )
 	io.AddKeyEvent( ImGuiMod_Alt, event.isAltDown() );
 	io.AddKeyEvent( ImGuiMod_Super, event.isMetaDown() );
 
-	event.setHandled( io.WantCaptureKeyboard );
+	// Don't call setHandled() - let the platform handle text input
 }
 
 static void ImGui_ImplCinder_KeyChar( ci::app::KeyEvent& event )
@@ -633,7 +634,7 @@ static void ImGui_ImplCinder_KeyChar( ci::app::KeyEvent& event )
 		}
 	}
 
-	event.setHandled( io.WantCaptureKeyboard );
+	// Don't call setHandled() - ImGui just processes the characters it receives
 }
 
 static void ImGui_ImplCinder_NewFrameGuard( const ci::app::WindowRef& window );
