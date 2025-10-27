@@ -37,13 +37,13 @@ namespace cinder { namespace app {
 //! Represents a file-drop event, typically received from Windows Explorer or Mac OS X Finder
 class CI_API FileDropEvent : public Event {
   public:
-	FileDropEvent( WindowRef win, int aX, int aY, const std::vector<fs::path> &aFiles )
-		: Event( win ), mX( aX ), mY( aY ), mFiles( aFiles )
+	FileDropEvent( WindowRef win, int aX, int aY, const std::vector<fs::path> &aFiles, unsigned int aModifiers = 0 )
+		: Event( win ), mX( aX ), mY( aY ), mFiles( aFiles ), mModifiers( aModifiers )
 	{}
-	
+
 	//! Returns the X coordinate measured in points of the mouse during the event
 	int			getX() const { return mX; }
-	//! Returns the Y coordinate measured in points of the mouse during the event	
+	//! Returns the Y coordinate measured in points of the mouse during the event
 	int			getY() const { return mY; }
 	//! Returns the coordinates measured in points of the mouse during the event
 	glm::ivec2	getPos() const { return ivec2( mX, mY ); }
@@ -52,12 +52,32 @@ class CI_API FileDropEvent : public Event {
 	const std::vector<fs::path>&	getFiles() const { return mFiles; }
 	//! Returns the number of files dropped during the event
 	size_t							getNumFiles() const { return mFiles.size(); }
-	//! Returns the path for file number \a index. 
+	//! Returns the path for file number \a index.
 	const fs::path&					getFile( size_t index ) const { return mFiles.at(index); }
+
+	//! Returns a bitwise mask of which modifier keys and mouse buttons are pressed during the event
+	unsigned int	getModifiers() const { return mModifiers; }
+
+	enum {
+		SHIFT_DOWN		= 0x0008,
+		ALT_DOWN		= 0x0010,
+		CTRL_DOWN		= 0x0020,
+		META_DOWN		= 0x0040
+	};
+
+	//! Returns whether the Shift key was pressed during the event.
+	bool	isShiftDown() const { return (mModifiers & SHIFT_DOWN) ? true : false; }
+	//! Returns whether the Alt (or Option) key was pressed during the event.
+	bool	isAltDown() const { return (mModifiers & ALT_DOWN) ? true : false; }
+	//! Returns whether the Control key was pressed during the event.
+	bool	isControlDown() const { return (mModifiers & CTRL_DOWN) ? true : false; }
+	//! Returns whether the meta key (also known as Command or Windows key) was pressed during the event.
+	bool	isMetaDown() const { return (mModifiers & META_DOWN) ? true : false; }
 
   private:
 	int							mX, mY;
 	std::vector<fs::path>		mFiles;
+	unsigned int				mModifiers;
 };
 
 CI_API inline std::ostream& operator<<( std::ostream &os, const FileDropEvent &event )
