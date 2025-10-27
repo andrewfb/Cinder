@@ -28,6 +28,7 @@
 #include "cinder/app/Platform.h"
 #include "cinder/app/Renderer.h"
 #include "cinder/app/Window.h"
+#include "cinder/app/AppInstrumentation.h"
 #include "cinder/Vector.h"
 #include "cinder/app/MouseEvent.h"
 #include "cinder/app/KeyEvent.h"
@@ -39,8 +40,11 @@
 #include "cinder/Signals.h"
 #include "cinder/Thread.h"
 
+#include <atomic>
 #include <vector>
 #include <algorithm>
+#include <functional>
+#include <mutex>
 
 namespace cinder {
 class Timeline;
@@ -70,8 +74,13 @@ typedef	signals::Signal<uint32_t (), signals::CollectorBitwiseAnd<uint32_t>>		Ev
 
 typedef	signals::Signal<bool (), signals::CollectorBooleanAnd>						EventSignalShouldQuit;
 
+// Forward declaration for internal instrumentation helper
+class InstrumentationScopeStack;
+
 //! Base class that all apps derive from.
 class CI_API AppBase {
+	friend class InstrumentationScopeStack;
+
  public:
 	//! Startup settings, used during App construction. They are modified before the app is created by passing a SettingsFn to the app instantiation macros.
 	class CI_API Settings {
@@ -236,6 +245,20 @@ class CI_API AppBase {
 
 	//! Emitted at the start of each application update cycle
 	signals::Signal<void()>&	getSignalUpdate() { return mSignalUpdate; }
+	//! Emitted at the very beginning of each frame, before any processing
+	signals::Signal<void()>&	getSignalBeginFrame() { return mSignalBeginFrame; }
+	//! Emitted at the very end of each frame, after drawing and buffer swap
+	signals::Signal<void()>&	getSignalEndFrame() { return mSignalEndFrame; }
+	//! Emitted before setup() is called
+	signals::Signal<void()>&	getSignalPreSetup() { return mSignalPreSetup; }
+	//! Emitted before update() is called
+	signals::Signal<void()>&	getSignalPreUpdate() { return mSignalPreUpdate; }
+	//! Emitted after update() is called
+	signals::Signal<void()>&	getSignalPostUpdate() { return mSignalPostUpdate; }
+	//! Emitted before draw() is called
+	signals::Signal<void()>&	getSignalPreDraw() { return mSignalPreDraw; }
+	//! Emitted when a thread name is set via setThreadName()
+	signals::Signal<void(const std::string&)>&	getSignalThreadName() { return mSignalThreadName; }
 
 	//! Signal that emits before the app quit process begins. If any slots return false then the app quitting is canceled.
 	EventSignalShouldQuit&		getSignalShouldQuit() { return mSignalShouldQuit; }
@@ -418,10 +441,19 @@ class CI_API AppBase {
 	// Internal handlers - these are called into by AppImpl's. If you are calling one of these, you have likely strayed far off the path.
 	//! Returns whether a call to quit() has been issued
 	bool			getQuitRequested() const { return mQuitRequested; }
-	void			setQuitRequested() { mQuitRequested = true; }	
+	void			setQuitRequested() { mQuitRequested = true; }
 	virtual void	privateSetup__();
 	virtual void	privateUpdate__();
+	void			privateBeginFrame__();
+	void			privateEndFrame__();
 	bool			privateEmitShouldQuit()		{ return mSignalShouldQuit.emit(); }
+
+	//! \brief Internal instrumentation phase enum used by platform implementations
+	enum class InstrumentationPhase { Setup, Frame, Update, Draw, PostDraw, Cleanup };
+
+	//! \brief Creates an instrumentation scope for the given phase. Called by platform run loops.
+	//! The returned object should be stored as a stack variable - its destructor ends the instrumentation.
+	std::shared_ptr<class InstrumentationScopeStack> makeInstrumentationScope( InstrumentationPhase phase );
 	//! \endcond
 
 	virtual bool		receivesEvents() const { return true; }
@@ -429,8 +461,22 @@ class CI_API AppBase {
 	//! Returns a pointer to the active App
 	static AppBase*			get();
 
+	//! Registers a callback to be executed after app construction but before setup()
+	//! Typically called from static initializers in header-only blocks
+	//! \param callback Function to be called with the App instance
+	static void				registerAppInitCallback( const std::function<void(AppBase*)> &callback );
+
+	//! \brief Adds an instrumenter to the app. Multiple instrumenters can be registered.
+	//! \warning MUST be called from the main thread only. Typically called during app initialization.
+	//! \note Instrumenters cannot be removed once registered. They remain active for the application lifetime.
+	//! \param instrumenter The instrumenter to add
+	void addInstrumentation( std::shared_ptr<AppInstrumentation> instrumenter );
+
   protected:
 	AppBase();
+
+	//! Executes all registered init callbacks. Called internally after app construction.
+	void					executeInitCallbacks();
 
 	//! \cond
 	// These are called by the main application instantation functions and are only used in the launch process
@@ -459,9 +505,21 @@ class CI_API AppBase {
 	std::shared_ptr<Timeline>	mTimeline;
 
 	signals::Signal<void()>		mSignalUpdate, mSignalCleanup, mSignalWillResignActive, mSignalDidBecomeActive;
+	signals::Signal<void()>		mSignalBeginFrame, mSignalEndFrame, mSignalPreSetup, mSignalPreUpdate, mSignalPostUpdate, mSignalPreDraw;
+	signals::Signal<void(const std::string&)>	mSignalThreadName;
 	EventSignalShouldQuit		mSignalShouldQuit;
-	
+
 	signals::Signal<void(const DisplayRef &display)>	mSignalDisplayConnected, mSignalDisplayDisconnected, mSignalDisplayChanged;
+
+	// Static storage for init callbacks
+	using InitCallback = std::function<void(AppBase*)>;
+	static std::vector<InitCallback>*	sInitCallbacks;
+	static std::mutex*					sInitCallbacksMutex;
+
+	// Instrumentation registry (main thread only)
+	std::vector<std::shared_ptr<AppInstrumentation>>	mInstrumenters;
+	std::atomic<bool>									mHasInstrumentation{ false };
+	std::mutex											mInstrumentationMutex;
 
 	std::shared_ptr<asio::io_context>	mIo;
 	std::shared_ptr<void>				mIoWork; // asio::io_context::work, but can't fwd declare member class
@@ -479,6 +537,9 @@ class CI_API AppBase {
 	Convenience methods which mirror App member-functions and apply to the active application
 **/
 //@{
+//! Registers a callback to be executed after app construction but before setup()
+inline void registerAppInitCallback( const std::function<void(AppBase*)> &callback ) { AppBase::registerAppInitCallback( callback ); }
+
 inline WindowRef	getWindow() { return AppBase::get()->getWindow(); }
 //! Returns the number of Windows the app has open
 inline size_t		getNumWindows() { return AppBase::get()->getNumWindows(); }

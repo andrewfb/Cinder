@@ -57,7 +57,10 @@ AppImplMswBasic::AppImplMswBasic( AppMsw *app, const AppMsw::Settings &settings 
 
 void AppImplMswBasic::run()
 {
-	mApp->privateSetup__();
+	{
+		auto setupScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Setup );
+		mApp->privateSetup__();
+	}
 	mSetupHasBeenCalled = true;
 
 	// issue initial app activation event
@@ -71,6 +74,12 @@ void AppImplMswBasic::run()
 
 	// inner loop
 	while( ! mShouldQuit ) {
+		// Begin frame instrumentation
+		auto frameScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Frame );
+
+		// Begin frame
+		mApp->privateBeginFrame__();
+
 		// all of our Windows will have marked this as true if the user has unplugged, plugged or modified a Monitor
 		if( mNeedsToRefreshDisplays ) {
 			refreshDisplays();
@@ -81,10 +90,22 @@ void AppImplMswBasic::run()
 		}
 
 		// update and draw
-		mApp->privateUpdate__();
-		for( auto &window : mWindows ) {
-			if( ! mShouldQuit ) // test for quit() issued either from update() or prior draw()
-				window->redraw();
+		{
+			auto updateScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Update );
+			mApp->privateUpdate__();
+		}
+
+		{
+			auto drawScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Draw );
+			for( auto &window : mWindows ) {
+				if( ! mShouldQuit ) // test for quit() issued either from update() or prior draw()
+					window->redraw();
+			}
+		}
+
+		{
+			auto postDrawScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::PostDraw );
+			// Post-draw is implicit after redraw completes
 		}
 		// get current time in seconds
 		double currentSeconds = mApp->getElapsedSeconds();
@@ -102,6 +123,9 @@ void AppImplMswBasic::run()
 		// determine when next frame should be drawn
 		mNextFrameTime += secondsPerFrame;
 
+		// End frame
+		mApp->privateEndFrame__();
+
 		// sleep and process messages until next frame
 		if( ( mFrameRateEnabled ) && ( mNextFrameTime > currentSeconds ) )
 			sleep(mNextFrameTime - currentSeconds);
@@ -115,7 +139,10 @@ void AppImplMswBasic::run()
 	}
 
 //	killWindow( mFullScreen );
-	mApp->emitCleanup();
+	{
+		auto cleanupScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Cleanup );
+		mApp->emitCleanup();
+	}
 	delete mApp;
 }
 

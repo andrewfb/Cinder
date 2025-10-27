@@ -84,7 +84,10 @@ AppImplMswScreenSaver::AppImplMswScreenSaver( AppScreenSaver *app, HWND wnd, con
 
 void AppImplMswScreenSaver::run()
 {
-	mApp->privateSetup__();
+	{
+		auto setupScope = mApp->makeInstrumentationScope( AppBase::InstrumentationPhase::Setup );
+		mApp->privateSetup__();
+	}
 
 	// initial resize
 	for( auto winIt = mWindows.begin(); winIt != mWindows.end(); ++winIt )

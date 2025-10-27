@@ -540,7 +540,10 @@ void AppCocoaView::launch()
 		[mImpl setActiveWindow:*(mImpl->mWindows.begin())];
 	else
 		[mImpl setActiveWindow:nil];
-	privateSetup__();
+	{
+		auto setupScope = makeInstrumentationScope( AppBase::InstrumentationPhase::Setup );
+		privateSetup__();
+	}
 
 	// issue initial resizes
 	for( auto &win : mImpl->mWindows ) {
