@@ -34,8 +34,6 @@ public:
 	void update() override;
 	void draw() override;
 
-	void fileDrop( FileDropEvent event ) override;
-
 private:
 	void addEvent( const EventRecord& record );
 	void drawModifierBadge( const char* text, const ImVec4& color );
@@ -52,6 +50,7 @@ private:
 	void handleMouseWheel( MouseEvent& event );
 	void handleMouseMove( MouseEvent& event );
 	void handleMouseDrag( MouseEvent& event );
+	void handleFileDrop( FileDropEvent& event );
 
 	deque<EventRecord> mEvents;
 	static const size_t MAX_EVENTS = 10000;
@@ -65,6 +64,7 @@ private:
 	signals::Connection mMouseWheelConnection;
 	signals::Connection mMouseMoveConnection;
 	signals::Connection mMouseDragConnection;
+	signals::Connection mFileDropConnection;
 
 	// Filter options
 	bool mShowMouse = true;
@@ -111,6 +111,8 @@ void EventTestApp::setup()
 		[this]( MouseEvent& event ) { handleMouseMove( event ); } );
 	mMouseDragConnection = getWindow()->getSignalMouseDrag().connect( 2,
 		[this]( MouseEvent& event ) { handleMouseDrag( event ); } );
+	mFileDropConnection = getWindow()->getSignalFileDrop().connect( 2,
+		[this]( FileDropEvent& event ) { handleFileDrop( event ); } );
 
 	// Start with a welcome message
 	EventRecord welcome;
@@ -562,8 +564,11 @@ void EventTestApp::handleKeyChar( KeyEvent& event )
 	// Note: We do NOT call event.setHandled() - we're just observing
 }
 
-void EventTestApp::fileDrop( FileDropEvent event )
+void EventTestApp::handleFileDrop( FileDropEvent& event )
 {
+	if( ! mShowFileDrop )
+		return;
+
 	EventRecord rec;
 	rec.type = "FileDrop";
 
@@ -585,6 +590,8 @@ void EventTestApp::fileDrop( FileDropEvent event )
 	rec.timestamp = getElapsedSeconds();
 
 	addEvent( rec );
+
+	// Note: We do NOT call event.setHandled() - we're just observing
 }
 
 CINDER_APP( EventTestApp, RendererGl, []( EventTestApp::Settings *settings ) {
