@@ -39,9 +39,6 @@ public:
 	void mouseWheel( MouseEvent event ) override;
 	void mouseMove( MouseEvent event ) override;
 	void mouseDrag( MouseEvent event ) override;
-	void keyDown( KeyEvent event ) override;
-	void keyUp( KeyEvent event ) override;
-	void keyChar( KeyEvent event ) override;
 	void fileDrop( FileDropEvent event ) override;
 
 private:
@@ -51,8 +48,18 @@ private:
 	void drawTextInputPanel();
 	string utf32ToUtf8( uint32_t codepoint );
 
+	// Signal handlers for keyboard events (connected at high priority to observe all events)
+	void handleKeyDown( KeyEvent& event );
+	void handleKeyUp( KeyEvent& event );
+	void handleKeyChar( KeyEvent& event );
+
 	deque<EventRecord> mEvents;
 	static const size_t MAX_EVENTS = 10000;
+
+	// Signal connections for keyboard monitoring
+	signals::Connection mKeyDownConnection;
+	signals::Connection mKeyUpConnection;
+	signals::Connection mKeyCharConnection;
 
 	// Filter options
 	bool mShowMouse = true;
@@ -67,17 +74,27 @@ private:
 
 	// Text input testing
 	char mTextBuffer[256] = "Type here to test Unicode...";
+	char mMultilineBuffer[1024] = "Multi-line text input test...";
 };
 
 void EventTestApp::setup()
 {
-	ImGui::Initialize( ImGui::Options().window( getWindow() ) );  // Enable ImGui keyboard handling
+	ImGui::Initialize( ImGui::Options().window( getWindow() ) );  // ImGui at priority 1
 	ImGui::GetStyle().ScaleAllSizes( getWindowContentScale() );
 	ImGui::GetStyle().FontScaleMain = getWindowContentScale();
 
 	// Remove window padding for full-screen docked look
 	ImGui::GetStyle().WindowPadding = ImVec2( 8, 8 );
 	ImGui::GetStyle().WindowBorderSize = 0.0f;
+
+	// Connect keyboard event monitors at priority 2 (higher than ImGui's priority 1)
+	// This lets us observe all keyboard events while still allowing ImGui to consume them
+	mKeyDownConnection = getWindow()->getSignalKeyDown().connect( 2,
+		[this]( KeyEvent& event ) { handleKeyDown( event ); } );
+	mKeyUpConnection = getWindow()->getSignalKeyUp().connect( 2,
+		[this]( KeyEvent& event ) { handleKeyUp( event ); } );
+	mKeyCharConnection = getWindow()->getSignalKeyChar().connect( 2,
+		[this]( KeyEvent& event ) { handleKeyChar( event ); } );
 
 	// Start with a welcome message
 	EventRecord welcome;
@@ -280,25 +297,12 @@ void EventTestApp::drawTextInputPanel()
 				 ImGuiWindowFlags_NoMove |
 				 ImGuiWindowFlags_NoCollapse );
 
-	ImGui::Text( "Unicode Input Test" );
-	ImGui::Separator();
-	ImGui::Spacing();
-
-	ImGui::TextWrapped( "Test alt codes and Unicode input:" );
-	ImGui::Spacing();
-	ImGui::BulletText( "alt+0233 = e-acute (é)" );
-	ImGui::BulletText( "alt+0169 = copyright (©)" );
-	ImGui::BulletText( "alt+0189 = one-half (½)" );
-	ImGui::Spacing();
-	ImGui::Separator();
-	ImGui::Spacing();
-
 	ImGui::Text( "Single-line input:" );
 	ImGui::InputText( "##input1", mTextBuffer, sizeof(mTextBuffer) );
 	ImGui::Spacing();
 
 	ImGui::Text( "Multi-line input:" );
-	ImGui::InputTextMultiline( "##input2", mTextBuffer, sizeof(mTextBuffer), ImVec2( -1, 200 ) );
+	ImGui::InputTextMultiline( "##input2", mMultilineBuffer, sizeof(mMultilineBuffer), ImVec2( -1, 200 ) );
 
 	ImGui::End();
 }
@@ -429,8 +433,14 @@ void EventTestApp::mouseDrag( MouseEvent event )
 	addEvent( rec );
 }
 
-void EventTestApp::keyDown( KeyEvent event )
+void EventTestApp::handleKeyDown( KeyEvent& event )
 {
+	// This handler runs at priority 2 (before ImGui at priority 1)
+	// We observe all events but don't mark them handled, so ImGui can still consume them
+
+	if( ! mShowKeyboard )
+		return;
+
 	EventRecord rec;
 	rec.type = "KeyDown";
 
@@ -453,10 +463,17 @@ void EventTestApp::keyDown( KeyEvent event )
 	rec.timestamp = getElapsedSeconds();
 
 	addEvent( rec );
+	// Note: We do NOT call event.setHandled() - we're just observing
 }
 
-void EventTestApp::keyUp( KeyEvent event )
+void EventTestApp::handleKeyUp( KeyEvent& event )
 {
+	// This handler runs at priority 2 (before ImGui at priority 1)
+	// We observe all events but don't mark them handled, so ImGui can still consume them
+
+	if( ! mShowKeyboard )
+		return;
+
 	EventRecord rec;
 	rec.type = "KeyUp";
 
@@ -479,10 +496,17 @@ void EventTestApp::keyUp( KeyEvent event )
 	rec.timestamp = getElapsedSeconds();
 
 	addEvent( rec );
+	// Note: We do NOT call event.setHandled() - we're just observing
 }
 
-void EventTestApp::keyChar( KeyEvent event )
+void EventTestApp::handleKeyChar( KeyEvent& event )
 {
+	// This handler runs at priority 2 (before ImGui at priority 1)
+	// We observe all events but don't mark them handled, so ImGui can still consume them
+
+	if( ! mShowKeyboard )
+		return;
+
 	EventRecord rec;
 	rec.type = "KeyChar";
 
@@ -519,6 +543,7 @@ void EventTestApp::keyChar( KeyEvent event )
 	rec.timestamp = getElapsedSeconds();
 
 	addEvent( rec );
+	// Note: We do NOT call event.setHandled() - we're just observing
 }
 
 void EventTestApp::fileDrop( FileDropEvent event )
