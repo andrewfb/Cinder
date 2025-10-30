@@ -1,8 +1,10 @@
 #include "cinder/app/App.h"
 #include "cinder/app/RendererGl.h"
 #include "cinder/Path2d.h"
+#include "cinder/Shape2d.h"
 #include "cinder/gl/gl.h"
 #include "cinder/CinderImGui.h"
+#include "cinder/CanvasUi.h"
 #include "cinder/Log.h"
 
 #include <vector>
@@ -28,6 +30,7 @@ class BezierOffsetApp : public App {
 	void mouseDown( MouseEvent event ) override;
 	void mouseUp( MouseEvent event ) override;
 	void mouseDrag( MouseEvent event ) override;
+	void mouseMove( MouseEvent event ) override;
 	void keyDown( KeyEvent event ) override;
 	void draw() override;
 
@@ -38,16 +41,40 @@ class BezierOffsetApp : public App {
 
 	Path2d	mPath;
 	Path2d	mOffsetPath;
+	Shape2d	mStrokedShape;  // For dashed strokes (multi-contour)
 	int		mTrackedPoint;
+	int		mHoveredPoint = -1;  // Index of hovered control point (-1 = none)
+	bool	mDraggingPoint = false;  // True when dragging an existing point
+
+	// Canvas pan/zoom UI
+	CanvasUi mCanvas;
+
+	// Mode selection
+	enum class Mode { OFFSET, STROKE };
+	Mode	mMode = Mode::OFFSET;
 
 	// Offset parameters
 	float	mOffsetDistance = 20.0f;
 	float	mTolerance = 0.5f;
 	int		mJoinStyle = 0; // 0=ROUND, 1=MITER, 2=BEVEL
 	float	mMiterLimit = 4.0f;
-	bool	mCloseOffsetCurve = true;  // If true, add caps to close open paths
-	int		mCapStyle = 1;  // 0=BUTT, 1=ROUND, 2=SQUARE (only used if mCloseOffsetCurve is true)
 	int		mNumOffsetCurves = 1;  // Number of offset curves to draw (from 0 to mOffsetDistance)
+
+	// Stroke parameters
+	float	mStrokeWidth = 40.0f;
+	int		mStrokeJoinStyle = 1; // 0=ROUND, 1=MITER (SVG default), 2=BEVEL
+	float	mStrokeMiterLimit = 4.0f;
+	int		mStartCapStyle = 0;  // 0=BUTT (SVG default), 1=ROUND, 2=SQUARE
+	int		mEndCapStyle = 0;    // 0=BUTT (SVG default), 1=ROUND, 2=SQUARE
+
+	// Dash pattern parameters
+	bool	mEnableDashing = false;
+	int		mDashPreset = 0; // 0=Dashed, 1=Dotted, 2=Dash-Dot, 3=Dash-Dot-Dot, 4=Custom
+	float	mDashOn = 20.0f;
+	float	mDashOff = 10.0f;
+	float	mDashOn2 = 5.0f;   // For complex patterns
+	float	mDashOff2 = 10.0f; // For complex patterns
+	float	mDashOffset = 0.0f;
 
 	// Visualization options
 	bool	mShowOriginal = true;
@@ -75,7 +102,7 @@ void BezierOffsetApp::setup()
 	CI_LOG_I( "Initializing BezierOffset Application" );
 
 	// Initialize ImGui
-	ImGui::Initialize( ImGui::Options().window( getWindow() ).enableKeyboard( true ) );
+	ImGui::Initialize();
 	ImGui::GetStyle().ScaleAllSizes( getWindowContentScale() );
 	ImGui::GetStyle().FontScaleMain = getWindowContentScale();
 
@@ -86,18 +113,32 @@ void BezierOffsetApp::setup()
 
 	calculateOffsetCurve();
 
+	// Initialize CanvasUi for pan/zoom
+	mCanvas.connect( getWindow() );
+	mCanvas.setUnbounded();  // Allow unbounded panning
+
 	CI_LOG_I( "BezierOffset ready" );
 }
 
 void BezierOffsetApp::mouseDown( MouseEvent event )
 {
 	if( event.isLeftDown() && !ImGui::IsWindowHovered( ImGuiHoveredFlags_AnyWindow ) ) {
+		// Check if clicking on an existing control point
+		if( mHoveredPoint >= 0 ) {
+			mTrackedPoint = mHoveredPoint;
+			mDraggingPoint = true;
+			return;
+		}
+
+		// Otherwise, add new points as before
+		vec2 canvasPos = mCanvas.toContent( event.getPos() );
+
 		if( mPath.empty() ) {
-			mPath.moveTo( event.getPos() );
+			mPath.moveTo( canvasPos );
 			mTrackedPoint = 0;
 		}
 		else {
-			mPath.lineTo( event.getPos() );
+			mPath.lineTo( canvasPos );
 		}
 
 		mIsConverted = false;  // Reset conversion flag when modifying path
@@ -112,8 +153,19 @@ void BezierOffsetApp::mouseDrag( MouseEvent event )
 	if( ImGui::IsWindowHovered( ImGuiHoveredFlags_AnyWindow ) )
 		return;
 
+	vec2 canvasPos = mCanvas.toContent( event.getPos() );
+
+	// If dragging an existing point, just move it
+	if( mDraggingPoint && mTrackedPoint >= 0 ) {
+		mPath.setPoint( mTrackedPoint, canvasPos );
+		mIsConverted = false;
+		calculateOffsetCurve();
+		return;
+	}
+
+	// Otherwise, handle creating new curve segments
 	if( mTrackedPoint >= 0 ) {
-		mPath.setPoint( mTrackedPoint, event.getPos() );
+		mPath.setPoint( mTrackedPoint, canvasPos );
 	}
 	else {
 		// First bit of dragging, so switch our line to a cubic or a quad if Shift is down
@@ -124,7 +176,7 @@ void BezierOffsetApp::mouseDrag( MouseEvent event )
 
 		if( event.isShiftDown() || prevType == Path2d::MOVETO ) {
 			// Add a quadratic curve segment
-			mPath.quadTo( event.getPos(), endPt );
+			mPath.quadTo( canvasPos, endPt );
 		}
 		else {
 			// Add a cubic curve segment
@@ -143,7 +195,7 @@ void BezierOffsetApp::mouseDrag( MouseEvent event )
 				tan1 = mPath.getPoint( mPath.getNumPoints() - 1 );
 			}
 
-			mPath.curveTo( tan1, event.getPos(), endPt );
+			mPath.curveTo( tan1, canvasPos, endPt );
 		}
 
 		mTrackedPoint = mPath.getNumPoints() - 2;
@@ -156,6 +208,35 @@ void BezierOffsetApp::mouseDrag( MouseEvent event )
 void BezierOffsetApp::mouseUp( MouseEvent event )
 {
 	mTrackedPoint = -1;
+	mDraggingPoint = false;
+}
+
+void BezierOffsetApp::mouseMove( MouseEvent event )
+{
+	if( ImGui::IsWindowHovered( ImGuiHoveredFlags_AnyWindow ) ) {
+		mHoveredPoint = -1;
+		return;
+	}
+
+	// Convert mouse position from window space to canvas/content space
+	vec2 canvasPos = mCanvas.toContent( event.getPos() );
+
+	// Find closest control point
+	float hoverRadius = 8.0f / mCanvas.getZoom();  // Scale with zoom
+	float closestDist = hoverRadius;
+	int closestPoint = -1;
+
+	for( size_t i = 0; i < mPath.getNumPoints(); ++i ) {
+		vec2 pt = mPath.getPoint( i );
+		float dist = glm::distance( canvasPos, pt );
+
+		if( dist < closestDist ) {
+			closestDist = dist;
+			closestPoint = (int)i;
+		}
+	}
+
+	mHoveredPoint = closestPoint;
 }
 
 void BezierOffsetApp::keyDown( KeyEvent event )
@@ -253,30 +334,79 @@ void BezierOffsetApp::calculateOffsetCurve()
 	}
 
 	try {
-		Path2d::OffsetOptions opts;
-		opts.tolerance = mTolerance;
+		if( mMode == Mode::OFFSET ) {
+			// Single-sided offset (no caps)
+			Path2d::OffsetOptions opts;
+			opts.tolerance = mTolerance;
 
-		switch( mJoinStyle ) {
-			case 0: opts.joinStyle = Path2d::OffsetOptions::ROUND; break;
-			case 1: opts.joinStyle = Path2d::OffsetOptions::MITER; break;
-			case 2: opts.joinStyle = Path2d::OffsetOptions::BEVEL; break;
-		}
-
-		opts.miterLimit = mMiterLimit;
-
-		// Cap style based on whether user wants to close the offset curve
-		if( mCloseOffsetCurve ) {
-			switch( mCapStyle ) {
-				case 0: opts.capStyle = Path2d::OffsetOptions::CAP_BUTT; break;
-				case 1: opts.capStyle = Path2d::OffsetOptions::CAP_ROUND; break;
-				case 2: opts.capStyle = Path2d::OffsetOptions::CAP_SQUARE; break;
+			switch( mJoinStyle ) {
+				case 0: opts.joinStyle = Path2d::OffsetOptions::ROUND; break;
+				case 1: opts.joinStyle = Path2d::OffsetOptions::MITER; break;
+				case 2: opts.joinStyle = Path2d::OffsetOptions::BEVEL; break;
 			}
+
+			opts.miterLimit = mMiterLimit;
+
+			mOffsetPath = mPath.calcOffsetCurve( mOffsetDistance, opts );
 		}
 		else {
-			opts.capStyle = Path2d::OffsetOptions::CAP_NONE;
+			// Bilateral stroke expansion with caps
+			Path2d::StrokeOptions opts;
+			opts.width = mStrokeWidth;
+			opts.tolerance = mTolerance;
+
+			switch( mStrokeJoinStyle ) {
+				case 0: opts.joinStyle = Path2d::StrokeOptions::ROUND; break;
+				case 1: opts.joinStyle = Path2d::StrokeOptions::MITER; break;
+				case 2: opts.joinStyle = Path2d::StrokeOptions::BEVEL; break;
+			}
+
+			opts.miterLimit = mStrokeMiterLimit;
+
+			switch( mStartCapStyle ) {
+				case 0: opts.startCap = Path2d::StrokeOptions::CAP_BUTT; break;
+				case 1: opts.startCap = Path2d::StrokeOptions::CAP_ROUND; break;
+				case 2: opts.startCap = Path2d::StrokeOptions::CAP_SQUARE; break;
+			}
+
+			switch( mEndCapStyle ) {
+				case 0: opts.endCap = Path2d::StrokeOptions::CAP_BUTT; break;
+				case 1: opts.endCap = Path2d::StrokeOptions::CAP_ROUND; break;
+				case 2: opts.endCap = Path2d::StrokeOptions::CAP_SQUARE; break;
+			}
+
+			// Build dash pattern if enabled
+			if( mEnableDashing ) {
+				switch( mDashPreset ) {
+					case 0: // Dashed
+						opts.dashPattern = { mDashOn, mDashOff };
+						break;
+					case 1: // Dotted
+						opts.dashPattern = { mDashOn, mDashOff };
+						break;
+					case 2: // Dash-Dot
+						opts.dashPattern = { mDashOn, mDashOff, mDashOn2, mDashOff };
+						break;
+					case 3: // Dash-Dot-Dot
+						opts.dashPattern = { mDashOn, mDashOff, mDashOn2, mDashOff, mDashOn2, mDashOff };
+						break;
+					case 4: // Custom (user can edit all values)
+						opts.dashPattern = { mDashOn, mDashOff, mDashOn2, mDashOff2 };
+						break;
+				}
+				opts.dashOffset = mDashOffset;
+
+				// Use calcStrokeAsShape for dashed strokes (returns multi-contour Shape2d)
+				mStrokedShape = mPath.calcStrokeAsShape( opts );
+				mOffsetPath.clear(); // Clear single-path result
+			}
+			else {
+				// Non-dashed stroke - use regular calcStroke
+				mOffsetPath = mPath.calcStroke( opts );
+				mStrokedShape = Shape2d(); // Clear multi-contour result
+			}
 		}
 
-		mOffsetPath = mPath.calcOffsetCurve( mOffsetDistance, opts );
 		mOriginalLength = mPath.calcLength();
 		mOffsetLength = mOffsetPath.calcLength();
 	}
@@ -290,25 +420,265 @@ void BezierOffsetApp::drawImGuiControls()
 {
 	ImGui::Begin( "Bezier Offset Controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize );
 
-	ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Offset Parameters" );
+	// Mode selection
+	ImGui::TextColored( ImVec4( 1.0f, 1.0f, 0.2f, 1.0f ), "Mode" );
 	ImGui::Separator();
 
-	if( ImGui::SliderFloat( "Distance", &mOffsetDistance, -100.0f, 100.0f, "%.1f" ) ) {
+	const char* modes[] = { "Offset", "Stroke" };
+	int modeIdx = (mMode == Mode::OFFSET) ? 0 : 1;
+	if( ImGui::Combo( "##mode", &modeIdx, modes, 2 ) ) {
+		mMode = (modeIdx == 0) ? Mode::OFFSET : Mode::STROKE;
 		calculateOffsetCurve();
 	}
-	ImGui::SameLine();
-	if( ImGui::Button( "Reset##dist" ) ) {
-		mOffsetDistance = 20.0f;
-		calculateOffsetCurve();
+	if( ImGui::IsItemHovered() ) {
+		ImGui::SetTooltip( "Offset: single-sided parallel curve\nStroke: bilateral expansion with caps" );
 	}
 
-	if( ImGui::SliderFloat( "Tolerance", &mTolerance, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_Logarithmic ) ) {
-		calculateOffsetCurve();
+	ImGui::Spacing();
+	ImGui::Separator();
+
+	if( mMode == Mode::OFFSET ) {
+		// OFFSET MODE CONTROLS
+		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Offset Parameters" );
+		ImGui::Separator();
+
+		if( ImGui::SliderFloat( "Distance", &mOffsetDistance, -100.0f, 100.0f, "%.1f" ) ) {
+			calculateOffsetCurve();
+		}
+		ImGui::SameLine();
+		if( ImGui::Button( "Reset##dist" ) ) {
+			mOffsetDistance = 20.0f;
+			calculateOffsetCurve();
+		}
+
+		if( ImGui::SliderFloat( "Tolerance", &mTolerance, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_Logarithmic ) ) {
+			calculateOffsetCurve();
+		}
+		ImGui::SameLine();
+		if( ImGui::Button( "Reset##tol" ) ) {
+			mTolerance = 0.5f;
+			calculateOffsetCurve();
+		}
+
+		// Number of offset curves slider (moved above join style)
+		ImGui::Spacing();
+		if( ImGui::SliderInt( "Num Curves", &mNumOffsetCurves, 1, 10 ) ) {
+			// No need to recalculate, just affects drawing
+		}
+		if( ImGui::IsItemHovered() ) {
+			ImGui::SetTooltip( "Draw multiple offset curves from 0 to Distance" );
+		}
+
+		ImGui::Spacing();
+		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Join Style" );
+		ImGui::Separator();
+
+		const char* joinStyles[] = { "ROUND", "MITER", "BEVEL" };
+		if( ImGui::Combo( "##join", &mJoinStyle, joinStyles, 3 ) ) {
+			calculateOffsetCurve();
+		}
+
+		if( mJoinStyle == 1 ) { // MITER
+			if( ImGui::SliderFloat( "Miter Limit", &mMiterLimit, 1.0f, 10.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+		}
 	}
-	ImGui::SameLine();
-	if( ImGui::Button( "Reset##tol" ) ) {
-		mTolerance = 0.5f;
-		calculateOffsetCurve();
+	else {
+		// STROKE MODE CONTROLS
+		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Stroke Parameters" );
+		ImGui::Separator();
+
+		if( ImGui::SliderFloat( "Width", &mStrokeWidth, 1.0f, 100.0f, "%.1f" ) ) {
+			calculateOffsetCurve();
+		}
+		ImGui::SameLine();
+		if( ImGui::Button( "Reset##width" ) ) {
+			mStrokeWidth = 40.0f;
+			calculateOffsetCurve();
+		}
+
+		if( ImGui::SliderFloat( "Tolerance", &mTolerance, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_Logarithmic ) ) {
+			calculateOffsetCurve();
+		}
+		ImGui::SameLine();
+		if( ImGui::Button( "Reset##tol" ) ) {
+			mTolerance = 0.5f;
+			calculateOffsetCurve();
+		}
+
+		ImGui::Spacing();
+		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Join Style" );
+		ImGui::Separator();
+
+		const char* joinStyles[] = { "ROUND", "MITER", "BEVEL" };
+		if( ImGui::Combo( "##strokejoin", &mStrokeJoinStyle, joinStyles, 3 ) ) {
+			calculateOffsetCurve();
+		}
+
+		if( mStrokeJoinStyle == 1 ) { // MITER
+			if( ImGui::SliderFloat( "Miter Limit", &mStrokeMiterLimit, 1.0f, 10.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+		}
+
+		ImGui::Spacing();
+		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Cap Styles" );
+		ImGui::Separator();
+
+		const char* capStyles[] = { "BUTT", "ROUND", "SQUARE" };
+		if( ImGui::Combo( "Start Cap", &mStartCapStyle, capStyles, 3 ) ) {
+			calculateOffsetCurve();
+		}
+		if( ImGui::Combo( "End Cap", &mEndCapStyle, capStyles, 3 ) ) {
+			calculateOffsetCurve();
+		}
+
+		// Dash Pattern UI
+		ImGui::Spacing();
+		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Dash Pattern" );
+		ImGui::Separator();
+
+		if( ImGui::Checkbox( "Enable Dashing", &mEnableDashing ) ) {
+			calculateOffsetCurve();
+		}
+
+		ImGui::BeginDisabled( !mEnableDashing );
+
+		const char* dashPresets[] = { "Dashed", "Dotted", "Dash-Dot", "Dash-Dot-Dot", "Custom" };
+		if( ImGui::Combo( "Preset", &mDashPreset, dashPresets, 5 ) ) {
+			// Set default values for each preset
+			switch( mDashPreset ) {
+				case 0: // Dashed
+					mDashOn = 20.0f;
+					mDashOff = 10.0f;
+					break;
+				case 1: // Dotted
+					mDashOn = 2.0f;
+					mDashOff = 8.0f;
+					break;
+				case 2: // Dash-Dot
+					mDashOn = 20.0f;
+					mDashOff = 10.0f;
+					mDashOn2 = 2.0f;
+					break;
+				case 3: // Dash-Dot-Dot
+					mDashOn = 20.0f;
+					mDashOff = 8.0f;
+					mDashOn2 = 2.0f;
+					break;
+				case 4: // Custom
+					// Keep current values
+					break;
+			}
+			calculateOffsetCurve();
+		}
+
+		// Show appropriate sliders based on preset
+		if( mDashPreset <= 1 ) {
+			// Dashed or Dotted - simple on/off pattern
+			if( ImGui::SliderFloat( "On", &mDashOn, 1.0f, 50.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+			if( ImGui::SliderFloat( "Off", &mDashOff, 1.0f, 50.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+		}
+		else if( mDashPreset == 2 || mDashPreset == 3 ) {
+			// Dash-Dot or Dash-Dot-Dot - complex pattern
+			if( ImGui::SliderFloat( "Dash", &mDashOn, 1.0f, 50.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+			if( ImGui::SliderFloat( "Gap", &mDashOff, 1.0f, 50.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+			if( ImGui::SliderFloat( "Dot", &mDashOn2, 1.0f, 20.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+		}
+		else if( mDashPreset == 4 ) {
+			// Custom - all controls
+			if( ImGui::SliderFloat( "On 1", &mDashOn, 1.0f, 50.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+			if( ImGui::SliderFloat( "Off 1", &mDashOff, 1.0f, 50.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+			if( ImGui::SliderFloat( "On 2", &mDashOn2, 1.0f, 50.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+			if( ImGui::SliderFloat( "Off 2", &mDashOff2, 1.0f, 50.0f, "%.1f" ) ) {
+				calculateOffsetCurve();
+			}
+		}
+
+		// Dash offset slider
+		if( ImGui::SliderFloat( "Offset", &mDashOffset, 0.0f, 100.0f, "%.1f" ) ) {
+			calculateOffsetCurve();
+		}
+		if( ImGui::IsItemHovered() ) {
+			ImGui::SetTooltip( "Starting offset into the dash pattern" );
+		}
+
+		// Visual preview of dash pattern
+		ImGui::Spacing();
+		ImGui::Text( "Pattern Preview:" );
+		ImVec2 previewPos = ImGui::GetCursorScreenPos();
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		float previewWidth = ImGui::GetContentRegionAvail().x - 10.0f;
+		float previewHeight = 20.0f;
+
+		// Draw background
+		drawList->AddRectFilled( previewPos,
+		                        ImVec2( previewPos.x + previewWidth, previewPos.y + previewHeight ),
+		                        IM_COL32( 40, 40, 40, 255 ) );
+
+		// Draw pattern
+		std::vector<float> pattern;
+		switch( mDashPreset ) {
+			case 0: // Dashed
+			case 1: // Dotted
+				pattern = { mDashOn, mDashOff };
+				break;
+			case 2: // Dash-Dot
+				pattern = { mDashOn, mDashOff, mDashOn2, mDashOff };
+				break;
+			case 3: // Dash-Dot-Dot
+				pattern = { mDashOn, mDashOff, mDashOn2, mDashOff, mDashOn2, mDashOff };
+				break;
+			case 4: // Custom
+				pattern = { mDashOn, mDashOff, mDashOn2, mDashOff2 };
+				break;
+		}
+
+		float x = previewPos.x;
+		float patternTotal = 0.0f;
+		for( float v : pattern ) patternTotal += v;
+
+		if( patternTotal > 0 ) {
+			float scale = std::min( 1.0f, previewWidth / (patternTotal * 3.0f) );
+			x -= mDashOffset * scale;
+
+			bool on = true;
+			for( int repeat = 0; repeat < 10 && x < previewPos.x + previewWidth; ++repeat ) {
+				for( float len : pattern ) {
+					float scaledLen = len * scale;
+					if( on && x + scaledLen > previewPos.x ) {
+						drawList->AddRectFilled(
+							ImVec2( std::max( x, previewPos.x ), previewPos.y + 2.0f ),
+							ImVec2( std::min( x + scaledLen, previewPos.x + previewWidth ), previewPos.y + previewHeight - 2.0f ),
+							IM_COL32( 100, 180, 255, 255 ) );
+					}
+					x += scaledLen;
+					on = !on;
+					if( x > previewPos.x + previewWidth ) break;
+				}
+			}
+		}
+
+		ImGui::Dummy( ImVec2( previewWidth, previewHeight ) );
+
+		ImGui::EndDisabled();
 	}
 
 	ImGui::Spacing();
@@ -326,49 +696,6 @@ void BezierOffsetApp::drawImGuiControls()
 	if( ImGui::Button( "Closed Circle" ) ) loadPresetShape( PresetShape::CLOSED_CIRCLE );
 	ImGui::SameLine();
 	if( ImGui::Button( "Closed Star" ) ) loadPresetShape( PresetShape::CLOSED_STAR );
-
-	ImGui::Spacing();
-	ImGui::Separator();
-	ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Join & Cap Styles" );
-
-	const char* joinStyles[] = { "ROUND", "MITER", "BEVEL" };
-	if( ImGui::Combo( "Join Style", &mJoinStyle, joinStyles, 3 ) ) {
-		calculateOffsetCurve();
-	}
-
-	if( mJoinStyle == 1 ) { // MITER
-		if( ImGui::SliderFloat( "Miter Limit", &mMiterLimit, 1.0f, 10.0f, "%.1f" ) ) {
-			calculateOffsetCurve();
-		}
-	}
-
-	ImGui::Spacing();
-
-	// Close offset curve checkbox (for open paths only)
-	if( ImGui::Checkbox( "Close Offset Curve", &mCloseOffsetCurve ) ) {
-		calculateOffsetCurve();
-	}
-	if( ImGui::IsItemHovered() ) {
-		ImGui::SetTooltip( "Add caps to close open paths (only applies to open paths)" );
-	}
-
-	// Cap style combo (only enabled if closing offset curve)
-	ImGui::BeginDisabled( !mCloseOffsetCurve );
-	const char* capStyles[] = { "BUTT", "ROUND", "SQUARE" };
-	if( ImGui::Combo( "Cap Style", &mCapStyle, capStyles, 3 ) ) {
-		calculateOffsetCurve();
-	}
-	ImGui::EndDisabled();
-
-	ImGui::Spacing();
-
-	// Number of offset curves slider
-	if( ImGui::SliderInt( "Num Curves", &mNumOffsetCurves, 1, 10 ) ) {
-		// No need to recalculate, just affects drawing
-	}
-	if( ImGui::IsItemHovered() ) {
-		ImGui::SetTooltip( "Draw multiple offset curves from 0 to Distance" );
-	}
 
 	ImGui::Spacing();
 	ImGui::Separator();
@@ -450,6 +777,30 @@ void BezierOffsetApp::drawImGuiControls()
 	ImGui::BulletText( "Press 'X' to clear" );
 	ImGui::BulletText( "Press 'G' to toggle info" );
 
+	// Canvas controls
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Canvas Controls" );
+	ImGui::Separator();
+
+	if( ImGui::Button( "Fit All", ImVec2( -1, 0 ) ) ) {
+		mCanvas.fitAll();
+	}
+	if( ImGui::IsItemHovered() ) {
+		ImGui::SetTooltip( "Fit all content in view (F key)" );
+	}
+
+	if( ImGui::Button( "Reset View", ImVec2( -1, 0 ) ) ) {
+        mCanvas.viewOnetoOne();
+	}
+	if( ImGui::IsItemHovered() ) {
+		ImGui::SetTooltip( "Reset zoom to 100%% and center (Home key)" );
+	}
+
+	ImGui::Text( "Zoom: %.0f%%", mCanvas.getZoom() * 100.0f );
+	ImGui::BulletText( "Mouse drag to pan" );
+	ImGui::BulletText( "Mouse wheel to zoom" );
+
 	ImGui::End();
 }
 
@@ -458,6 +809,9 @@ void BezierOffsetApp::draw()
 	gl::clear( Color( 0.05f, 0.05f, 0.1f ) );
 
 	gl::enableAlphaBlending();
+
+	// Apply canvas transform for pan/zoom
+	gl::ScopedModelMatrix scpMatrix( mCanvas.getModelMatrix() );
 
 	// Draw bounding boxes if enabled
 	if( mShowBoundingBox && mPath.getNumSegments() > 1 ) {
@@ -472,8 +826,8 @@ void BezierOffsetApp::draw()
 		}
 	}
 
-	// Draw multiple offset curves
-	if( mShowOffset && !mPath.empty() ) {
+	// Draw multiple offset curves (only in offset mode)
+	if( mShowOffset && !mPath.empty() && mMode == Mode::OFFSET ) {
 		for( int i = 0; i < mNumOffsetCurves; ++i ) {
 			float t = (float)(i + 1) / (float)mNumOffsetCurves;
 			float distance = mOffsetDistance * t;
@@ -487,18 +841,6 @@ void BezierOffsetApp::draw()
 				case 2: opts.joinStyle = Path2d::OffsetOptions::BEVEL; break;
 			}
 			opts.miterLimit = mMiterLimit;
-
-			// Set cap style
-			if( mCloseOffsetCurve ) {
-				switch( mCapStyle ) {
-					case 0: opts.capStyle = Path2d::OffsetOptions::CAP_BUTT; break;
-					case 1: opts.capStyle = Path2d::OffsetOptions::CAP_ROUND; break;
-					case 2: opts.capStyle = Path2d::OffsetOptions::CAP_SQUARE; break;
-				}
-			}
-			else {
-				opts.capStyle = Path2d::OffsetOptions::CAP_NONE;
-			}
 
 			Path2d offsetCurve = mPath.calcOffsetCurve( distance, opts );
 
@@ -518,6 +860,45 @@ void BezierOffsetApp::draw()
 		gl::lineWidth( 1.0f );
 	}
 
+	// Draw stroke result (only in stroke mode)
+	if( mShowOffset && mMode == Mode::STROKE ) {
+		// Draw dashed stroke (Shape2d with multiple contours)
+		if( !mStrokedShape.empty() ) {
+			gl::color( mOffsetColor );
+			gl::lineWidth( 2.0f );
+
+			// Draw each contour (dash segment)
+			for( size_t i = 0; i < mStrokedShape.getNumContours(); ++i ) {
+				const Path2d& contour = mStrokedShape.getContour( i );
+				gl::draw( contour );
+
+				// Draw control points
+				if( mShowControlPoints ) {
+					gl::color( ColorA( mOffsetColor, 0.5f ) );
+					for( size_t p = 0; p < contour.getNumPoints(); ++p )
+						gl::drawSolidCircle( contour.getPoint( p ), 2.0f );
+					gl::color( mOffsetColor );
+				}
+			}
+
+			gl::lineWidth( 1.0f );
+		}
+		// Draw non-dashed stroke (single Path2d)
+		else if( !mOffsetPath.empty() ) {
+			gl::color( mOffsetColor );
+			gl::lineWidth( 2.0f );
+			gl::draw( mOffsetPath );
+			gl::lineWidth( 1.0f );
+
+			// Draw control points
+			if( mShowControlPoints ) {
+				gl::color( ColorA( mOffsetColor, 0.5f ) );
+				for( size_t p = 0; p < mOffsetPath.getNumPoints(); ++p )
+					gl::drawSolidCircle( mOffsetPath.getPoint( p ), 2.0f );
+			}
+		}
+	}
+
 	// Draw the original curve
 	if( mShowOriginal && !mPath.empty() ) {
 		gl::color( mOriginalColor );
@@ -527,9 +908,24 @@ void BezierOffsetApp::draw()
 
 		// Draw control points
 		if( mShowControlPoints ) {
-			gl::color( Color( 1, 1, 0 ) );
-			for( size_t p = 0; p < mPath.getNumPoints(); ++p )
-				gl::drawSolidCircle( mPath.getPoint( p ), 3.5f );
+			for( size_t p = 0; p < mPath.getNumPoints(); ++p ) {
+				bool isHovered = ( (int)p == mHoveredPoint );
+
+				// Highlight hovered point
+				if( isHovered ) {
+					// Draw larger white outline
+					gl::color( Color( 1, 1, 1 ) );
+					gl::drawSolidCircle( mPath.getPoint( p ), 6.0f );
+					// Draw inner colored circle
+					gl::color( Color( 0.2f, 1.0f, 0.2f ) );
+					gl::drawSolidCircle( mPath.getPoint( p ), 4.5f );
+				}
+				else {
+					// Normal yellow control point
+					gl::color( Color( 1, 1, 0 ) );
+					gl::drawSolidCircle( mPath.getPoint( p ), 3.5f );
+				}
+			}
 		}
 
 		// Draw tangents
