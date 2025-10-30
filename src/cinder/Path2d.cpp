@@ -1242,88 +1242,35 @@ Rectf Path2d::calcBoundingBox() const
 	return result;
 }
 
-// calcPreciseBoundingBox helper routines
+// calcPreciseBoundingBox helper routines - now use CinderMath utilities
 int	Path2d::calcQuadraticBezierMonotoneRegions( const vec2 p[3], float resultT[2] )
 {
-	int resultIdx = 0;
-	float dx = p[0].x - 2 * p[1].x + p[2].x;
-	if( dx != 0 ) {
-		float t = ( p[0].x - p[1].x ) / dx;
-		if( t > 0 && t < 1 )
-			resultT[resultIdx++] = t;
-	}
-	float dy = p[0].y - 2 * p[1].y + p[2].y;
-	if( dy != 0 ) {
-		float t = ( p[0].y - p[1].y ) / dy;
-		if( t > 0 && t < 1 )
-			resultT[resultIdx++] = t;
-	}
-
-	return resultIdx;
+	return findQuadraticBezierExtrema( p, resultT );
 }
 
 vec2 Path2d::calcQuadraticBezierPos( const vec2 p[3], float t )
 {
-	float nt = 1 - t;
-	return vec2( nt * nt * p[0].x + 2 * nt * t * p[1].x +  t * t * p[2].x, nt * nt * p[0].y + 2 * nt * t * p[1].y +  t * t * p[2].y );
+	return evaluateQuadraticBezier( p, t );
 }
 
 vec2 Path2d::calcQuadraticBezierDerivative( const vec2 p[3], float t )
 {
-	float nt = 1 - t;
-	//return vec2( (nt * p[1].x + t * p[2].x) - (nt * p[0].x + t * p[1].x), (nt * p[1].y + t * p[2].y) - (nt * p[0].y + t * p[1].y) );
-	return vec2( -2 * ( nt * p[0].x - (1 - 2 * t) * p[1].x - t * p[2].x ), -2 * ( nt * p[0].y - (1 - 2 * t) * p[1].y - t * p[2].y ) );
+	return derivativeQuadraticBezier( p, t );
 }
 
 int	Path2d::calcCubicBezierMonotoneRegions( const vec2 p[4], float resultT[4] )
 {
-	float Ax = -p[0].x + 3 * p[1].x - 3 * p[2].x + p[3].x;
-	float Bx =  3 * p[0].x - 6 * p[1].x + 3 * p[2].x;
-	float Cx = -3 * p[0].x + 3 * p[1].x;
-	float ax = 3 * Ax;
-	float bx = 2 * Bx;
-	float cx = Cx;
-
-	float Ay = -p[0].y + 3 * p[1].y - 3 * p[2].y + p[3].y;
-	float By =  3 * p[0].y - 6 * p[1].y + 3 * p[2].y;
-	float Cy = -3 * p[0].y + 3 * p[1].y;
-	float ay = 3 * Ay;
-	float by = 2 * By;
-	float cy = Cy;
-
-	int resultIdx = 0;
-	float r1[2], r2[2];
-	int o1 = solveQuadratic( ax, bx, cx, r1 );
-	int o2 = solveQuadratic( ay, by, cy, r2 );
-
-	if( o1 > 0 && r1[0] > 0 && r1[0] < 1 ) resultT[resultIdx++] = r1[0];
-	if( o1 > 1 && r1[1] > 0 && r1[1] < 1 ) resultT[resultIdx++] = r1[1];
-
-	if( o2 > 0 && r2[0] > 0 && r2[0] < 1 ) resultT[resultIdx++] = r2[0];
-	if( o2 > 1 && r2[1] > 0 && r2[1] < 1 ) resultT[resultIdx++] = r2[1];
-
-	return resultIdx;
+	return findCubicBezierExtrema( p, resultT );
 }
 
 vec2 Path2d::calcCubicBezierPos( const vec2 p[4], float t )
 {
-	float nt = 1 - t;
-	float w0 = nt * nt * nt;
-	float w1 = 3 * nt * nt * t;
-	float w2 = 3 * nt * t * t;
-	float w3 = t * t * t;
-	return vec2( w0 * p[0].x + w1 * p[1].x + w2 * p[2].x + w3 * p[3].x, w0 * p[0].y + w1 * p[1].y + w2 * p[2].y + w3 * p[3].y );
+	return evaluateCubicBezier( p, t );
 }
 
 vec2 Path2d::calcCubicBezierDerivative( const vec2 p[4], float t )
 {
-	float nt = 1 - t;
-	float w0 = -3 * nt * nt;
-	float w1 = 3 * nt * nt - 6 * t * nt;
-	float w2 = -3 * t * t + 6 * t * nt;
-	float w3 = 3 * t * t;
-
-	return vec2( w0 * p[0].x + w1 * p[1].x + w2 * p[2].x + w3 * p[3].x, w0 * p[0].y + w1 * p[1].y + w2 * p[2].y + w3 * p[3].y );
+	return derivativeCubicBezier( p, t );
 }
 
 Rectf Path2d::calcPreciseBoundingBox() const
@@ -1448,19 +1395,7 @@ int validUnitDivide( float numer, float denom, float* ratio )
 // Subdivides quadratic curve at 't'. First segment is ( dst[0], dst[1], dst[2] ), second is ( dst[2], dst[3], dst[4] )
 void chopQuadAt( const vec2 src[3], vec2 dst[5], float t )
 {
-	vec2 p0 = src[0];
-	vec2 p1 = src[1];
-	vec2 p2 = src[2];
-	vec2 tt(t);
-
-	vec2 p01 = lerp( p0, p1, tt );
-	vec2 p12 = lerp( p1, p2, tt );
-
-	dst[0] = p0;
-	dst[1] = p01;
-	dst[2] = lerp( p01, p12, tt );
-	dst[3] = p12;
-	dst[4] = p2;
+	subdivideQuadraticBezier( src, dst, t );
 }
 
 // Trims quadratic curve starting at 't0' and ending at 't1'.
@@ -1535,26 +1470,7 @@ void findMinMaxX( const vec2 pts[], float* minPtr, float* maxPtr) {
 // Subdivides cubic curve at 't'. First segment is ( dst[0], dst[1], dst[2], dst[3] ), second is ( dst[3], dst[4], dst[5], dst[6] )
 void chopCubicAt( const vec2 src[4], vec2 dst[7], float t )
 {
-	vec2 p0 = src[0];
-	vec2 p1 = src[1];
-	vec2 p2 = src[2];
-	vec2 p3 = src[3];
-	vec2 tt( t );
-
-	vec2 ab = lerp( p0, p1, tt );
-	vec2 bc = lerp( p1, p2, tt );
-	vec2 cd = lerp( p2, p3, tt );
-	vec2 abc = lerp( ab, bc, tt );
-	vec2 bcd = lerp( bc, cd, tt );
-	vec2 abcd = lerp( abc, bcd, tt );
-
-	dst[0] = src[0];
-	dst[1] = ab;
-	dst[2] = abc;
-	dst[3] = abcd;
-	dst[4] = bcd;
-	dst[5] = cd;
-	dst[6] = src[3];
+	subdivideCubicBezier( src, dst, t );
 }
 
 // Trims cubic curve starting at 't0' and ending at 't1'.
@@ -2032,10 +1948,10 @@ float Path2d::calcLength() const
 	for( size_t s = 0; s < mSegments.size(); ++s ) {
 		switch( mSegments[s] ) {
 			case CUBICTO:
-				result += rombergIntegral<float,7>( 0, 1, std::bind( calcCubicBezierSpeed, &mPoints[firstPoint], std::placeholders::_1 ) );
+				result += gaussLegendreIntegral7<float>( 0, 1, std::bind( calcCubicBezierSpeed, &mPoints[firstPoint], std::placeholders::_1 ) );
 			break;
 			case QUADTO:
-				result += rombergIntegral<float,7>( 0, 1, std::bind( calcQuadraticBezierSpeed, &mPoints[firstPoint], std::placeholders::_1 ) );
+				result += gaussLegendreIntegral7<float>( 0, 1, std::bind( calcQuadraticBezierSpeed, &mPoints[firstPoint], std::placeholders::_1 ) );
 			break;
 			case LINETO:
 				result += distance( mPoints[firstPoint], mPoints[firstPoint + 1] );
@@ -2064,10 +1980,10 @@ float Path2d::calcSegmentLength( size_t segment, float minT, float maxT ) const
 
 	switch( mSegments[segment] ) {
 		case CUBICTO:
-			return rombergIntegral<float,7>( minT, maxT, std::bind( calcCubicBezierSpeed, &mPoints[firstPoint], std::placeholders::_1 ) );
+			return gaussLegendreIntegral7<float>( minT, maxT, std::bind( calcCubicBezierSpeed, &mPoints[firstPoint], std::placeholders::_1 ) );
 		break;
 		case QUADTO:
-			return rombergIntegral<float,7>( minT, maxT, std::bind( calcQuadraticBezierSpeed, &mPoints[firstPoint], std::placeholders::_1 ) );
+			return gaussLegendreIntegral7<float>( minT, maxT, std::bind( calcQuadraticBezierSpeed, &mPoints[firstPoint], std::placeholders::_1 ) );
 		break;
 		case LINETO:
 			return distance( mPoints[firstPoint], mPoints[firstPoint + 1] ) * ( maxT - minT );
