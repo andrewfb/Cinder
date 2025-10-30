@@ -736,8 +736,10 @@ bool factorQuarticInner( T a, T b, T c, T d, bool rescale, T &alpha_1, T &beta_1
 	T l_2 = l_2_best;
 
 	// Factor based on d_2 value
-	// Handle numerical tolerance: treat very small d_2 as zero
-	const T d_2_tolerance = T(1e-6);
+	// Type-aware tolerance scaled by coefficient magnitudes (avoids being too loose for double)
+	T scale = math<T>::max(math<T>::max(T(1), math<T>::abs(b)), math<T>::max(math<T>::abs(c), math<T>::abs(d)));
+	const T d_2_tolerance = std::numeric_limits<T>::epsilon() * scale * T(10);
+
 	if( d_2 < T(0) ) {
 		T sq = math<T>::sqrt(-d_2);
 		alpha_1 = l_1 + sq;
@@ -780,10 +782,18 @@ bool factorQuarticInner( T a, T b, T c, T d, bool rescale, T &alpha_1, T &beta_1
 		}
 	} else if( math<T>::abs(d_2) <= d_2_tolerance ) {
 		T d_3 = d - l_3 * l_3;
+
+		// Similar tolerance for d_3 to handle rounding errors
+		const T d_3_tolerance = std::numeric_limits<T>::epsilon() * math<T>::abs(d) * T(10);
+		if( d_3 > d_3_tolerance ) {
+			// No real factorization (d_3 should be <= 0 for real roots)
+			return false;
+		}
+
 		alpha_1 = l_1;
-		beta_1 = l_3 + math<T>::sqrt(-d_3);
+		beta_1 = l_3 + math<T>::sqrt(math<T>::max(T(0), -d_3));  // Clamp to avoid NaN from slight positive d_3
 		alpha_2 = l_1;
-		beta_2 = l_3 - math<T>::sqrt(-d_3);
+		beta_2 = l_3 - math<T>::sqrt(math<T>::max(T(0), -d_3));
 
 		if( math<T>::abs(beta_1) > math<T>::abs(beta_2) )
 			beta_2 = d / beta_1;
