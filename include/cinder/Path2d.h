@@ -223,6 +223,17 @@ class CI_API Path2d {
 
 		//! Maximum miter length / offset distance (for MITER joins)
 		float miterLimit = 4.0f;
+
+		//! Cap style for open path endpoints
+		enum CapStyle {
+			CAP_NONE,    //! No caps - leave path open (useful for stroked paths)
+			CAP_BUTT,    //! Square cap flush with endpoint (no extension)
+			CAP_ROUND,   //! Semicircular cap (default)
+			CAP_SQUARE   //! Square cap extending beyond endpoint
+		} capStyle = CAP_ROUND;
+
+		//! Internal flag: if false, skip adding caps (used when computing return path)
+		bool _addCaps = true;
 	};
 
 	//! Calculates an offset curve at the specified distance from the original path. Positive distance offsets to the right (clockwise), negative to the left (counter-clockwise). The offset curve is approximated with Bezier curves within the specified tolerance.

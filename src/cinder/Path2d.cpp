@@ -2760,6 +2760,137 @@ void addOffsetJoin( const vec2& point, const vec2& tangent1, const vec2& tangent
 	}
 }
 
+// Helper function to emit a circular arc approximated with cubic Bezier
+void emitArc( Path2d& path, const vec2& center, float angle0, float angle1, float radius, float tolerance )
+{
+	// Normalize angle range
+	float angleDiff = angle1 - angle0;
+	while( angleDiff > (float)M_PI ) angleDiff -= 2.0f * (float)M_PI;
+	while( angleDiff < -(float)M_PI ) angleDiff += 2.0f * (float)M_PI;
+
+	// Subdivide arc if needed to keep error within tolerance
+	// Maximum angle for single cubic with given tolerance:
+	// For radius r and angle θ, max error ≈ r * (1 - cos(θ/2)) / cos²(θ/4)
+	// We use a conservative estimate: subdivide if |θ| > π/2
+	const float maxAngle = (float)M_PI / 2.0f;
+	int numSegments = (int)std::ceil( std::abs(angleDiff) / maxAngle );
+	float segmentAngle = angleDiff / numSegments;
+
+	// Control point arm length for arc approximation
+	// See: http://pomax.github.io/bezierinfo/#circles_cubic
+	float armLength = radius * 4.0f * std::tan(segmentAngle / 4.0f) / 3.0f;
+
+	for( int i = 0; i < numSegments; ++i ) {
+		float a0 = angle0 + i * segmentAngle;
+		float a1 = a0 + segmentAngle;
+
+		vec2 p0 = center + vec2(std::cos(a0), std::sin(a0)) * radius;
+		vec2 p3 = center + vec2(std::cos(a1), std::sin(a1)) * radius;
+
+		vec2 tangent0 = vec2(-std::sin(a0), std::cos(a0));
+		vec2 tangent1 = vec2(-std::sin(a1), std::cos(a1));
+
+		vec2 p1 = p0 + tangent0 * armLength;
+		vec2 p2 = p3 - tangent1 * armLength;
+
+		if( i == 0 && path.empty() ) {
+			path.moveTo( p0 );
+		}
+		path.curveTo( p1, p2, p3 );
+	}
+}
+
+// Helper function to add offset cap at path endpoints
+// Uses Kurbo's transform-based approach for stable, consistent caps
+void addOffsetCap( Path2d& path, const vec2& center, const vec2& tangent,
+                   const vec2& offsetStart, const vec2& offsetEnd,
+                   float distance, Path2d::OffsetOptions::CapStyle capStyle, float tolerance )
+{
+	vec2 normal = calcOffsetNormal( tangent );
+
+	switch( capStyle ) {
+		case Path2d::OffsetOptions::CAP_NONE:
+			// No cap - just connect with straight line
+			path.lineTo( offsetEnd );
+			break;
+
+		case Path2d::OffsetOptions::CAP_BUTT:
+			// Straight line connecting the two offset edges
+			path.lineTo( offsetEnd );
+			break;
+
+		case Path2d::OffsetOptions::CAP_ROUND: {
+			// Round cap using Kurbo's transformation approach
+			// Instead of calculating angles and deciding on sweep direction,
+			// we build a transformation matrix and always draw the arc the same way
+
+			// The normal points perpendicular to the tangent
+			// For a cap, we want to draw a semicircular arc from one side to the other
+			// We'll draw the arc in "normal space" and transform it to world space
+
+			float radius = std::abs(distance);
+			vec2 norm = normal * distance;  // Points from center to offsetStart
+			vec2 tang = tangent * radius;   // Perpendicular direction, also scaled by radius
+
+			// Build affine transformation matrix like Kurbo:
+			// The arc goes from angle 0 to π in local space
+			// Transform: p_world = center + norm * cos(θ) + tang * sin(θ)
+			// This is equivalent to: p_world = A * p_local + center
+			// where A = [norm.x  tang.x]
+			//           [norm.y  tang.y]
+
+			// Generate the semicircular arc from 0 to π
+			// Subdivide into segments (π/2 per segment)
+			const int numSegments = 2;
+			float segmentAngle = (float)M_PI / numSegments;
+			float armLength = radius * 4.0f * std::tan(segmentAngle / 4.0f) / 3.0f;
+
+			for( int i = 0; i < numSegments; ++i ) {
+				float a0 = i * segmentAngle;
+				float a1 = (i + 1) * segmentAngle;
+
+				// Points in local space (unit circle from 0 to π)
+				vec2 p0_local( std::cos(a0), std::sin(a0) );
+				vec2 p3_local( std::cos(a1), std::sin(a1) );
+
+				// Tangents in local space
+				vec2 t0_local( -std::sin(a0), std::cos(a0) );
+				vec2 t1_local( -std::sin(a1), std::cos(a1) );
+
+				// Control points in local space
+				vec2 p1_local = p0_local + t0_local * armLength / radius;
+				vec2 p2_local = p3_local - t1_local * armLength / radius;
+
+				// Transform to world space
+				// p_world = center + norm * p.x + tang * p.y
+				auto transform = [&]( const vec2& p ) {
+					return center + norm * p.x + tang * p.y;
+				};
+
+				vec2 p1_world = transform( p1_local );
+				vec2 p2_world = transform( p2_local );
+				vec2 p3_world = transform( p3_local );
+
+				path.curveTo( p1_world, p2_world, p3_world );
+			}
+			break;
+		}
+
+		case Path2d::OffsetOptions::CAP_SQUARE: {
+			// Square cap extending beyond endpoint by distance
+			vec2 extend = glm::normalize(tangent) * std::abs(distance);
+			vec2 corner0 = offsetStart + extend;
+			// corner1 should be perpendicular to extend, not extending offsetEnd
+			vec2 corner1 = corner0 + (offsetEnd - offsetStart);
+
+			path.lineTo( corner0 );
+			path.lineTo( corner1 );
+			path.lineTo( offsetEnd );
+			break;
+		}
+	}
+}
+
 } // anonymous namespace
 
 Path2d Path2d::calcOffsetCurve( float distance, float tolerance ) const
@@ -2781,18 +2912,70 @@ Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) c
 	vec2 prevTangent;
 	bool hasPrevTangent = false;
 
-	// Track contour start for closed paths
+	// Track contour start/end for caps and closed paths
 	vec2 contourFirstTangent;
 	vec2 contourStartPoint;
 	vec2 contourStartOffset;
+	vec2 contourLastPoint;
+	vec2 contourLastOffset;
+	vec2 contourLastTangent;
 	bool hasContourStart = false;
+	bool contourClosed = false;
+
+	// Helper lambda to finalize current contour with caps if needed
+	auto finalizeContour = [&]() {
+		if( !hasContourStart ) return;
+
+		// If contour is open (not closed)
+		if( !contourClosed && hasPrevTangent && options._addCaps ) {
+			// Check if user wants caps
+			if( options.capStyle == OffsetOptions::CAP_NONE ) {
+				// No caps - leave path open (just the outer offset curve)
+				// Don't close, don't add return path
+			}
+			else {
+				// Add end cap
+				vec2 offsetStart = contourLastOffset;
+				vec2 offsetEnd = contourLastPoint - calcOffsetNormal(contourLastTangent) * distance;
+				addOffsetCap( result, contourLastPoint, contourLastTangent,
+				             offsetStart, offsetEnd, distance, options.capStyle, options.tolerance );
+
+				// Now draw the return path (inner offset curve) backwards from end to start
+				// Compute the inner offset without caps
+				OffsetOptions innerOpts = options;
+				innerOpts._addCaps = false;
+				Path2d innerPath = calcOffsetCurve( -distance, innerOpts );
+
+				// Walk backwards through inner path, adding points to result
+				if( innerPath.getNumPoints() > 0 ) {
+					// Skip the last point (end) since we're already there from the end cap
+					for( int i = (int)innerPath.getNumPoints() - 2; i >= 0; --i ) {
+						result.lineTo( innerPath.getPoint( i ) );
+					}
+				}
+
+				// Add start cap
+				vec2 startOffsetOuter = contourStartOffset;
+				vec2 startOffsetInner = contourStartPoint - calcOffsetNormal(contourFirstTangent) * distance;
+				addOffsetCap( result, contourStartPoint, -contourFirstTangent,
+				             startOffsetInner, startOffsetOuter, distance, options.capStyle, options.tolerance );
+
+				// Close the path
+				result.close();
+			}
+		}
+
+		// Reset for next contour
+		hasPrevTangent = false;
+		hasContourStart = false;
+		contourClosed = false;
+	};
 
 	for( size_t s = 0; s < mSegments.size(); ++s ) {
 		switch( mSegments[s] ) {
 			case MOVETO: {
-				// Start new contour - reset state
-				hasPrevTangent = false;
-				hasContourStart = false;
+				// Finalize previous contour before starting new one
+				finalizeContour();
 			}
 			break;
 
@@ -2827,6 +3010,11 @@ Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) c
 				result.lineTo( off1 );
 				prevTangent = tangent;
 				hasPrevTangent = true;
+
+				// Track last point for end cap
+				contourLastPoint = p1;
+				contourLastOffset = off1;
+				contourLastTangent = tangent;
 			}
 			break;
 
@@ -2862,6 +3050,11 @@ Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) c
 				if( calcSafeTangent( cp[1], cp[2], endTangent ) || calcSafeTangent( cp[0], cp[2], endTangent ) ) {
 					prevTangent = endTangent;
 					hasPrevTangent = true;
+
+					// Track last point for end cap
+					contourLastPoint = cp[2];
+					contourLastOffset = cp[2] + calcOffsetNormal(endTangent) * distance;
+					contourLastTangent = endTangent;
 				}
 			}
 			break;
@@ -2903,6 +3096,11 @@ Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) c
 				    calcSafeTangent( cp[0], cp[3], endTangent ) ) {
 					prevTangent = endTangent;
 					hasPrevTangent = true;
+
+					// Track last point for end cap
+					contourLastPoint = cp[3];
+					contourLastOffset = cp[3] + calcOffsetNormal(endTangent) * distance;
+					contourLastTangent = endTangent;
 				}
 			}
 			break;
@@ -2918,6 +3116,9 @@ Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) c
 					result.close();
 				}
 
+				// Mark contour as closed (no caps needed)
+				contourClosed = true;
+
 				// Reset for next contour
 				hasPrevTangent = false;
 				hasContourStart = false;
@@ -2927,6 +3128,9 @@ Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) c
 
 		firstPoint += Path2d::sSegmentTypePointCounts[mSegments[s]];
 	}
+
+	// Finalize any remaining open contour
+	finalizeContour();
 
 	return result;
 }

@@ -115,6 +115,11 @@ class CI_API Shape2d {
 	//! Returns whether the point \a pt is contained within the boundaries of the Shape2d. If \a evenOddFill is \c true (the default) then Even-Odd fill rule is used, otherwise the Winding fill rule is applied.
 	bool	contains( const vec2 &pt, bool evenOddFill = true ) const;
 
+	//! Calculates an offset shape at the specified distance using the Kurbo parallel curve algorithm. Positive distance expands outward, negative contracts inward.
+	Shape2d	calcOffsetCurve( float distance, float tolerance = 0.01f ) const;
+	//! Calculates an offset shape at the specified distance with full control over offset parameters (join style, miter limit, cap style for open paths).
+	Shape2d	calcOffsetCurve( float distance, const Path2d::OffsetOptions& options ) const;
+
 	//! Iterates all of the contours and points of a Shape2d.
 	/** Expects a template parameter that implements
 		\code bool operator()( Path2d::SegmentType type, vec2 *points, vec2 *previousPoint ) \endcode.

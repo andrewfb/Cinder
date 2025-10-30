@@ -268,18 +268,34 @@ bool Shape2d::contains( const vec2 &pt, bool evenOddFill ) const
 	int onCurveCount = 0;
 	for( auto &cont : mContours )
 		w += cont.calcWinding( pt, &onCurveCount );
-	
+
 	if( evenOddFill )
 		w &= 1;
 	if( w )
 		return true;
-		
+
 	if( onCurveCount <= 1 )
 		return onCurveCount > 0;
 	if( (onCurveCount & 1) || evenOddFill )
 		return (onCurveCount & 1) > 0;
-	
+
 	return false;
+}
+
+Shape2d Shape2d::calcOffsetCurve( float distance, float tolerance ) const
+{
+	Path2d::OffsetOptions options;
+	options.tolerance = tolerance;
+	return calcOffsetCurve( distance, options );
+}
+
+Shape2d Shape2d::calcOffsetCurve( float distance, const Path2d::OffsetOptions& options ) const
+{
+	Shape2d result;
+	for( const auto& contour : mContours ) {
+		result.appendContour( contour.calcOffsetCurve( distance, options ) );
+	}
+	return result;
 }
 
 } // namespace cinder

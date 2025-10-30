@@ -11,6 +11,15 @@ using namespace ci;
 using namespace ci::app;
 using namespace std;
 
+enum class PresetShape {
+	OPEN_LINE,
+	OPEN_CURVE,
+	OPEN_S_CURVE,
+	CLOSED_RECT,
+	CLOSED_CIRCLE,
+	CLOSED_STAR
+};
+
 class BezierOffsetApp : public App {
   public:
 	BezierOffsetApp() : mTrackedPoint( -1 ) {}
@@ -25,6 +34,7 @@ class BezierOffsetApp : public App {
   private:
 	void drawImGuiControls();
 	void calculateOffsetCurve();
+	void loadPresetShape( PresetShape shape );
 
 	Path2d	mPath;
 	Path2d	mOffsetPath;
@@ -35,6 +45,7 @@ class BezierOffsetApp : public App {
 	float	mTolerance = 0.5f;
 	int		mJoinStyle = 0; // 0=ROUND, 1=MITER, 2=BEVEL
 	float	mMiterLimit = 4.0f;
+	int		mCapStyle = 2;  // 0=NONE, 1=BUTT, 2=ROUND, 3=SQUARE
 
 	// Visualization options
 	bool	mShowOriginal = true;
@@ -52,6 +63,9 @@ class BezierOffsetApp : public App {
 
 	// Conversion tracking
 	bool	mIsConverted = false;
+
+	// Path editing
+	bool	mPathClosed = false;
 };
 
 void BezierOffsetApp::setup()
@@ -150,10 +164,82 @@ void BezierOffsetApp::keyDown( KeyEvent event )
 		mOriginalLength = 0.0f;
 		mOffsetLength = 0.0f;
 		mIsConverted = false;
+		mPathClosed = false;
+	}
+	else if( event.getChar() == 'c' ) {
+		// Toggle close/open
+		mPathClosed = !mPathClosed;
+		calculateOffsetCurve();
 	}
 	else if( event.getChar() == 'g' ) {
 		mShowInfo = !mShowInfo;
 	}
+}
+
+void BezierOffsetApp::loadPresetShape( PresetShape shape )
+{
+	mPath.clear();
+	vec2 center = getWindowCenter();
+
+	switch( shape ) {
+		case PresetShape::OPEN_LINE:
+			mPath.moveTo( center + vec2( -150, 0 ) );
+			mPath.lineTo( center + vec2( 150, 0 ) );
+			mPathClosed = false;
+			break;
+
+		case PresetShape::OPEN_CURVE:
+			mPath.moveTo( center + vec2( -150, 0 ) );
+			mPath.curveTo( center + vec2( -50, -100 ), center + vec2( 50, -100 ), center + vec2( 150, 0 ) );
+			mPathClosed = false;
+			break;
+
+		case PresetShape::OPEN_S_CURVE:
+			mPath.moveTo( center + vec2( -150, -50 ) );
+			mPath.curveTo( center + vec2( -50, -150 ), center + vec2( 50, 50 ), center + vec2( 150, 150 ) );
+			mPathClosed = false;
+			break;
+
+		case PresetShape::CLOSED_RECT:
+			mPath.moveTo( center + vec2( -100, -80 ) );
+			mPath.lineTo( center + vec2( 100, -80 ) );
+			mPath.lineTo( center + vec2( 100, 80 ) );
+			mPath.lineTo( center + vec2( -100, 80 ) );
+			mPathClosed = true;
+			break;
+
+		case PresetShape::CLOSED_CIRCLE: {
+			float radius = 100.0f;
+			// Approximate circle with 4 cubic beziers
+			float k = 0.5522847498f;  // 4/3 * tan(π/8)
+			float kr = k * radius;
+			mPath.moveTo( center + vec2( 0, -radius ) );
+			mPath.curveTo( center + vec2( kr, -radius ), center + vec2( radius, -kr ), center + vec2( radius, 0 ) );
+			mPath.curveTo( center + vec2( radius, kr ), center + vec2( kr, radius ), center + vec2( 0, radius ) );
+			mPath.curveTo( center + vec2( -kr, radius ), center + vec2( -radius, kr ), center + vec2( -radius, 0 ) );
+			mPath.curveTo( center + vec2( -radius, -kr ), center + vec2( -kr, -radius ), center + vec2( 0, -radius ) );
+			mPathClosed = true;
+			break;
+		}
+
+		case PresetShape::CLOSED_STAR: {
+			float outerRadius = 100.0f;
+			float innerRadius = 40.0f;
+			int points = 5;
+			mPath.moveTo( center + vec2( 0, -outerRadius ) );
+			for( int i = 0; i < points * 2; ++i ) {
+				float angle = (float)i * (float)M_PI / points - (float)M_PI / 2.0f;
+				float radius = (i % 2 == 0) ? outerRadius : innerRadius;
+				vec2 pt = center + vec2( std::cos( angle ), std::sin( angle ) ) * radius;
+				mPath.lineTo( pt );
+			}
+			mPathClosed = true;
+			break;
+		}
+	}
+
+	mIsConverted = false;
+	calculateOffsetCurve();
 }
 
 void BezierOffsetApp::calculateOffsetCurve()
@@ -161,6 +247,22 @@ void BezierOffsetApp::calculateOffsetCurve()
 	if( mPath.empty() || mPath.getNumSegments() == 0 ) {
 		mOffsetPath.clear();
 		return;
+	}
+
+	// Build a temporary path with or without close based on mPathClosed flag
+	Path2d pathToOffset = mPath;
+
+	// Check if path currently has CLOSE segment
+	bool hasClose = !pathToOffset.empty() && !pathToOffset.getSegments().empty() &&
+	                pathToOffset.getSegments().back() == Path2d::CLOSE;
+
+	// Adjust path based on desired state
+	if( mPathClosed && !hasClose ) {
+		pathToOffset.close();
+	}
+	else if( !mPathClosed && hasClose ) {
+		// Remove close segment - can't easily do this, so just use isClosed check in offset
+		// For now, just note that caps won't show for closed paths
 	}
 
 	try {
@@ -175,8 +277,15 @@ void BezierOffsetApp::calculateOffsetCurve()
 
 		opts.miterLimit = mMiterLimit;
 
-		mOffsetPath = mPath.calcOffsetCurve( mOffsetDistance, opts );
-		mOriginalLength = mPath.calcLength();
+		switch( mCapStyle ) {
+			case 0: opts.capStyle = Path2d::OffsetOptions::CAP_NONE; break;
+			case 1: opts.capStyle = Path2d::OffsetOptions::CAP_BUTT; break;
+			case 2: opts.capStyle = Path2d::OffsetOptions::CAP_ROUND; break;
+			case 3: opts.capStyle = Path2d::OffsetOptions::CAP_SQUARE; break;
+		}
+
+		mOffsetPath = pathToOffset.calcOffsetCurve( mOffsetDistance, opts );
+		mOriginalLength = pathToOffset.calcLength();
 		mOffsetLength = mOffsetPath.calcLength();
 	}
 	catch( const std::exception& e ) {
@@ -211,6 +320,38 @@ void BezierOffsetApp::drawImGuiControls()
 	}
 
 	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::TextColored( ImVec4( 1.0f, 0.8f, 0.2f, 1.0f ), "Path Editing" );
+
+	// Open/Closed toggle
+	if( ImGui::Checkbox( "Close Path", &mPathClosed ) ) {
+		calculateOffsetCurve();
+	}
+	if( ImGui::IsItemHovered() ) {
+		ImGui::SetTooltip( "Toggle to see caps on open paths vs joins on closed paths.\nKey: 'c' to toggle" );
+	}
+
+	ImGui::Text( "Caps are only visible on OPEN paths!" );
+
+	ImGui::Spacing();
+
+	// Preset shapes
+	ImGui::Text( "Load Preset Shape:" );
+	if( ImGui::Button( "Open Line" ) ) loadPresetShape( PresetShape::OPEN_LINE );
+	ImGui::SameLine();
+	if( ImGui::Button( "Open Curve" ) ) loadPresetShape( PresetShape::OPEN_CURVE );
+	ImGui::SameLine();
+	if( ImGui::Button( "Open S-Curve" ) ) loadPresetShape( PresetShape::OPEN_S_CURVE );
+
+	if( ImGui::Button( "Closed Rect" ) ) loadPresetShape( PresetShape::CLOSED_RECT );
+	ImGui::SameLine();
+	if( ImGui::Button( "Closed Circle" ) ) loadPresetShape( PresetShape::CLOSED_CIRCLE );
+	ImGui::SameLine();
+	if( ImGui::Button( "Closed Star" ) ) loadPresetShape( PresetShape::CLOSED_STAR );
+
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Join & Cap Styles" );
 
 	const char* joinStyles[] = { "ROUND", "MITER", "BEVEL" };
 	if( ImGui::Combo( "Join Style", &mJoinStyle, joinStyles, 3 ) ) {
@@ -221,6 +362,13 @@ void BezierOffsetApp::drawImGuiControls()
 		if( ImGui::SliderFloat( "Miter Limit", &mMiterLimit, 1.0f, 10.0f, "%.1f" ) ) {
 			calculateOffsetCurve();
 		}
+	}
+
+	ImGui::Spacing();
+
+	const char* capStyles[] = { "NONE", "BUTT", "ROUND", "SQUARE" };
+	if( ImGui::Combo( "Cap Style", &mCapStyle, capStyles, 4 ) ) {
+		calculateOffsetCurve();
 	}
 
 	ImGui::Spacing();
