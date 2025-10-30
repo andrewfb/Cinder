@@ -45,7 +45,9 @@ class BezierOffsetApp : public App {
 	float	mTolerance = 0.5f;
 	int		mJoinStyle = 0; // 0=ROUND, 1=MITER, 2=BEVEL
 	float	mMiterLimit = 4.0f;
-	int		mCapStyle = 2;  // 0=NONE, 1=BUTT, 2=ROUND, 3=SQUARE
+	bool	mCloseOffsetCurve = true;  // If true, add caps to close open paths
+	int		mCapStyle = 1;  // 0=BUTT, 1=ROUND, 2=SQUARE (only used if mCloseOffsetCurve is true)
+	int		mNumOffsetCurves = 1;  // Number of offset curves to draw (from 0 to mOffsetDistance)
 
 	// Visualization options
 	bool	mShowOriginal = true;
@@ -233,6 +235,7 @@ void BezierOffsetApp::loadPresetShape( PresetShape shape )
 				vec2 pt = center + vec2( std::cos( angle ), std::sin( angle ) ) * radius;
 				mPath.lineTo( pt );
 			}
+			mPath.close();  // Actually close the star path
 			mPathClosed = true;
 			break;
 		}
@@ -249,22 +252,6 @@ void BezierOffsetApp::calculateOffsetCurve()
 		return;
 	}
 
-	// Build a temporary path with or without close based on mPathClosed flag
-	Path2d pathToOffset = mPath;
-
-	// Check if path currently has CLOSE segment
-	bool hasClose = !pathToOffset.empty() && !pathToOffset.getSegments().empty() &&
-	                pathToOffset.getSegments().back() == Path2d::CLOSE;
-
-	// Adjust path based on desired state
-	if( mPathClosed && !hasClose ) {
-		pathToOffset.close();
-	}
-	else if( !mPathClosed && hasClose ) {
-		// Remove close segment - can't easily do this, so just use isClosed check in offset
-		// For now, just note that caps won't show for closed paths
-	}
-
 	try {
 		Path2d::OffsetOptions opts;
 		opts.tolerance = mTolerance;
@@ -277,15 +264,20 @@ void BezierOffsetApp::calculateOffsetCurve()
 
 		opts.miterLimit = mMiterLimit;
 
-		switch( mCapStyle ) {
-			case 0: opts.capStyle = Path2d::OffsetOptions::CAP_NONE; break;
-			case 1: opts.capStyle = Path2d::OffsetOptions::CAP_BUTT; break;
-			case 2: opts.capStyle = Path2d::OffsetOptions::CAP_ROUND; break;
-			case 3: opts.capStyle = Path2d::OffsetOptions::CAP_SQUARE; break;
+		// Cap style based on whether user wants to close the offset curve
+		if( mCloseOffsetCurve ) {
+			switch( mCapStyle ) {
+				case 0: opts.capStyle = Path2d::OffsetOptions::CAP_BUTT; break;
+				case 1: opts.capStyle = Path2d::OffsetOptions::CAP_ROUND; break;
+				case 2: opts.capStyle = Path2d::OffsetOptions::CAP_SQUARE; break;
+			}
+		}
+		else {
+			opts.capStyle = Path2d::OffsetOptions::CAP_NONE;
 		}
 
-		mOffsetPath = pathToOffset.calcOffsetCurve( mOffsetDistance, opts );
-		mOriginalLength = pathToOffset.calcLength();
+		mOffsetPath = mPath.calcOffsetCurve( mOffsetDistance, opts );
+		mOriginalLength = mPath.calcLength();
 		mOffsetLength = mOffsetPath.calcLength();
 	}
 	catch( const std::exception& e ) {
@@ -321,22 +313,8 @@ void BezierOffsetApp::drawImGuiControls()
 
 	ImGui::Spacing();
 	ImGui::Separator();
-	ImGui::TextColored( ImVec4( 1.0f, 0.8f, 0.2f, 1.0f ), "Path Editing" );
+	ImGui::TextColored( ImVec4( 1.0f, 0.5f, 0.2f, 1.0f ), "Presets" );
 
-	// Open/Closed toggle
-	if( ImGui::Checkbox( "Close Path", &mPathClosed ) ) {
-		calculateOffsetCurve();
-	}
-	if( ImGui::IsItemHovered() ) {
-		ImGui::SetTooltip( "Toggle to see caps on open paths vs joins on closed paths.\nKey: 'c' to toggle" );
-	}
-
-	ImGui::Text( "Caps are only visible on OPEN paths!" );
-
-	ImGui::Spacing();
-
-	// Preset shapes
-	ImGui::Text( "Load Preset Shape:" );
 	if( ImGui::Button( "Open Line" ) ) loadPresetShape( PresetShape::OPEN_LINE );
 	ImGui::SameLine();
 	if( ImGui::Button( "Open Curve" ) ) loadPresetShape( PresetShape::OPEN_CURVE );
@@ -366,9 +344,30 @@ void BezierOffsetApp::drawImGuiControls()
 
 	ImGui::Spacing();
 
-	const char* capStyles[] = { "NONE", "BUTT", "ROUND", "SQUARE" };
-	if( ImGui::Combo( "Cap Style", &mCapStyle, capStyles, 4 ) ) {
+	// Close offset curve checkbox (for open paths only)
+	if( ImGui::Checkbox( "Close Offset Curve", &mCloseOffsetCurve ) ) {
 		calculateOffsetCurve();
+	}
+	if( ImGui::IsItemHovered() ) {
+		ImGui::SetTooltip( "Add caps to close open paths (only applies to open paths)" );
+	}
+
+	// Cap style combo (only enabled if closing offset curve)
+	ImGui::BeginDisabled( !mCloseOffsetCurve );
+	const char* capStyles[] = { "BUTT", "ROUND", "SQUARE" };
+	if( ImGui::Combo( "Cap Style", &mCapStyle, capStyles, 3 ) ) {
+		calculateOffsetCurve();
+	}
+	ImGui::EndDisabled();
+
+	ImGui::Spacing();
+
+	// Number of offset curves slider
+	if( ImGui::SliderInt( "Num Curves", &mNumOffsetCurves, 1, 10 ) ) {
+		// No need to recalculate, just affects drawing
+	}
+	if( ImGui::IsItemHovered() ) {
+		ImGui::SetTooltip( "Draw multiple offset curves from 0 to Distance" );
 	}
 
 	ImGui::Spacing();
@@ -473,19 +472,50 @@ void BezierOffsetApp::draw()
 		}
 	}
 
-	// Draw the offset curve
-	if( mShowOffset && !mOffsetPath.empty() ) {
-		gl::color( mOffsetColor );
-		gl::lineWidth( 3.0f );
-		gl::draw( mOffsetPath );
-		gl::lineWidth( 1.0f );
+	// Draw multiple offset curves
+	if( mShowOffset && !mPath.empty() ) {
+		for( int i = 0; i < mNumOffsetCurves; ++i ) {
+			float t = (float)(i + 1) / (float)mNumOffsetCurves;
+			float distance = mOffsetDistance * t;
 
-		// Draw offset control points
-		if( mShowControlPoints ) {
-			gl::color( ColorA( mOffsetColor, 0.5f ) );
-			for( size_t p = 0; p < mOffsetPath.getNumPoints(); ++p )
-				gl::drawSolidCircle( mOffsetPath.getPoint( p ), 2.0f );
+			// Calculate offset for this distance
+			Path2d::OffsetOptions opts;
+			opts.tolerance = mTolerance;
+			switch( mJoinStyle ) {
+				case 0: opts.joinStyle = Path2d::OffsetOptions::ROUND; break;
+				case 1: opts.joinStyle = Path2d::OffsetOptions::MITER; break;
+				case 2: opts.joinStyle = Path2d::OffsetOptions::BEVEL; break;
+			}
+			opts.miterLimit = mMiterLimit;
+
+			// Set cap style
+			if( mCloseOffsetCurve ) {
+				switch( mCapStyle ) {
+					case 0: opts.capStyle = Path2d::OffsetOptions::CAP_BUTT; break;
+					case 1: opts.capStyle = Path2d::OffsetOptions::CAP_ROUND; break;
+					case 2: opts.capStyle = Path2d::OffsetOptions::CAP_SQUARE; break;
+				}
+			}
+			else {
+				opts.capStyle = Path2d::OffsetOptions::CAP_NONE;
+			}
+
+			Path2d offsetCurve = mPath.calcOffsetCurve( distance, opts );
+
+			// Fade color for intermediate curves
+			ColorA curveColor( mOffsetColor, 1.0f - (1.0f - t) * 0.5f );
+			gl::color( curveColor );
+			gl::lineWidth( (i == mNumOffsetCurves - 1) ? 3.0f : 2.0f );
+			gl::draw( offsetCurve );
+
+			// Draw control points for final curve only
+			if( i == mNumOffsetCurves - 1 && mShowControlPoints ) {
+				gl::color( ColorA( mOffsetColor, 0.5f ) );
+				for( size_t p = 0; p < offsetCurve.getNumPoints(); ++p )
+					gl::drawSolidCircle( offsetCurve.getPoint( p ), 2.0f );
+			}
 		}
+		gl::lineWidth( 1.0f );
 	}
 
 	// Draw the original curve

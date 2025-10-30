@@ -2946,11 +2946,40 @@ Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) c
 				innerOpts._addCaps = false;
 				Path2d innerPath = calcOffsetCurve( -distance, innerOpts );
 
-				// Walk backwards through inner path, adding points to result
-				if( innerPath.getNumPoints() > 0 ) {
-					// Skip the last point (end) since we're already there from the end cap
-					for( int i = (int)innerPath.getNumPoints() - 2; i >= 0; --i ) {
-						result.lineTo( innerPath.getPoint( i ) );
+				// Reverse the inner path to go backwards (end to start)
+				// This preserves all curve segments (cubics, quadratics) instead of converting to lines
+				innerPath.reverse();
+
+				// Append all segments from the reversed inner path
+				// Skip the first point since we're already at that position from the end cap
+				if( innerPath.getNumSegments() > 0 ) {
+					const auto& innerSegments = innerPath.getSegments();
+					const auto& innerPoints = innerPath.getPoints();
+
+					size_t pointIndex = 1; // Start at 1 to skip the moveto point
+					for( size_t s = 0; s < innerSegments.size(); ++s ) {
+						SegmentType segType = innerSegments[s];
+
+						switch( segType ) {
+							case MOVETO:
+								// Skip moveto - we're already positioned from the end cap
+								break;
+							case LINETO:
+								result.lineTo( innerPoints[pointIndex] );
+								pointIndex += 1;
+								break;
+							case QUADTO:
+								result.quadTo( innerPoints[pointIndex], innerPoints[pointIndex + 1] );
+								pointIndex += 2;
+								break;
+							case CUBICTO:
+								result.curveTo( innerPoints[pointIndex], innerPoints[pointIndex + 1], innerPoints[pointIndex + 2] );
+								pointIndex += 3;
+								break;
+							case CLOSE:
+								// Skip close - we'll close the full path at the end
+								break;
+						}
 					}
 				}
 
