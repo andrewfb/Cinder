@@ -519,56 +519,149 @@ T findRootYuksel( F func, DF deriv, T lower, T upper, T val_lower, T val_upper, 
 	return x;
 }
 
-//! Solves a cubic equation ax³ + bx² + cx + d = 0 using Yuksel's robust method with critical point bracketing. Returns the number of real roots found (0-3). Roots are returned in ascending order.
+//! Deflate a cubic by dividing out a known root using synthetic division. Returns coefficients [c0', c1', c2'] of the resulting quadratic.
+template<typename T>
+void deflateCubic( T c0, T c1, T c2, T c3, T root, T deflated[3] )
+{
+	// Synthetic division: for cubic c3*x³ + c2*x² + c1*x + c0 with root r,
+	// deflated quadratic is [c3*r² + c2*r + c1, c3*r + c2, c3]
+	T acc = T(0);
+	deflated[2] = c3;
+	deflated[1] = c3 * root + c2;
+	deflated[0] = deflated[1] * root + c1;
+}
+
+//! Solves a cubic equation ax³ + bx² + cx + d = 0 using Yuksel's robust method with deflation. Returns the number of real roots found (0-3). Roots are returned in ascending order.
 template<typename T>
 int solveCubicYuksel( T a, T b, T c, T d, T result[3], T x_error = T(1e-6) )
 {
 	if( a == T(0) )
-		return solveQuadratic( b, c, d, result );
-
-	// Normalize to monic form: x³ + px² + qx + r = 0
-	T p = b / a;
-	T q = c / a;
-	T r = d / a;
-
-	// Find critical points by solving derivative: 3x² + 2px + q = 0
-	T crit[2];
-	int numCrit = solveQuadratic( T(3), T(2) * p, q, crit );
+		return solveQuadraticStable( b, c, d, result );
 
 	auto eval = [=](T x) { return ((a * x + b) * x + c) * x + d; };
 	auto deriv_eval = [=](T x) { return (T(3) * a * x + T(2) * b) * x + c; };
 
+	// Helper to find critical points with overflow handling
+	auto find_critical_points = [&](T &crit0, T &crit1) -> int {
+		T a_deriv = T(3) * a;
+		T b_2_deriv = b;  // b/2 for the derivative
+		T c_deriv = c;
+		T disc_4 = b_2_deriv * b_2_deriv - a_deriv * c_deriv;
+
+		// Check for overflow/underflow
+		if( !std::isfinite(disc_4) ) {
+			// Rescale the cubic (similar to reference rescaling by 2^-515)
+			T scale = std::pow(T(2), T(-515));
+			T a_scaled = a * scale;
+			T b_scaled = b * scale;
+			T c_scaled = c * scale;
+			T d_scaled = d * scale;
+
+			T a_deriv_scaled = T(3) * a_scaled;
+			T b_2_deriv_scaled = b_scaled;
+			T c_deriv_scaled = c_scaled;
+			T disc_4_scaled = b_2_deriv_scaled * b_2_deriv_scaled - a_deriv_scaled * c_deriv_scaled;
+
+			if( !std::isfinite(disc_4_scaled) || disc_4_scaled <= T(0) )
+				return 0;
+
+			T q = -(b_2_deriv_scaled + std::copysign(math<T>::sqrt(disc_4_scaled), b_2_deriv_scaled));
+			T r0 = q / a_deriv_scaled;
+			T r1 = c_deriv_scaled / q;
+			// Scale back
+			crit0 = math<T>::min(r0, r1) / scale;
+			crit1 = math<T>::max(r0, r1) / scale;
+			return 2;
+		}
+
+		if( disc_4 > T(0) ) {
+			T q = -(b_2_deriv + std::copysign(math<T>::sqrt(disc_4), b_2_deriv));
+			T r0 = q / a_deriv;
+			T r1 = c_deriv / q;
+			crit0 = math<T>::min(r0, r1);
+			crit1 = math<T>::max(r0, r1);
+			return 2;
+		}
+
+		return 0;
+	};
+
+	// Use bounds for search interval
+	T bound = std::max({math<T>::abs(a), math<T>::abs(b), math<T>::abs(c), math<T>::abs(d)}) * T(10) + T(100);
+
+	// Find first root
+	T crit[2];
+	int numCrit = find_critical_points(crit[0], crit[1]);
+
 	int numRoots = 0;
+	T first_root = std::numeric_limits<T>::quiet_NaN();
 
 	if( numCrit == 2 ) {
-		// Check three intervals: (-∞, crit[0]), (crit[0], crit[1]), (crit[1], +∞)
-		T x0 = crit[0];
-		T x1 = crit[1];
-
-		// Use a large but finite bound
-		T bound = std::max({math<T>::abs(p), math<T>::abs(q), math<T>::abs(r)}) * T(10) + T(100);
-
-		T intervals[][2] = { {-bound, x0}, {x0, x1}, {x1, bound} };
+		// Check intervals: (-bound, crit[0]), (crit[0], crit[1]), (crit[1], bound)
+		T endpoints[] = {-bound, crit[0], crit[1], bound};
 
 		for( int i = 0; i < 3; ++i ) {
-			T lo = intervals[i][0];
-			T hi = intervals[i][1];
+			T lo = endpoints[i];
+			T hi = endpoints[i + 1];
+
+			if( hi <= lo )
+				continue;
+
 			T val_lo = eval(lo);
 			T val_hi = eval(hi);
 
+			// Check for endpoint roots
+			T root_tolerance = std::numeric_limits<T>::epsilon() * math<T>::max(math<T>::abs(lo), math<T>::abs(hi)) * T(10);
+			if( math<T>::abs(val_lo) <= root_tolerance ) {
+				first_root = lo;
+				break;
+			}
+			if( math<T>::abs(val_hi) <= root_tolerance ) {
+				first_root = hi;
+				break;
+			}
+
+			// Sign change indicates root
 			if( (val_lo < T(0)) != (val_hi < T(0)) ) {
-				result[numRoots++] = findRootYuksel(eval, deriv_eval, lo, hi, val_lo, val_hi, x_error);
+				first_root = findRootYuksel(eval, deriv_eval, lo, hi, val_lo, val_hi, x_error);
+				break;
 			}
 		}
 	} else {
 		// Monotonic cubic - at most one root
-		T bound = std::max({math<T>::abs(p), math<T>::abs(q), math<T>::abs(r)}) * T(10) + T(100);
 		T val_lo = eval(-bound);
 		T val_hi = eval(bound);
 
-		if( (val_lo < T(0)) != (val_hi < T(0)) ) {
-			result[numRoots++] = findRootYuksel(eval, deriv_eval, -bound, bound, val_lo, val_hi, x_error);
+		T root_tolerance = std::numeric_limits<T>::epsilon() * bound * T(10);
+		if( math<T>::abs(val_lo) <= root_tolerance ) {
+			first_root = -bound;
+		} else if( math<T>::abs(val_hi) <= root_tolerance ) {
+			first_root = bound;
+		} else if( (val_lo < T(0)) != (val_hi < T(0)) ) {
+			first_root = findRootYuksel(eval, deriv_eval, -bound, bound, val_lo, val_hi, x_error);
 		}
+	}
+
+	// If we found a first root, deflate and solve the quadratic
+	if( std::isfinite(first_root) ) {
+		result[numRoots++] = first_root;
+
+		// Deflate cubic to get quadratic
+		T quad[3];
+		deflateCubic(d, c, b, a, first_root, quad);
+
+		// Solve deflated quadratic using stable solver
+		T quad_roots[2];
+		int numQuadRoots = solveQuadraticStable(quad[2], quad[1], quad[0], quad_roots);
+
+		// Add roots from deflated quadratic
+		for( int i = 0; i < numQuadRoots; ++i ) {
+			result[numRoots++] = quad_roots[i];
+		}
+
+		// Sort all roots
+		if( numRoots > 1 )
+			std::sort(result, result + numRoots);
 	}
 
 	return numRoots;
