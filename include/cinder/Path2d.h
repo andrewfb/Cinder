@@ -144,6 +144,11 @@ class CI_API Path2d {
 	//! Returns a copy transformed by \a matrix.
 	Path2d		transformed( const mat3 &matrix ) const;
 
+	//! Converts all quadratic Bezier segments to cubic Bezier segments in-place using degree elevation.
+	void		convertQuadraticsToCubics();
+	//! Returns a copy with all quadratic Bezier segments converted to cubic Bezier segments.
+	Path2d		convertedToCubics() const;
+
 	//! Returns a subsection of the Path2d starting from \a startT to \a endT, which lie in the range <tt>[0,1]</tt>.
 	Path2d		getSubPath( float startT, float endT ) const;
 
@@ -204,6 +209,26 @@ class CI_API Path2d {
 	//! Calculates a t-value corresponding to arc length \a distance. If \a wrap then the t-value loops inside the 0-1 range as \a distance exceeds the arc length. Consider a Path2dCalcCache if using frequently.
 	float	calcTimeForDistance( float distance, bool wrap = true, float tolerance = 1.0e-03f, int maxIterations = 16 ) const;
 
+	//! Options for offset curve calculation
+	struct OffsetOptions {
+		//! Maximum approximation error in path units
+		float tolerance = 0.01f;
+
+		//! Join style at sharp corners between segments
+		enum JoinStyle {
+			ROUND,   //! Smooth rounded joins (default)
+			MITER,   //! Sharp pointed joins (with miter limit)
+			BEVEL    //! Flat beveled joins
+		} joinStyle = ROUND;
+
+		//! Maximum miter length / offset distance (for MITER joins)
+		float miterLimit = 4.0f;
+	};
+
+	//! Calculates an offset curve at the specified distance from the original path. Positive distance offsets to the right (clockwise), negative to the left (counter-clockwise). The offset curve is approximated with Bezier curves within the specified tolerance.
+	Path2d	calcOffsetCurve( float distance, float tolerance = 0.01f ) const;
+	//! Calculates an offset curve with advanced options for join styles and approximation control
+	Path2d	calcOffsetCurve( float distance, const OffsetOptions& options ) const;
 
 	static int	calcQuadraticBezierMonotoneRegions( const vec2 p[3], float resultT[2] );
 	static vec2	calcQuadraticBezierPos( const vec2 p[3], float t );

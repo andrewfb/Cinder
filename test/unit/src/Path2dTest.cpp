@@ -397,3 +397,300 @@ TEST_CASE("CinderMath: Bezier Utilities")
 		REQUIRE( hasYExtremum );
 	}
 }
+TEST_CASE("CinderMath: Second Derivatives")
+{
+	SECTION("Quadratic Bezier second derivative is constant") {
+		vec2 controlPoints[] = { vec2(0, 0), vec2(50, 100), vec2(100, 0) };
+
+		// Second derivative of quadratic Bezier is constant (no t parameter)
+		vec2 d2 = secondDerivativeQuadraticBezier(controlPoints);
+
+		// Verify against formula: 2*(P2 - 2*P1 + P0)
+		vec2 expected = 2.0f * (controlPoints[2] - 2.0f * controlPoints[1] + controlPoints[0]);
+		REQUIRE( glm::distance(d2, expected) < 0.0001f );
+	}
+	
+	SECTION("Cubic Bezier second derivative") {
+		vec2 controlPoints[] = { vec2(0, 0), vec2(33, 100), vec2(66, 100), vec2(100, 0) };
+		
+		// Second derivative at endpoints
+		vec2 d2_0 = secondDerivativeCubicBezier(controlPoints, 0.0f);
+		vec2 d2_1 = secondDerivativeCubicBezier(controlPoints, 1.0f);
+		
+		// Verify against formula at t=0: 6*(P2 - 2*P1 + P0)
+		vec2 expected_0 = 6.0f * (controlPoints[2] - 2.0f * controlPoints[1] + controlPoints[0]);
+		REQUIRE( glm::distance(d2_0, expected_0) < 0.0001f );
+		
+		// At t=1: 6*(P3 - 2*P2 + P1)
+		vec2 expected_1 = 6.0f * (controlPoints[3] - 2.0f * controlPoints[2] + controlPoints[1]);
+		REQUIRE( glm::distance(d2_1, expected_1) < 0.0001f );
+	}
+}
+
+TEST_CASE("CinderMath: Curvature")
+{
+	SECTION("Curvature of straight line is zero") {
+		vec2 firstDeriv(1, 0);  // Unit tangent
+		vec2 secondDeriv(0, 0); // No curvature
+		
+		float kappa = curvature(firstDeriv, secondDeriv);
+		REQUIRE( std::abs(kappa) < 0.0001f );
+	}
+	
+	SECTION("Curvature of circle") {
+		// Circle of radius R has curvature 1/R
+		float R = 10.0f;
+		float t = 0.5f;
+		
+		// Parametric circle: x=R*cos(t), y=R*sin(t)
+		vec2 firstDeriv(-R * std::sin(t), R * std::cos(t));
+		vec2 secondDeriv(-R * std::cos(t), -R * std::sin(t));
+		
+		float kappa = curvature(firstDeriv, secondDeriv);
+		float expected = 1.0f / R;
+		
+		REQUIRE( std::abs(kappa - expected) < 0.01f );
+	}
+	
+	SECTION("Curvature handles zero velocity") {
+		vec2 firstDeriv(0, 0);  // Zero velocity
+		vec2 secondDeriv(1, 1);
+		
+		float kappa = curvature(firstDeriv, secondDeriv);
+		REQUIRE( kappa == 0.0f );  // Should return 0, not NaN
+	}
+}
+
+TEST_CASE("CinderMath: deflateCubic")
+{
+	SECTION("Deflate (x-1)³ by root 1") {
+		// (x-1)³ = x³ - 3x² + 3x - 1
+		float c0 = -1, c1 = 3, c2 = -3, c3 = 1;
+		float root = 1.0f;
+		
+		float quad[3];
+		deflateCubic(c0, c1, c2, c3, root, quad);
+		
+		// Should give (x-1)² = x² - 2x + 1
+		REQUIRE( std::abs(quad[2] - 1.0f) < 0.0001f );   // x² coefficient
+		REQUIRE( std::abs(quad[1] - (-2.0f)) < 0.0001f ); // x coefficient
+		REQUIRE( std::abs(quad[0] - 1.0f) < 0.0001f );   // constant
+	}
+	
+	SECTION("Deflate x³ - 6x² + 11x - 6 by root 1") {
+		// (x-1)(x-2)(x-3) with root 1 -> (x-2)(x-3)
+		float c0 = -6, c1 = 11, c2 = -6, c3 = 1;
+		float root = 1.0f;
+		
+		float quad[3];
+		deflateCubic(c0, c1, c2, c3, root, quad);
+		
+		// Should give x² - 5x + 6 = (x-2)(x-3)
+		REQUIRE( std::abs(quad[2] - 1.0f) < 0.0001f );
+		REQUIRE( std::abs(quad[1] - (-5.0f)) < 0.0001f );
+		REQUIRE( std::abs(quad[0] - 6.0f) < 0.0001f );
+	}
+}
+
+TEST_CASE("CinderMath: solveCubicYuksel")
+{
+	SECTION("Triple root") {
+		// (x-1)³ = x³ - 3x² + 3x - 1
+		float result[3];
+		int n = solveCubicYuksel(1.0f, -3.0f, 3.0f, -1.0f, result);
+
+		REQUIRE( n >= 1 );  // Should find at least one root
+		REQUIRE( std::abs(result[0] - 1.0f) < 0.001f );
+	}
+	
+	SECTION("Three distinct roots") {
+		// (x-1)(x-2)(x-3) = x³ - 6x² + 11x - 6
+		float result[3];
+		int n = solveCubicYuksel(1.0f, -6.0f, 11.0f, -6.0f, result);
+		
+		REQUIRE( n == 3 );
+		REQUIRE( std::abs(result[0] - 1.0f) < 0.001f );
+		REQUIRE( std::abs(result[1] - 2.0f) < 0.001f );
+		REQUIRE( std::abs(result[2] - 3.0f) < 0.001f );
+	}
+	
+	SECTION("One real root") {
+		// x³ + x + 1 has one real root around -0.68
+		float result[3];
+		int n = solveCubicYuksel(1.0f, 0.0f, 1.0f, 1.0f, result);
+		
+		REQUIRE( n == 1 );
+		// Verify it's actually a root
+		float x = result[0];
+		float val = x*x*x + x + 1.0f;
+		REQUIRE( std::abs(val) < 0.001f );
+	}
+	
+	SECTION("Endpoint root") {
+		// x³ - x = x(x-1)(x+1), roots at -1, 0, 1
+		float result[3];
+		int n = solveCubicYuksel(1.0f, 0.0f, -1.0f, 0.0f, result);
+		
+		REQUIRE( n >= 1 );  // Should find at least the endpoint roots
+		// Check that 0 is found
+		bool foundZero = false;
+		for (int i = 0; i < n; ++i) {
+			if (std::abs(result[i]) < 0.001f) {
+				foundZero = true;
+				break;
+			}
+		}
+		REQUIRE( foundZero );
+	}
+}
+
+TEST_CASE("CinderMath: solveQuartic")
+{
+	SECTION("(x-1)⁴ = 0") {
+		float result[4];
+		int n = solveQuartic(1.0f, -4.0f, 6.0f, -4.0f, 1.0f, result);
+		
+		REQUIRE( n >= 1 );
+		REQUIRE( std::abs(result[0] - 1.0f) < 0.001f );
+	}
+	
+	SECTION("Four distinct roots") {
+		// (x-1)(x-2)(x-3)(x-4) = x⁴ - 10x³ + 35x² - 50x + 24
+		float result[4];
+		int n = solveQuartic(24.0f, -50.0f, 35.0f, -10.0f, 1.0f, result);
+		
+		REQUIRE( n == 4 );
+		REQUIRE( std::abs(result[0] - 1.0f) < 0.001f );
+		REQUIRE( std::abs(result[1] - 2.0f) < 0.001f );
+		REQUIRE( std::abs(result[2] - 3.0f) < 0.001f );
+		REQUIRE( std::abs(result[3] - 4.0f) < 0.001f );
+	}
+	
+	SECTION("Two real roots") {
+		// (x²-1)(x²+1) = x⁴ - 1
+		float result[4];
+		int n = solveQuartic(-1.0f, 0.0f, 0.0f, 0.0f, 1.0f, result);
+		
+		REQUIRE( n == 2 );
+		REQUIRE( std::abs(result[0] - (-1.0f)) < 0.001f );
+		REQUIRE( std::abs(result[1] - 1.0f) < 0.001f );
+	}
+	
+	SECTION("No real roots") {
+		// x⁴ + 1 has no real roots
+		float result[4];
+		int n = solveQuartic(1.0f, 0.0f, 0.0f, 0.0f, 1.0f, result);
+
+		REQUIRE( n == 0 );
+	}
+}
+
+TEST_CASE("Path2d::convertQuadraticsToCubics")
+{
+	SECTION("Single quadratic conversion") {
+		// Test that a simple quadratic is converted correctly
+		Path2d path;
+		path.moveTo( 0, 0 );
+		path.quadTo( 50, 100, 100, 0 );
+
+		// Should have 1 segment (QUADTO) - moveTo is implicit
+		REQUIRE( path.getNumSegments() == 1 );
+		REQUIRE( path.getSegmentType( 0 ) == Path2d::QUADTO );
+		REQUIRE( path.getNumPoints() == 3 ); // (0,0), (50,100), (100,0)
+
+		path.convertQuadraticsToCubics();
+
+		// Should now have 1 segment (CUBICTO)
+		REQUIRE( path.getNumSegments() == 1 );
+		REQUIRE( path.getSegmentType( 0 ) == Path2d::CUBICTO );
+		REQUIRE( path.getNumPoints() == 4 ); // (0,0), Q1, Q2, (100,0)
+	}
+
+	SECTION("No quadratics - no change") {
+		// Path with no quadratics should remain unchanged
+		Path2d path;
+		path.moveTo( 0, 0 );
+		path.lineTo( 100, 100 );
+		path.lineTo( 100, 0 );
+		path.close();
+
+		size_t origSegments = path.getNumSegments();
+		size_t origPoints = path.getNumPoints();
+
+		path.convertQuadraticsToCubics();
+
+		// Should be unchanged
+		REQUIRE( path.getNumSegments() == origSegments );
+		REQUIRE( path.getNumPoints() == origPoints );
+	}
+
+	SECTION("Multiple quadratics") {
+		// Test path with multiple quadratics
+		Path2d path;
+		path.moveTo( 0, 0 );
+		path.quadTo( 25, 50, 50, 0 );
+		path.quadTo( 75, -50, 100, 0 );
+
+		// Should have 2 QUADTO segments (moveTo is implicit)
+		REQUIRE( path.getNumSegments() == 2 );
+		int quadCount = 0;
+		for( size_t i = 0; i < path.getNumSegments(); ++i ) {
+			if( path.getSegmentType( i ) == Path2d::QUADTO ) quadCount++;
+		}
+		REQUIRE( quadCount == 2 );
+
+		path.convertQuadraticsToCubics();
+
+		// All quadratics should be converted to cubics
+		int cubicCount = 0;
+		quadCount = 0;
+		for( size_t i = 0; i < path.getNumSegments(); ++i ) {
+			if( path.getSegmentType( i ) == Path2d::CUBICTO ) cubicCount++;
+			if( path.getSegmentType( i ) == Path2d::QUADTO ) quadCount++;
+		}
+		REQUIRE( quadCount == 0 );
+		REQUIRE( cubicCount == 2 );
+	}
+
+	SECTION("Closed path with quadratics") {
+		// Test closed path
+		Path2d path;
+		path.moveTo( 0, 0 );
+		path.quadTo( 50, 50, 100, 0 );
+		path.lineTo( 100, 100 );
+		path.close();
+
+		Path2d converted = path.convertedToCubics();
+
+		// Should have no quadratics
+		for( size_t i = 0; i < converted.getNumSegments(); ++i ) {
+			REQUIRE( converted.getSegmentType( i ) != Path2d::QUADTO );
+		}
+
+		// Should still be closed
+		REQUIRE( converted.isClosed() );
+	}
+
+	SECTION("In-place vs copy conversion equivalence") {
+		// Test that both methods produce the same result
+		Path2d path;
+		path.moveTo( 0, 0 );
+		path.quadTo( 25, 50, 50, 0 );
+		path.lineTo( 75, 25 );
+		path.quadTo( 85, -25, 100, 0 );
+
+		Path2d inPlace = path;
+		inPlace.convertQuadraticsToCubics();
+
+		Path2d copy = path.convertedToCubics();
+
+		// Should have same structure
+		REQUIRE( inPlace.getNumSegments() == copy.getNumSegments() );
+		REQUIRE( inPlace.getNumPoints() == copy.getNumPoints() );
+
+		// All segment types should match
+		for( size_t i = 0; i < inPlace.getNumSegments(); ++i ) {
+			REQUIRE( inPlace.getSegmentType( i ) == copy.getSegmentType( i ) );
+		}
+	}
+}

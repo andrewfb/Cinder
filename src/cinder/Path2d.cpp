@@ -1116,6 +1116,106 @@ Path2d Path2d::transformed( const mat3 &matrix ) const
 	return result;
 }
 
+void Path2d::convertQuadraticsToCubics()
+{
+	// Convert all QUADTO segments to CUBICTO using degree elevation
+	// Degree elevation formula for quadratic to cubic:
+	//   Given quadratic P0, P1, P2
+	//   Cubic: Q0 = P0
+	//          Q1 = P0 + 2/3*(P1 - P0) = P0/3 + 2*P1/3
+	//          Q2 = P2 + 2/3*(P1 - P2) = 2*P1/3 + P2/3
+	//          Q3 = P2
+
+	// IMPORTANT: Path2d representation:
+	// - mPoints[0] is the starting point from moveTo() (implicit, no segment)
+	// - mSegments contains only drawing commands (LINETO, QUADTO, CUBICTO, CLOSE)
+	// - Each segment refers to subsequent points in mPoints
+
+	if( mPoints.empty() ) {
+		return; // Empty path, nothing to convert
+	}
+
+	std::vector<SegmentType> newSegments;
+	std::vector<vec2> newPoints;
+
+	newSegments.reserve( mSegments.size() );
+	newPoints.reserve( mPoints.size() + mSegments.size() ); // May grow if converting quadratics
+
+	// First point is always the starting point (from moveTo)
+	newPoints.push_back( mPoints[0] );
+	vec2 currentPoint = mPoints[0];
+	vec2 subpathStart = mPoints[0];
+
+	size_t pointIndex = 1;  // Start at index 1 (index 0 is the initial moveTo point)
+
+	for( size_t s = 0; s < mSegments.size(); ++s ) {
+		SegmentType segType = mSegments[s];
+
+		switch( segType ) {
+			case LINETO:
+				newSegments.push_back( LINETO );
+				newPoints.push_back( mPoints[pointIndex] );
+				currentPoint = mPoints[pointIndex];
+				pointIndex++;
+				break;
+
+			case QUADTO: {
+				// Convert quadratic to cubic
+				vec2 P0 = currentPoint;
+				vec2 P1 = mPoints[pointIndex];
+				vec2 P2 = mPoints[pointIndex + 1];
+
+				// Degree elevation
+				vec2 Q1 = P0 / 3.0f + P1 * (2.0f / 3.0f);
+				vec2 Q2 = P1 * (2.0f / 3.0f) + P2 / 3.0f;
+
+				newSegments.push_back( CUBICTO );
+				newPoints.push_back( Q1 );
+				newPoints.push_back( Q2 );
+				newPoints.push_back( P2 );
+
+				currentPoint = P2;
+				pointIndex += 2;
+				break;
+			}
+
+			case CUBICTO:
+				newSegments.push_back( CUBICTO );
+				newPoints.push_back( mPoints[pointIndex] );
+				newPoints.push_back( mPoints[pointIndex + 1] );
+				newPoints.push_back( mPoints[pointIndex + 2] );
+				currentPoint = mPoints[pointIndex + 2];
+				pointIndex += 3;
+				break;
+
+			case CLOSE:
+				newSegments.push_back( CLOSE );
+				currentPoint = subpathStart;  // Reset current point to start of subpath
+				break;
+
+			case MOVETO:
+				// MOVETO should not appear in mSegments (it's implicit in mPoints[0])
+				// But handle it just in case
+				newPoints.push_back( mPoints[pointIndex] );
+				currentPoint = mPoints[pointIndex];
+				subpathStart = currentPoint;
+				pointIndex++;
+				break;
+		}
+	}
+
+	// Replace with converted data
+	mSegments = std::move( newSegments );
+	mPoints = std::move( newPoints );
+}
+
+Path2d Path2d::convertedToCubics() const
+{
+	Path2d result = *this;
+	result.convertQuadraticsToCubics();
+	return result;
+}
+
 namespace { // getSubPath helpers
 void appendChopped( const Path2d &source, size_t segment, float segRelT, bool secondHalf, Path2d *result )
 {
@@ -2158,5 +2258,677 @@ float Path2dCalcCache::calcTimeForDistance( float distance, bool wrap, float tol
 	return mPath.segmentSolveTimeForDistance( currentSegment, currentSegmentLength, distance, tolerance, maxIterations );
 }
 
+// ============================================================================
+// OFFSET CURVE IMPLEMENTATION
+// Based on Raph Levien's approach: https://raphlinus.github.io/curves/2022/09/09/parallel-beziers.html
+// ============================================================================
+
+namespace {
+
+// Calculate the normal vector (perpendicular, rotated 90° clockwise) for a 2D vector
+inline vec2 calcOffsetNormal( const vec2& tangent )
+{
+	return vec2( tangent.y, -tangent.x );
+}
+
+// Safe tangent calculation that handles degenerate cases (zero-length segments)
+inline bool calcSafeTangent( const vec2& p0, const vec2& p1, vec2& outTangent )
+{
+	vec2 diff = p1 - p0;
+	float lenSq = diff.x * diff.x + diff.y * diff.y;
+	if( lenSq > 1e-8f ) {  // ~0.0001^2
+		float len = std::sqrt( lenSq );
+		outTangent = diff / len;
+		return true;
+	}
+	return false;
+}
+
+// Offset a linear segment - this is straightforward
+bool offsetLinearSegment( const vec2& p0, const vec2& p1, float distance, vec2& out0, vec2& out1 )
+{
+	vec2 tangent;
+	if( !calcSafeTangent( p0, p1, tangent ) ) {
+		return false;  // Degenerate segment
+	}
+
+	vec2 normal = calcOffsetNormal( tangent );
+	vec2 offset = normal * distance;
+
+	out0 = p0 + offset;
+	out1 = p1 + offset;
+	return true;
+}
+
+// ==================================================================================
+// KURBO OFFSET ALGORITHM IMPLEMENTATION
+// Based on Raph Levien's parallel Bezier curve algorithm
+// https://raphlinus.github.io/curves/2022/09/09/parallel-beziers.html
+// ==================================================================================
+
+namespace {
+	const int MAX_OFFSET_DEPTH = 8;
+	const int N_LSE = 12;  // Number of sample points for least-squares refinement (increased from 8)
+	const float BLEND = 1e-3f;  // Blending factor for tangent vs. normal error
+
+	// Helper struct for cubic offset computation (Kurbo algorithm)
+	struct CubicOffsetHelper {
+		vec2 c[4];    // Original cubic control points
+		vec2 q[3];    // Derivative (quadratic)
+		float d;      // Offset distance
+		float c0, c1, c2;  // Cusp detection coefficients
+		float tolerance;
+
+		CubicOffsetHelper(const vec2* controlPoints, float distance, float tol)
+			: d(distance), tolerance(tol)
+		{
+			// Copy control points
+			for(int i = 0; i < 4; ++i)
+				c[i] = controlPoints[i];
+
+			// Compute derivative (quadratic)
+			q[0] = 3.0f * (c[1] - c[0]);
+			q[1] = 3.0f * (c[2] - c[1]);
+			q[2] = 3.0f * (c[3] - c[2]);
+
+			// Compute cusp detection coefficients (matching Kurbo)
+			// Use the derivative control points q[0], q[1], q[2] directly
+			float p1xp0 = q[1].x * q[0].y - q[1].y * q[0].x;
+			float p2xp0 = q[2].x * q[0].y - q[2].y * q[0].x;
+			float p2xp1 = q[2].x * q[1].y - q[2].y * q[1].x;
+
+			// NOTE: Kurbo uses left-handed normals, we use right-handed.
+			// Negate distance to compensate for the sign flip.
+			float d2 = -2.0f * distance;
+			c0 = d2 * p1xp0;
+			c1 = d2 * (p2xp0 - 2.0f * p1xp0);
+			c2 = d2 * (p2xp1 - p2xp0 + p1xp0);
+		}
+
+		// Evaluate the cusp sign at parameter t
+		// Zero crossing indicates a cusp
+		float cuspSign(float t) const
+		{
+			// Evaluate derivative at t
+			float s = 1.0f - t;
+			vec2 deriv = s*s * q[0] + 2.0f*s*t * q[1] + t*t * q[2];
+			float ds2 = glm::dot(deriv, deriv);
+
+			if(ds2 < 1e-12f) return 1.0f;  // Degenerate case
+
+			// Cusp value: ((c2*t + c1)*t + c0) / (ds2 * sqrt(ds2)) + 1.0
+			return ((c2 * t + c1) * t + c0) / (ds2 * std::sqrt(ds2)) + 1.0f;
+		}
+
+		// Evaluate the offset curve at parameter t
+		vec2 evalOffset(float t) const
+		{
+			// Evaluate original curve
+			float s = 1.0f - t;
+			vec2 point = s*s*s * c[0] + 3.0f*s*s*t * c[1] + 3.0f*s*t*t * c[2] + t*t*t * c[3];
+
+			// Evaluate derivative
+			vec2 deriv = s*s * q[0] + 2.0f*s*t * q[1] + t*t * q[2];
+			float derivLen = glm::length(deriv);
+
+			if(derivLen < 1e-6f) return point;
+
+			// Offset normal
+			vec2 normal = calcOffsetNormal(deriv / derivLen);
+			return point + normal * d;
+		}
+
+		// Recursive offset computation
+		void offsetRec(float t0, float t1, const vec2& utan0, const vec2& utan1,
+		               Path2d& result, int depth = 0)
+		{
+			// Check for cusps in the interval
+			float sign0 = cuspSign(t0);
+			float sign1 = cuspSign(t1);
+
+			if(sign0 * sign1 < 0.0f && depth < MAX_OFFSET_DEPTH) {
+				// Cusp detected - subdivide at the cusp
+				float tMid = (t0 + t1) * 0.5f;
+
+				// Bisect to find exact cusp location
+				float tLow = t0, tHigh = t1;
+				for(int i = 0; i < 10; ++i) {
+					float t = (tLow + tHigh) * 0.5f;
+					float sign = cuspSign(t);
+					if(sign * sign0 > 0.0f)
+						tLow = t;
+					else
+						tHigh = t;
+				}
+				float tCusp = (tLow + tHigh) * 0.5f;
+
+				// Subdivide at cusp
+				vec2 utanCusp = evalUnitTangent(tCusp);
+				offsetRec(t0, tCusp, utan0, utanCusp, result, depth + 1);
+				offsetRec(tCusp, t1, utanCusp, utan1, result, depth + 1);
+				return;
+			}
+
+			// No cusp - try to fit a cubic
+			// 1. Compute endpoint offset positions
+			vec2 p0 = evalOffset(t0);
+			vec2 p3 = evalOffset(t1);
+
+			// 2. Use arc drawing for initial approximation
+			//    Arc drawing: use angle bisection between endpoint tangents
+			float angle0 = std::atan2(utan0.y, utan0.x);
+			float angle1 = std::atan2(utan1.y, utan1.x);
+
+			// Normalize angle difference
+			float angleDiff = angle1 - angle0;
+			while(angleDiff > (float)M_PI) angleDiff -= 2.0f * (float)M_PI;
+			while(angleDiff < -(float)M_PI) angleDiff += 2.0f * (float)M_PI;
+
+			// Arc radius estimation from chord length
+			float chordLen = glm::length(p3 - p0);
+			float radius = (std::abs(angleDiff) > 0.001f) ?
+				chordLen / (2.0f * std::sin(std::abs(angleDiff) / 2.0f)) :
+				chordLen;
+
+			// Initial control arm lengths (tangential and normal)
+			float a = radius * 4.0f * std::tan(angleDiff / 4.0f) / 3.0f;
+			float b = a;
+			float a_perp = 0.0f;  // Normal component for p1
+			float b_perp = 0.0f;  // Normal component for p2
+
+			// Unit normals at endpoints
+			vec2 unorm0 = vec2(-utan0.y, utan0.x);
+			vec2 unorm1 = vec2(-utan1.y, utan1.x);
+
+			vec2 p1 = p0 + utan0 * a + unorm0 * a_perp;
+			vec2 p2 = p3 - utan1 * b + unorm1 * b_perp;
+
+			// 3. Refine using least-squares with both tangent and normal degrees of freedom
+			float tSamples[N_LSE];
+			for(int i = 0; i < N_LSE; ++i)
+				tSamples[i] = t0 + (t1 - t0) * ((float)(i + 1) / (N_LSE + 1));
+
+			// Perform 2 iterations of least-squares refinement (now 4x4 system)
+			for(int iter = 0; iter < 2; ++iter) {
+				// 4x4 matrix: [a, a_perp, b, b_perp]
+				float m00 = 0.0f, m01 = 0.0f, m02 = 0.0f, m03 = 0.0f;
+				float m11 = 0.0f, m12 = 0.0f, m13 = 0.0f;
+				float m22 = 0.0f, m23 = 0.0f;
+				float m33 = 0.0f;
+				float r0 = 0.0f, r1 = 0.0f, r2 = 0.0f, r3 = 0.0f;
+
+				for(int i = 0; i < N_LSE; ++i) {
+					float t = tSamples[i];
+					float ta = (float)(i + 1) / (N_LSE + 1);
+
+					// True offset point
+					vec2 pTrue = evalOffset(t);
+
+					// Approximation point
+					float sa = 1.0f - ta;
+					vec2 pApprox = sa*sa*sa * p0 + 3.0f*sa*sa*ta * p1 +
+					               3.0f*sa*ta*ta * p2 + ta*ta*ta * p3;
+
+					// Error vector
+					vec2 errVec = pApprox - pTrue;
+
+					// Jacobian: how does pApprox change with a, a_perp, b, b_perp?
+					float coeff_p1 = 3.0f * sa*sa * ta;
+					float coeff_p2 = 3.0f * sa * ta*ta;
+
+					vec2 dp_da = coeff_p1 * utan0;
+					vec2 dp_da_perp = coeff_p1 * unorm0;
+					vec2 dp_db = -coeff_p2 * utan1;  // Negative because p2 = p3 - ...
+					vec2 dp_db_perp = coeff_p2 * unorm1;  // Positive for normal component
+
+					// Accumulate normal equations: J^T * J and J^T * err
+					m00 += glm::dot(dp_da, dp_da);
+					m01 += glm::dot(dp_da, dp_da_perp);
+					m02 += glm::dot(dp_da, dp_db);
+					m03 += glm::dot(dp_da, dp_db_perp);
+					m11 += glm::dot(dp_da_perp, dp_da_perp);
+					m12 += glm::dot(dp_da_perp, dp_db);
+					m13 += glm::dot(dp_da_perp, dp_db_perp);
+					m22 += glm::dot(dp_db, dp_db);
+					m23 += glm::dot(dp_db, dp_db_perp);
+					m33 += glm::dot(dp_db_perp, dp_db_perp);
+
+					r0 += glm::dot(dp_da, errVec);
+					r1 += glm::dot(dp_da_perp, errVec);
+					r2 += glm::dot(dp_db, errVec);
+					r3 += glm::dot(dp_db_perp, errVec);
+				}
+
+				// Solve 4x4 symmetric system using Cholesky decomposition
+				// A = [[m00, m01, m02, m03],
+				//      [m01, m11, m12, m13],
+				//      [m02, m12, m22, m23],
+				//      [m03, m13, m23, m33]]
+				// Solve A * delta = -r
+
+				// Simplified Gaussian elimination for 4x4
+				float A[4][5] = {
+					{m00, m01, m02, m03, -r0},
+					{m01, m11, m12, m13, -r1},
+					{m02, m12, m22, m23, -r2},
+					{m03, m13, m23, m33, -r3}
+				};
+
+				// Forward elimination
+				for(int k = 0; k < 4; ++k) {
+					// Find pivot
+					float pivot = A[k][k];
+					if(std::abs(pivot) < 1e-10f) break;
+
+					// Eliminate below
+					for(int i = k + 1; i < 4; ++i) {
+						float factor = A[i][k] / pivot;
+						for(int j = k; j < 5; ++j) {
+							A[i][j] -= factor * A[k][j];
+						}
+					}
+				}
+
+				// Back substitution
+				float delta[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+				for(int i = 3; i >= 0; --i) {
+					delta[i] = A[i][4];
+					for(int j = i + 1; j < 4; ++j) {
+						delta[i] -= A[i][j] * delta[j];
+					}
+					if(std::abs(A[i][i]) > 1e-10f) {
+						delta[i] /= A[i][i];
+					}
+				}
+
+				// Update parameters
+				a += delta[0];
+				a_perp += delta[1];
+				b += delta[2];
+				b_perp += delta[3];
+
+				// Update control points
+				p1 = p0 + utan0 * a + unorm0 * a_perp;
+				p2 = p3 - utan1 * b + unorm1 * b_perp;
+			}
+
+			// 4. Evaluate error
+			float maxErrSq = 0.0f;
+			for(int i = 0; i < N_LSE; ++i) {
+				float ta = (float)(i + 1) / (N_LSE + 1);
+				vec2 pTrue = evalOffset(tSamples[i]);
+
+				float sa = 1.0f - ta;
+				vec2 pApprox = sa*sa*sa * p0 + 3.0f*sa*sa*ta * p1 +
+				               3.0f*sa*ta*ta * p2 + ta*ta*ta * p3;
+
+				float errSq = glm::length2(pApprox - pTrue);
+				maxErrSq = std::max(maxErrSq, errSq);
+			}
+
+			float maxErr = std::sqrt(maxErrSq);
+
+			// 5. Subdivide if error exceeds tolerance
+			if(maxErr > tolerance && depth < MAX_OFFSET_DEPTH) {
+				float tMid = (t0 + t1) * 0.5f;
+				vec2 utanMid = evalUnitTangent(tMid);
+				offsetRec(t0, tMid, utan0, utanMid, result, depth + 1);
+				offsetRec(tMid, t1, utanMid, utan1, result, depth + 1);
+			}
+			else {
+				// Accept this cubic approximation
+				result.curveTo(p1, p2, p3);
+			}
+		}
+
+		vec2 evalUnitTangent(float t) const
+		{
+			float s = 1.0f - t;
+			vec2 deriv = s*s * q[0] + 2.0f*s*t * q[1] + t*t * q[2];
+			float len = glm::length(deriv);
+			return (len > 1e-6f) ? (deriv / len) : vec2(1, 0);
+		}
+	};
+
+} // anonymous namespace
+
+// Forward declarations
+void offsetBezierSegmentCubic( const vec2* controlPoints, float distance, float tolerance, Path2d& result );
+void offsetBezierSegmentQuadratic( const vec2* controlPoints, float distance, float tolerance, Path2d& result );
+
+// Main offset function - dispatches to cubic or quadratic
+void offsetBezierSegment( const vec2* controlPoints, int degree, float distance,
+                          float tolerance, Path2d& result )
+{
+	if( degree == 3 ) {
+		offsetBezierSegmentCubic( controlPoints, distance, tolerance, result );
+	}
+	else if( degree == 2 ) {
+		offsetBezierSegmentQuadratic( controlPoints, distance, tolerance, result );
+	}
+}
+
+// Cubic offset using Kurbo algorithm
+void offsetBezierSegmentCubic( const vec2* controlPoints, float distance, float tolerance, Path2d& result )
+{
+	CubicOffsetHelper helper(controlPoints, distance, tolerance);
+
+	vec2 utan0 = helper.evalUnitTangent(0.0f);
+	vec2 utan1 = helper.evalUnitTangent(1.0f);
+
+	// Don't call moveTo here - the calling code handles that
+	helper.offsetRec(0.0f, 1.0f, utan0, utan1, result, 0);
+}
+
+// Quadratic offset using degree elevation to cubic
+void offsetBezierSegmentQuadratic( const vec2* controlPoints, float distance, float tolerance, Path2d& result )
+{
+	// Degree-elevate quadratic to cubic, then use the cubic offset algorithm
+	// This ensures quadratics use the same tolerance-driven recursive approach
+	//
+	// Quadratic: P0, P1, P2
+	// Cubic: Q0, Q1, Q2, Q3
+	//
+	// Degree elevation formula:
+	//   Q0 = P0
+	//   Q1 = P0 + 2/3*(P1 - P0) = P0/3 + 2*P1/3
+	//   Q2 = P2 + 2/3*(P1 - P2) = 2*P1/3 + P2/3
+	//   Q3 = P2
+
+	vec2 cubic[4];
+	cubic[0] = controlPoints[0];
+	cubic[1] = controlPoints[0] / 3.0f + controlPoints[1] * (2.0f / 3.0f);
+	cubic[2] = controlPoints[1] * (2.0f / 3.0f) + controlPoints[2] / 3.0f;
+	cubic[3] = controlPoints[2];
+
+	// Now use the cubic offset algorithm
+	offsetBezierSegmentCubic( cubic, distance, tolerance, result );
+}
+
+// Add a join between two segments at a corner
+void addOffsetJoin( const vec2& point, const vec2& tangent1, const vec2& tangent2,
+                    float distance, const Path2d::OffsetOptions& options, Path2d& result )
+{
+	vec2 normal1 = calcOffsetNormal( tangent1 );
+	vec2 normal2 = calcOffsetNormal( tangent2 );
+
+	// Check if normals are very similar (smooth join not needed)
+	float dot = glm::dot( normal1, normal2 );
+	if( dot > 0.9999f ) {
+		return;  // Nearly parallel, no join needed
+	}
+
+	vec2 offset1 = point + normal1 * distance;
+	vec2 offset2 = point + normal2 * distance;
+
+	// Determine if this is an outer or inner corner
+	// Cross product tells us the turn direction
+	float cross = tangent1.x * tangent2.y - tangent1.y * tangent2.x;
+	bool isOuterCorner = (distance > 0.0f) ? (cross < 0.0f) : (cross > 0.0f);
+
+	if( !isOuterCorner ) {
+		// Inner corner - simple bevel (line to next offset point)
+		result.lineTo( offset2 );
+		return;
+	}
+
+	// Outer corner - apply join style
+	switch( options.joinStyle ) {
+		case Path2d::OffsetOptions::ROUND: {
+			// Add circular arc from offset1 to offset2
+			float angle1 = std::atan2( normal1.y, normal1.x );
+			float angle2 = std::atan2( normal2.y, normal2.x );
+			float angleDiff = angle2 - angle1;
+
+			// Normalize to [-π, π]
+			while( angleDiff > M_PI ) angleDiff -= 2.0f * static_cast<float>(M_PI);
+			while( angleDiff < -M_PI ) angleDiff += 2.0f * static_cast<float>(M_PI);
+
+			// Only add arc if angle is significant
+			if( std::abs(angleDiff) > 0.01f ) {
+				// Calculate steps based on tolerance
+				// For circular arc of radius R, max deviation is R(1 - cos(θ/2))
+				// We want: R(1 - cos(θ/2)) ≤ tolerance
+				// Use double precision to avoid float precision issues with large radii
+				double radius = std::abs(distance);
+				double maxAnglePerStep;
+				if( options.tolerance > 0.0001 && radius > 0.0001 ) {
+					// Calculate angle step from tolerance
+					double ratio = std::max( 1e-6, std::min( 2.0, (double)options.tolerance / radius ) );
+					maxAnglePerStep = 2.0 * std::acos( 1.0 - ratio );
+
+					// Guard against very small angles that could cause huge step counts
+					maxAnglePerStep = std::max( 0.001, maxAnglePerStep );  // Min ~0.06 degrees
+				}
+				else {
+					// Fallback to reasonable default
+					maxAnglePerStep = M_PI / 8.0;  // 22.5 degrees
+				}
+
+				int steps = std::max( 2, std::min( 1000, (int)std::ceil(std::abs(angleDiff) / maxAnglePerStep) ) );
+				for( int i = 1; i <= steps; ++i ) {
+					float t = (float)i / steps;
+					float a = angle1 + angleDiff * t;
+					vec2 n = vec2( std::cos(a), std::sin(a) );
+					result.lineTo( point + n * (float)radius );
+				}
+			}
+			else {
+				result.lineTo( offset2 );
+			}
+		}
+		break;
+
+		case Path2d::OffsetOptions::MITER: {
+			// Calculate miter point (intersection of offset lines)
+			// Line 1: offset1 + t * tangent1
+			// Line 2: offset2 + s * tangent2
+			// Solve for intersection
+
+			vec2 diff = offset2 - offset1;
+			float denom = tangent1.x * tangent2.y - tangent1.y * tangent2.x;
+
+			if( std::abs(denom) > 0.0001f ) {
+				float t = (diff.x * tangent2.y - diff.y * tangent2.x) / denom;
+				vec2 miterPoint = offset1 + tangent1 * t;
+
+				// Check miter limit
+				float miterLength = glm::length( miterPoint - point );
+				float miterRatio = miterLength / std::abs(distance);
+
+				if( miterRatio <= options.miterLimit ) {
+					// Miter within limit
+					result.lineTo( miterPoint );
+					result.lineTo( offset2 );
+				}
+				else {
+					// Miter exceeds limit, fall back to bevel
+					result.lineTo( offset2 );
+				}
+			}
+			else {
+				// Nearly parallel, use bevel
+				result.lineTo( offset2 );
+			}
+		}
+		break;
+
+		case Path2d::OffsetOptions::BEVEL:
+			// Simple line to next offset point
+			result.lineTo( offset2 );
+		break;
+	}
+}
+
+} // anonymous namespace
+
+Path2d Path2d::calcOffsetCurve( float distance, float tolerance ) const
+{
+	OffsetOptions options;
+	options.tolerance = tolerance;
+	return calcOffsetCurve( distance, options );
+}
+
+Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) const
+{
+	Path2d result;
+
+	if( mSegments.empty() || std::abs(distance) < 0.0001f ) {
+		return result;
+	}
+
+	size_t firstPoint = 0;
+	vec2 prevTangent;
+	bool hasPrevTangent = false;
+
+	// Track contour start for closed paths
+	vec2 contourFirstTangent;
+	vec2 contourStartPoint;
+	vec2 contourStartOffset;
+	bool hasContourStart = false;
+
+	for( size_t s = 0; s < mSegments.size(); ++s ) {
+		switch( mSegments[s] ) {
+			case MOVETO: {
+				// Start new contour - reset state
+				hasPrevTangent = false;
+				hasContourStart = false;
+			}
+			break;
+
+			case LINETO: {
+				vec2 p0 = mPoints[firstPoint];
+				vec2 p1 = mPoints[firstPoint + 1];
+
+				// Calculate tangent safely
+				vec2 tangent;
+				if( !calcSafeTangent( p0, p1, tangent ) ) {
+					// Degenerate segment, skip it
+					break;
+				}
+
+				vec2 off0, off1;
+				if( !offsetLinearSegment( p0, p1, distance, off0, off1 ) ) {
+					break;  // Degenerate segment
+				}
+
+				if( !hasContourStart ) {
+					// First segment of contour
+					result.moveTo( off0 );
+					contourStartPoint = p0;
+					contourStartOffset = off0;
+					contourFirstTangent = tangent;
+					hasContourStart = true;
+				}
+				else if( hasPrevTangent ) {
+					addOffsetJoin( p0, prevTangent, tangent, distance, options, result );
+				}
+
+				result.lineTo( off1 );
+				prevTangent = tangent;
+				hasPrevTangent = true;
+			}
+			break;
+
+			case QUADTO: {
+				vec2 cp[3] = { mPoints[firstPoint], mPoints[firstPoint + 1], mPoints[firstPoint + 2] };
+
+				// Calculate start tangent safely
+				vec2 tangent;
+				if( !calcSafeTangent( cp[0], cp[1], tangent ) ) {
+					// Try using end point if control point is degenerate
+					if( !calcSafeTangent( cp[0], cp[2], tangent ) ) {
+						break;  // Completely degenerate
+					}
+				}
+
+				if( !hasContourStart ) {
+					// First segment of contour
+					vec2 startOffset = cp[0] + calcOffsetNormal(tangent) * distance;
+					result.moveTo( startOffset );
+					contourStartPoint = cp[0];
+					contourStartOffset = startOffset;
+					contourFirstTangent = tangent;
+					hasContourStart = true;
+				}
+				else if( hasPrevTangent ) {
+					addOffsetJoin( cp[0], prevTangent, tangent, distance, options, result );
+				}
+
+				offsetBezierSegment( cp, 2, distance, options.tolerance, result );
+
+				// Calculate end tangent safely
+				vec2 endTangent;
+				if( calcSafeTangent( cp[1], cp[2], endTangent ) || calcSafeTangent( cp[0], cp[2], endTangent ) ) {
+					prevTangent = endTangent;
+					hasPrevTangent = true;
+				}
+			}
+			break;
+
+			case CUBICTO: {
+				vec2 cp[4] = { mPoints[firstPoint], mPoints[firstPoint + 1],
+				               mPoints[firstPoint + 2], mPoints[firstPoint + 3] };
+
+				// Calculate start tangent safely
+				vec2 tangent;
+				if( !calcSafeTangent( cp[0], cp[1], tangent ) ) {
+					// Try using control point 2 or end point
+					if( !calcSafeTangent( cp[0], cp[2], tangent ) ) {
+						if( !calcSafeTangent( cp[0], cp[3], tangent ) ) {
+							break;  // Completely degenerate
+						}
+					}
+				}
+
+				if( !hasContourStart ) {
+					// First segment of contour
+					vec2 startOffset = cp[0] + calcOffsetNormal(tangent) * distance;
+					result.moveTo( startOffset );
+					contourStartPoint = cp[0];
+					contourStartOffset = startOffset;
+					contourFirstTangent = tangent;
+					hasContourStart = true;
+				}
+				else if( hasPrevTangent ) {
+					addOffsetJoin( cp[0], prevTangent, tangent, distance, options, result );
+				}
+
+				offsetBezierSegment( cp, 3, distance, options.tolerance, result );
+
+				// Calculate end tangent safely
+				vec2 endTangent;
+				if( calcSafeTangent( cp[2], cp[3], endTangent ) ||
+				    calcSafeTangent( cp[1], cp[3], endTangent ) ||
+				    calcSafeTangent( cp[0], cp[3], endTangent ) ) {
+					prevTangent = endTangent;
+					hasPrevTangent = true;
+				}
+			}
+			break;
+
+			case CLOSE: {
+				// Generate join between last tangent and first tangent of contour
+				if( hasContourStart && hasPrevTangent ) {
+					addOffsetJoin( contourStartPoint, prevTangent, contourFirstTangent, distance, options, result );
+					// Note: close() will automatically add the closing segment
+				}
+
+				if( hasContourStart && !result.empty() ) {
+					result.close();
+				}
+
+				// Reset for next contour
+				hasPrevTangent = false;
+				hasContourStart = false;
+			}
+			break;
+		}
+
+		firstPoint += Path2d::sSegmentTypePointCounts[mSegments[s]];
+	}
+
+	return result;
+}
 
 } // namespace cinder

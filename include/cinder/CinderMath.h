@@ -31,6 +31,7 @@
 #include <climits>
 #include <cfloat>
 #include <functional>
+#include <type_traits>
 #if defined( CINDER_MSW )
 	#undef min
 	#undef max
@@ -499,16 +500,28 @@ T findRootYuksel( F func, DF deriv, T lower, T upper, T val_lower, T val_upper, 
 			return x;
 
 		bool root_in_first_half = different_signs(val_lower, val_x);
-		if( root_in_first_half )
+		if( root_in_first_half ) {
 			upper = x;
-		else
+			val_upper = val_x;
+		}
+		else {
 			lower = x;
+			val_lower = val_x;
+		}
+
+		// Fallback to bisection when derivative is unusable
+		if( deriv_x == T(0) || !std::isfinite(deriv_x) ) {
+			T new_x = lower + (upper - lower) / T(2);
+			step = new_x - x;
+			x = new_x;
+			continue;
+		}
 
 		step = -val_x / deriv_x;
 		T new_x = x + step;
 
 		// Fall back to bisection if Newton step goes out of bounds
-		if( new_x <= lower || new_x >= upper ) {
+		if( !std::isfinite(new_x) || new_x <= lower || new_x >= upper ) {
 			new_x = lower + (upper - lower) / T(2);
 			if( new_x == upper || new_x == lower )
 				return new_x;
@@ -538,48 +551,55 @@ int solveCubicYuksel( T a, T b, T c, T d, T result[3], T x_error = T(1e-6) )
 	if( a == T(0) )
 		return solveQuadraticStable( b, c, d, result );
 
-	auto eval = [=](T x) { return ((a * x + b) * x + c) * x + d; };
-	auto deriv_eval = [=](T x) { return (T(3) * a * x + T(2) * b) * x + c; };
+	using AccT = typename std::conditional<(std::numeric_limits<T>::digits < std::numeric_limits<double>::digits), double, T>::type;
+
+	const AccT aAcc = static_cast<AccT>(a);
+	const AccT bAcc = static_cast<AccT>(b);
+	const AccT cAcc = static_cast<AccT>(c);
+	const AccT dAcc = static_cast<AccT>(d);
+	const AccT xErrorAcc = static_cast<AccT>(x_error);
+
+	auto eval = [=](AccT x) { return ((aAcc * x + bAcc) * x + cAcc) * x + dAcc; };
+	auto deriv_eval = [=](AccT x) { return (AccT(3) * aAcc * x + AccT(2) * bAcc) * x + cAcc; };
 
 	// Helper to find critical points with overflow handling
-	auto find_critical_points = [&](T &crit0, T &crit1) -> int {
-		T a_deriv = T(3) * a;
-		T b_2_deriv = b;  // b/2 for the derivative
-		T c_deriv = c;
-		T disc_4 = b_2_deriv * b_2_deriv - a_deriv * c_deriv;
+	auto find_critical_points = [&](AccT &crit0, AccT &crit1) -> int {
+		AccT a_deriv = AccT(3) * aAcc;
+		AccT b_2_deriv = bAcc;  // b/2 for the derivative
+		AccT c_deriv = cAcc;
+		AccT disc_4 = b_2_deriv * b_2_deriv - a_deriv * c_deriv;
 
 		// Check for overflow/underflow
 		if( !std::isfinite(disc_4) ) {
 			// Rescale the cubic (similar to reference rescaling by 2^-515)
-			T scale = std::pow(T(2), T(-515));
-			T a_scaled = a * scale;
-			T b_scaled = b * scale;
-			T c_scaled = c * scale;
-			T d_scaled = d * scale;
+			AccT scale = std::pow(AccT(2), AccT(-515));
+			AccT a_scaled = aAcc * scale;
+			AccT b_scaled = bAcc * scale;
+			AccT c_scaled = cAcc * scale;
 
-			T a_deriv_scaled = T(3) * a_scaled;
-			T b_2_deriv_scaled = b_scaled;
-			T c_deriv_scaled = c_scaled;
-			T disc_4_scaled = b_2_deriv_scaled * b_2_deriv_scaled - a_deriv_scaled * c_deriv_scaled;
+			AccT a_deriv_scaled = AccT(3) * a_scaled;
+			AccT b_2_deriv_scaled = b_scaled;
+			AccT c_deriv_scaled = c_scaled;
+			AccT disc_4_scaled = b_2_deriv_scaled * b_2_deriv_scaled - a_deriv_scaled * c_deriv_scaled;
 
-			if( !std::isfinite(disc_4_scaled) || disc_4_scaled <= T(0) )
+			if( !std::isfinite(disc_4_scaled) || disc_4_scaled <= AccT(0) )
 				return 0;
 
-			T q = -(b_2_deriv_scaled + std::copysign(math<T>::sqrt(disc_4_scaled), b_2_deriv_scaled));
-			T r0 = q / a_deriv_scaled;
-			T r1 = c_deriv_scaled / q;
+			AccT q = -(b_2_deriv_scaled + std::copysign(math<AccT>::sqrt(disc_4_scaled), b_2_deriv_scaled));
+			AccT r0 = q / a_deriv_scaled;
+			AccT r1 = c_deriv_scaled / q;
 			// Scale back
-			crit0 = math<T>::min(r0, r1) / scale;
-			crit1 = math<T>::max(r0, r1) / scale;
+			crit0 = math<AccT>::min(r0, r1) / scale;
+			crit1 = math<AccT>::max(r0, r1) / scale;
 			return 2;
 		}
 
-		if( disc_4 > T(0) ) {
-			T q = -(b_2_deriv + std::copysign(math<T>::sqrt(disc_4), b_2_deriv));
-			T r0 = q / a_deriv;
-			T r1 = c_deriv / q;
-			crit0 = math<T>::min(r0, r1);
-			crit1 = math<T>::max(r0, r1);
+		if( disc_4 > AccT(0) ) {
+			AccT q = -(b_2_deriv + std::copysign(math<AccT>::sqrt(disc_4), b_2_deriv));
+			AccT r0 = q / a_deriv;
+			AccT r1 = c_deriv / q;
+			crit0 = math<AccT>::min(r0, r1);
+			crit1 = math<AccT>::max(r0, r1);
 			return 2;
 		}
 
@@ -587,81 +607,85 @@ int solveCubicYuksel( T a, T b, T c, T d, T result[3], T x_error = T(1e-6) )
 	};
 
 	// Use bounds for search interval
-	T bound = std::max({math<T>::abs(a), math<T>::abs(b), math<T>::abs(c), math<T>::abs(d)}) * T(10) + T(100);
+	AccT bound = std::max({math<AccT>::abs(aAcc), math<AccT>::abs(bAcc), math<AccT>::abs(cAcc), math<AccT>::abs(dAcc)}) * AccT(10) + AccT(100);
 
 	// Find first root
-	T crit[2];
+	AccT crit[2];
 	int numCrit = find_critical_points(crit[0], crit[1]);
 
 	int numRoots = 0;
-	T first_root = std::numeric_limits<T>::quiet_NaN();
+	AccT first_root = std::numeric_limits<AccT>::quiet_NaN();
 
 	if( numCrit == 2 ) {
 		// Check intervals: (-bound, crit[0]), (crit[0], crit[1]), (crit[1], bound)
-		T endpoints[] = {-bound, crit[0], crit[1], bound};
+		AccT endpoints[] = {-bound, crit[0], crit[1], bound};
 
 		for( int i = 0; i < 3; ++i ) {
-			T lo = endpoints[i];
-			T hi = endpoints[i + 1];
+			AccT lo = endpoints[i];
+			AccT hi = endpoints[i + 1];
 
 			if( hi <= lo )
 				continue;
 
-			T val_lo = eval(lo);
-			T val_hi = eval(hi);
+			AccT val_lo = eval(lo);
+			AccT val_hi = eval(hi);
 
 			// Check for endpoint roots
-			T root_tolerance = std::numeric_limits<T>::epsilon() * math<T>::max(math<T>::abs(lo), math<T>::abs(hi)) * T(10);
-			if( math<T>::abs(val_lo) <= root_tolerance ) {
+			AccT root_tolerance = std::numeric_limits<AccT>::epsilon() * math<AccT>::max(math<AccT>::abs(lo), math<AccT>::abs(hi)) * AccT(10);
+			if( math<AccT>::abs(val_lo) <= root_tolerance ) {
 				first_root = lo;
 				break;
 			}
-			if( math<T>::abs(val_hi) <= root_tolerance ) {
+			if( math<AccT>::abs(val_hi) <= root_tolerance ) {
 				first_root = hi;
 				break;
 			}
 
 			// Sign change indicates root
-			if( (val_lo < T(0)) != (val_hi < T(0)) ) {
-				first_root = findRootYuksel(eval, deriv_eval, lo, hi, val_lo, val_hi, x_error);
+			if( (val_lo < AccT(0)) != (val_hi < AccT(0)) ) {
+				first_root = findRootYuksel(eval, deriv_eval, lo, hi, val_lo, val_hi, xErrorAcc);
 				break;
 			}
 		}
 	} else {
 		// Monotonic cubic - at most one root
-		T val_lo = eval(-bound);
-		T val_hi = eval(bound);
+		AccT val_lo = eval(-bound);
+		AccT val_hi = eval(bound);
 
-		T root_tolerance = std::numeric_limits<T>::epsilon() * bound * T(10);
-		if( math<T>::abs(val_lo) <= root_tolerance ) {
+		AccT root_tolerance = std::numeric_limits<AccT>::epsilon() * bound * AccT(10);
+		if( math<AccT>::abs(val_lo) <= root_tolerance ) {
 			first_root = -bound;
-		} else if( math<T>::abs(val_hi) <= root_tolerance ) {
+		} else if( math<AccT>::abs(val_hi) <= root_tolerance ) {
 			first_root = bound;
-		} else if( (val_lo < T(0)) != (val_hi < T(0)) ) {
-			first_root = findRootYuksel(eval, deriv_eval, -bound, bound, val_lo, val_hi, x_error);
+		} else if( (val_lo < AccT(0)) != (val_hi < AccT(0)) ) {
+			first_root = findRootYuksel(eval, deriv_eval, -bound, bound, val_lo, val_hi, xErrorAcc);
 		}
 	}
 
 	// If we found a first root, deflate and solve the quadratic
 	if( std::isfinite(first_root) ) {
-		result[numRoots++] = first_root;
+		AccT rootsAcc[3];
+		rootsAcc[numRoots++] = first_root;
 
 		// Deflate cubic to get quadratic
-		T quad[3];
-		deflateCubic(d, c, b, a, first_root, quad);
+		AccT quad[3];
+		deflateCubic(dAcc, cAcc, bAcc, aAcc, first_root, quad);
 
 		// Solve deflated quadratic using stable solver
-		T quad_roots[2];
+		AccT quad_roots[2];
 		int numQuadRoots = solveQuadraticStable(quad[2], quad[1], quad[0], quad_roots);
 
 		// Add roots from deflated quadratic
 		for( int i = 0; i < numQuadRoots; ++i ) {
-			result[numRoots++] = quad_roots[i];
+			rootsAcc[numRoots++] = quad_roots[i];
 		}
 
 		// Sort all roots
 		if( numRoots > 1 )
-			std::sort(result, result + numRoots);
+			std::sort(rootsAcc, rootsAcc + numRoots);
+
+		for( int i = 0; i < numRoots; ++i )
+			result[i] = static_cast<T>(rootsAcc[i]);
 	}
 
 	return numRoots;
@@ -689,7 +713,18 @@ bool factorQuarticInner( T a, T b, T c, T d, bool rescale, T &alpha_1, T &beta_1
 
 	// Calculate discriminant to find parameter s
 	T disc = T(9) * a * a - T(24) * b;
-	T s = (disc >= T(0)) ? (T(-2) * b / (T(3) * a + std::copysign(math<T>::sqrt(disc), a))) : (T(-0.25) * a);
+	T s;
+	if( disc >= T(0) ) {
+		T denom = T(3) * a + std::copysign(math<T>::sqrt(disc), a);
+		// Handle edge case where a=0 and b=0 (causes 0/0)
+		if( math<T>::abs(denom) < std::numeric_limits<T>::epsilon() ) {
+			s = T(0);
+		} else {
+			s = T(-2) * b / denom;
+		}
+	} else {
+		s = T(-0.25) * a;
+	}
 
 	// Compute shifted coefficients
 	T a_prime = a + T(4) * s;
@@ -734,13 +769,19 @@ bool factorQuarticInner( T a, T b, T c, T d, bool rescale, T &alpha_1, T &beta_1
 		}
 	}
 
+	const T r_tolerance = std::numeric_limits<T>::epsilon() * math<T>::max(T(1), math<T>::abs(g_prime));
+	bool approx_zero_r = math<T>::abs(r) <= r_tolerance;
+
 	// Special case: r == 0 with scaling active
-	if( use_k && r == T(0) ) {
+	if( use_k && approx_zero_r ) {
 		if( g_prime > T(0) ) {
 			phi_0 = T(0);
 		} else {
 			phi_0 = math<T>::sqrt(-g_prime);
 		}
+	}
+	else if( approx_zero_r && g_prime >= T(0) ) {
+		phi_0 = T(0);
 	}
 	// Three real roots case
 	else if( (use_k && k_val < T(0)) || (!use_k && r * r < q * q * q) ) {
@@ -1117,19 +1158,29 @@ glm::tvec2<T, glm::defaultp> secondDerivativeCubicBezier( const glm::tvec2<T, gl
 }
 
 //! Returns the curvature κ of a 2D curve given first and second derivatives. κ = (x' × x'') / |x'|³. Returns 0 if velocity is near zero.
+//! \param lengthScale A characteristic length of the curve (e.g., bounding box diagonal, control point span). Used to scale the zero-velocity threshold.
+//! \param epsilon Machine epsilon for the type, used with lengthScale to determine when velocity is negligible
 template<typename T>
-T curvature( const glm::tvec2<T, glm::defaultp> &firstDeriv, const glm::tvec2<T, glm::defaultp> &secondDeriv )
+T curvature( const glm::tvec2<T, glm::defaultp> &firstDeriv, const glm::tvec2<T, glm::defaultp> &secondDeriv, T lengthScale, T epsilon = std::numeric_limits<T>::epsilon() )
 {
 	// Cross product in 2D: x' × x'' = x'[0]*x''[1] - x'[1]*x''[0]
 	T cross = firstDeriv.x * secondDeriv.y - firstDeriv.y * secondDeriv.x;
 	T speedSq = firstDeriv.x * firstDeriv.x + firstDeriv.y * firstDeriv.y;
 
-	// Handle near-zero velocity (cusps/stationary points)
-	if( speedSq < std::numeric_limits<T>::epsilon() )
+	// Handle near-zero velocity (cusps/stationary points) with scale-aware threshold
+	T threshold = lengthScale * epsilon;
+	if( speedSq <= threshold * threshold )
 		return T(0);
 
 	T speed = math<T>::sqrt( speedSq );
 	return cross / (speed * speedSq);
+}
+
+//! Returns the curvature κ of a 2D curve given first and second derivatives. Uses lengthScale=1 for backward compatibility.
+template<typename T>
+inline T curvature( const glm::tvec2<T, glm::defaultp> &firstDeriv, const glm::tvec2<T, glm::defaultp> &secondDeriv )
+{
+	return curvature( firstDeriv, secondDeriv, T(1) );
 }
 
 //! Returns the curvature of a quadratic Bezier curve at parameter t
@@ -1138,7 +1189,13 @@ T curvatureQuadraticBezier( const glm::tvec2<T, glm::defaultp> controlPoints[3],
 {
 	glm::tvec2<T, glm::defaultp> d1 = derivativeQuadraticBezier( controlPoints, t );
 	glm::tvec2<T, glm::defaultp> d2 = secondDerivativeQuadraticBezier( controlPoints );
-	return curvature( d1, d2 );
+
+	// Use control point span as characteristic length scale
+	T lengthScale = glm::length( controlPoints[2] - controlPoints[0] );
+	if( lengthScale < T(1) )
+		lengthScale = T(1);  // Avoid degenerate scale for very small curves
+
+	return curvature( d1, d2, lengthScale );
 }
 
 //! Returns the curvature of a cubic Bezier curve at parameter t
@@ -1147,7 +1204,13 @@ T curvatureCubicBezier( const glm::tvec2<T, glm::defaultp> controlPoints[4], T t
 {
 	glm::tvec2<T, glm::defaultp> d1 = derivativeCubicBezier( controlPoints, t );
 	glm::tvec2<T, glm::defaultp> d2 = secondDerivativeCubicBezier( controlPoints, t );
-	return curvature( d1, d2 );
+
+	// Use control point span as characteristic length scale
+	T lengthScale = glm::length( controlPoints[3] - controlPoints[0] );
+	if( lengthScale < T(1) )
+		lengthScale = T(1);  // Avoid degenerate scale for very small curves
+
+	return curvature( d1, d2, lengthScale );
 }
 
 //! Subdivides a 2D quadratic Bezier at parameter t into two curves. First curve: dst[0..2], second curve: dst[2..4]. Buffer dst must have space for 5 points.

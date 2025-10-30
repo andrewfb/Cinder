@@ -45,6 +45,30 @@ add_executable(QuarticTrace
     src/QuarticTrace.cpp
 )
 
+add_executable(CubicDebug
+    src/CubicDebug.cpp
+)
+
+add_executable(QuarticDebug2
+    src/QuarticDebug2.cpp
+)
+
+add_executable(CubicSolverComparison
+    src/CubicSolverComparison.cpp
+)
+
+add_executable(OffsetCurveTest
+    src/OffsetCurveTest.cpp
+)
+
+add_executable(OffsetCuspTest
+    src/OffsetCuspTest.cpp
+)
+
+add_executable(MiterJoinTest
+    src/MiterJoinTest.cpp
+)
+
 # Include directories
 target_include_directories(CinderBenchmarks PRIVATE
     ${CINDER_INCLUDE_DIR}
@@ -62,6 +86,30 @@ target_include_directories(QuarticTrace PRIVATE
     ${CINDER_INCLUDE_DIR}
 )
 
+target_include_directories(CubicDebug PRIVATE
+    ${CINDER_INCLUDE_DIR}
+)
+
+target_include_directories(QuarticDebug2 PRIVATE
+    ${CINDER_INCLUDE_DIR}
+)
+
+target_include_directories(CubicSolverComparison PRIVATE
+    ${CINDER_INCLUDE_DIR}
+)
+
+target_include_directories(OffsetCurveTest PRIVATE
+    ${CINDER_INCLUDE_DIR}
+)
+
+target_include_directories(OffsetCuspTest PRIVATE
+    ${CINDER_INCLUDE_DIR}
+)
+
+target_include_directories(MiterJoinTest PRIVATE
+    ${CINDER_INCLUDE_DIR}
+)
+
 # Link against Cinder
 target_link_libraries(CinderBenchmarks PRIVATE
     ${CINDER_LIB_DIR}/libcinder.a
@@ -76,6 +124,30 @@ target_link_libraries(QuarticDebug PRIVATE
 )
 
 target_link_libraries(QuarticTrace PRIVATE
+    ${CINDER_LIB_DIR}/libcinder.a
+)
+
+target_link_libraries(CubicDebug PRIVATE
+    ${CINDER_LIB_DIR}/libcinder.a
+)
+
+target_link_libraries(QuarticDebug2 PRIVATE
+    ${CINDER_LIB_DIR}/libcinder.a
+)
+
+target_link_libraries(CubicSolverComparison PRIVATE
+    ${CINDER_LIB_DIR}/libcinder.a
+)
+
+target_link_libraries(OffsetCurveTest PRIVATE
+    ${CINDER_LIB_DIR}/libcinder.a
+)
+
+target_link_libraries(OffsetCuspTest PRIVATE
+    ${CINDER_LIB_DIR}/libcinder.a
+)
+
+target_link_libraries(MiterJoinTest PRIVATE
     ${CINDER_LIB_DIR}/libcinder.a
 )
 
@@ -148,6 +220,90 @@ if(APPLE)
         ${COREFOUNDATION_LIBRARY}
         ${IOSURFACE_LIBRARY}
     )
+
+    target_link_libraries(CubicDebug PRIVATE
+        ${COCOA_LIBRARY}
+        ${OPENGL_LIBRARY}
+        ${COREAUDIO_LIBRARY}
+        ${AUDIOTOOLBOX_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${AVFOUNDATION_LIBRARY}
+        ${ACCELERATE_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+        ${IOSURFACE_LIBRARY}
+    )
+
+    target_link_libraries(QuarticDebug2 PRIVATE
+        ${COCOA_LIBRARY}
+        ${OPENGL_LIBRARY}
+        ${COREAUDIO_LIBRARY}
+        ${AUDIOTOOLBOX_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${AVFOUNDATION_LIBRARY}
+        ${ACCELERATE_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+        ${IOSURFACE_LIBRARY}
+    )
+
+    target_link_libraries(CubicSolverComparison PRIVATE
+        ${COCOA_LIBRARY}
+        ${OPENGL_LIBRARY}
+        ${COREAUDIO_LIBRARY}
+        ${AUDIOTOOLBOX_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${AVFOUNDATION_LIBRARY}
+        ${ACCELERATE_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+        ${IOSURFACE_LIBRARY}
+    )
+
+    target_link_libraries(OffsetCurveTest PRIVATE
+        ${COCOA_LIBRARY}
+        ${OPENGL_LIBRARY}
+        ${COREAUDIO_LIBRARY}
+        ${AUDIOTOOLBOX_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${AVFOUNDATION_LIBRARY}
+        ${ACCELERATE_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+        ${IOSURFACE_LIBRARY}
+    )
+
+    target_link_libraries(OffsetCuspTest PRIVATE
+        ${COCOA_LIBRARY}
+        ${OPENGL_LIBRARY}
+        ${COREAUDIO_LIBRARY}
+        ${AUDIOTOOLBOX_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${AVFOUNDATION_LIBRARY}
+        ${ACCELERATE_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+        ${IOSURFACE_LIBRARY}
+    )
+
+    target_link_libraries(MiterJoinTest PRIVATE
+        ${COCOA_LIBRARY}
+        ${OPENGL_LIBRARY}
+        ${COREAUDIO_LIBRARY}
+        ${AUDIOTOOLBOX_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${AVFOUNDATION_LIBRARY}
+        ${ACCELERATE_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+        ${IOSURFACE_LIBRARY}
+    )
 elseif(UNIX AND NOT APPLE)
     find_package(OpenGL REQUIRED)
     target_link_libraries(CinderBenchmarks PRIVATE
@@ -170,6 +326,36 @@ elseif(UNIX AND NOT APPLE)
         pthread
         dl
     )
+    target_link_libraries(CubicDebug PRIVATE
+        OpenGL::GL
+        pthread
+        dl
+    )
+    target_link_libraries(QuarticDebug2 PRIVATE
+        OpenGL::GL
+        pthread
+        dl
+    )
+    target_link_libraries(CubicSolverComparison PRIVATE
+        OpenGL::GL
+        pthread
+        dl
+    )
+    target_link_libraries(OffsetCurveTest PRIVATE
+        OpenGL::GL
+        pthread
+        dl
+    )
+    target_link_libraries(OffsetCuspTest PRIVATE
+        OpenGL::GL
+        pthread
+        dl
+    )
+    target_link_libraries(MiterJoinTest PRIVATE
+        OpenGL::GL
+        pthread
+        dl
+    )
 elseif(WIN32)
     target_link_libraries(CinderBenchmarks PRIVATE
         opengl32
@@ -181,6 +367,24 @@ elseif(WIN32)
         opengl32
     )
     target_link_libraries(QuarticTrace PRIVATE
+        opengl32
+    )
+    target_link_libraries(CubicDebug PRIVATE
+        opengl32
+    )
+    target_link_libraries(QuarticDebug2 PRIVATE
+        opengl32
+    )
+    target_link_libraries(CubicSolverComparison PRIVATE
+        opengl32
+    )
+    target_link_libraries(OffsetCurveTest PRIVATE
+        opengl32
+    )
+    target_link_libraries(OffsetCuspTest PRIVATE
+        opengl32
+    )
+    target_link_libraries(MiterJoinTest PRIVATE
         opengl32
     )
 endif()
@@ -206,6 +410,36 @@ set_target_properties(QuarticTrace PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+set_target_properties(CubicDebug PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+
+set_target_properties(QuarticDebug2 PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+
+set_target_properties(CubicSolverComparison PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+
+set_target_properties(OffsetCurveTest PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+
+set_target_properties(OffsetCuspTest PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+
+set_target_properties(MiterJoinTest PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+
 # Optimization flags for Release
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     if(MSVC)
@@ -218,3 +452,127 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 message(STATUS "Benchmark executable will be built in: ${CMAKE_CURRENT_BINARY_DIR}")
+
+add_executable(ClosedPathTest
+    src/ClosedPathTest.cpp
+)
+
+target_include_directories(ClosedPathTest PRIVATE
+    ${CINDER_INCLUDE_DIR}
+)
+
+target_link_libraries(ClosedPathTest PRIVATE
+    ${CINDER_LIB_DIR}/libcinder.a
+)
+
+if(APPLE)
+    target_link_libraries(ClosedPathTest PRIVATE
+        ${COCOA_LIBRARY}
+        ${OPENGL_LIBRARY}
+        ${COREAUDIO_LIBRARY}
+        ${AUDIOTOOLBOX_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${AVFOUNDATION_LIBRARY}
+        ${ACCELERATE_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+        ${IOSURFACE_LIBRARY}
+    )
+elseif(UNIX AND NOT APPLE)
+    target_link_libraries(ClosedPathTest PRIVATE
+        OpenGL::GL
+        pthread
+        dl
+    )
+elseif(WIN32)
+    target_link_libraries(ClosedPathTest PRIVATE
+        opengl32
+    )
+endif()
+
+set_target_properties(ClosedPathTest PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_executable(OffsetDistanceTest
+    src/OffsetDistanceTest.cpp
+)
+
+add_executable(QuadraticConversionTest
+    src/QuadraticConversionTest.cpp
+)
+
+target_include_directories(OffsetDistanceTest PRIVATE
+    ${CINDER_INCLUDE_DIR}
+)
+
+target_include_directories(QuadraticConversionTest PRIVATE
+    ${CINDER_INCLUDE_DIR}
+)
+
+target_link_libraries(OffsetDistanceTest PRIVATE
+    ${CINDER_LIB_DIR}/libcinder.a
+)
+
+target_link_libraries(QuadraticConversionTest PRIVATE
+    ${CINDER_LIB_DIR}/libcinder.a
+)
+
+if(APPLE)
+    target_link_libraries(OffsetDistanceTest PRIVATE
+        ${COCOA_LIBRARY}
+        ${OPENGL_LIBRARY}
+        ${COREAUDIO_LIBRARY}
+        ${AUDIOTOOLBOX_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${AVFOUNDATION_LIBRARY}
+        ${ACCELERATE_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+        ${IOSURFACE_LIBRARY}
+    )
+    target_link_libraries(QuadraticConversionTest PRIVATE
+        ${COCOA_LIBRARY}
+        ${OPENGL_LIBRARY}
+        ${COREAUDIO_LIBRARY}
+        ${AUDIOTOOLBOX_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${AVFOUNDATION_LIBRARY}
+        ${ACCELERATE_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREFOUNDATION_LIBRARY}
+        ${IOSURFACE_LIBRARY}
+    )
+elseif(UNIX AND NOT APPLE)
+    target_link_libraries(OffsetDistanceTest PRIVATE
+        OpenGL::GL
+        pthread
+        dl
+    )
+    target_link_libraries(QuadraticConversionTest PRIVATE
+        OpenGL::GL
+        pthread
+        dl
+    )
+elseif(WIN32)
+    target_link_libraries(OffsetDistanceTest PRIVATE
+        opengl32
+    )
+    target_link_libraries(QuadraticConversionTest PRIVATE
+        opengl32
+    )
+endif()
+
+set_target_properties(OffsetDistanceTest PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+
+set_target_properties(QuadraticConversionTest PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
