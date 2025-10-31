@@ -32,6 +32,9 @@
 
 namespace cinder {
 
+// Forward declaration
+class Shape2d;
+
 class CI_API Path2d {
  public:
 	Path2d() {}
@@ -210,6 +213,7 @@ class CI_API Path2d {
 	float	calcTimeForDistance( float distance, bool wrap = true, float tolerance = 1.0e-03f, int maxIterations = 16 ) const;
 
 	//! Options for offset curve calculation
+	//! Options for calcOffsetCurve() - single-sided parallel curve offset
 	struct OffsetOptions {
 		//! Maximum approximation error in path units
 		float tolerance = 0.01f;
@@ -223,23 +227,56 @@ class CI_API Path2d {
 
 		//! Maximum miter length / offset distance (for MITER joins)
 		float miterLimit = 4.0f;
-
-		//! Cap style for open path endpoints
-		enum CapStyle {
-			CAP_NONE,    //! No caps - leave path open (useful for stroked paths)
-			CAP_BUTT,    //! Square cap flush with endpoint (no extension)
-			CAP_ROUND,   //! Semicircular cap (default)
-			CAP_SQUARE   //! Square cap extending beyond endpoint
-		} capStyle = CAP_ROUND;
-
-		//! Internal flag: if false, skip adding caps (used when computing return path)
-		bool _addCaps = true;
 	};
 
-	//! Calculates an offset curve at the specified distance from the original path. Positive distance offsets to the right (clockwise), negative to the left (counter-clockwise). The offset curve is approximated with Bezier curves within the specified tolerance.
+	//! Options for calcStroke() - bilateral stroke expansion with caps and optional dash patterns
+	struct StrokeOptions {
+		//! Stroke width (total width from inner to outer edge)
+		float width = 1.0f;
+
+		//! Maximum approximation error in path units
+		float tolerance = 0.01f;
+
+		//! Join style at sharp corners between segments
+		enum JoinStyle {
+			ROUND,   //! Smooth rounded joins
+			MITER,   //! Sharp pointed joins (with miter limit, SVG default)
+			BEVEL    //! Flat beveled joins
+		} joinStyle = MITER;  // SVG default
+
+		//! Maximum miter length / stroke width (for MITER joins)
+		float miterLimit = 4.0f;
+
+		//! Cap style for path endpoints
+		enum CapStyle {
+			CAP_BUTT,    //! Square cap flush with endpoint (SVG default, no extension)
+			CAP_ROUND,   //! Semicircular cap
+			CAP_SQUARE   //! Square cap extending beyond endpoint
+		};
+
+		//! Start cap style (SVG default: CAP_BUTT)
+		CapStyle startCap = CAP_BUTT;
+
+		//! End cap style (SVG default: CAP_BUTT)
+		CapStyle endCap = CAP_BUTT;
+
+		//! Dash pattern: alternating on/off lengths (empty = solid line)
+		std::vector<float> dashPattern;
+
+		//! Offset into dash pattern to begin (default 0.0)
+		float dashOffset = 0.0f;
+	};
+
+	//! Calculates an offset curve at the specified distance from the original path. Positive distance offsets to the right (clockwise), negative to the left (counter-clockwise). The offset curve is approximated with Bezier curves within the specified tolerance. Returns an open path.
 	Path2d	calcOffsetCurve( float distance, float tolerance = 0.01f ) const;
-	//! Calculates an offset curve with advanced options for join styles and approximation control
+	//! Calculates an offset curve with advanced options for join styles and approximation control. Returns an open path.
 	Path2d	calcOffsetCurve( float distance, const OffsetOptions& options ) const;
+	//! Calculates a stroke (bilateral offset expansion) with caps and optional dash patterns. Returns a closed path representing the stroked outline. For dashed strokes, use calcStrokeAsShape() instead.
+	Path2d	calcStroke( const StrokeOptions& options ) const;
+	//! Calculates a stroke and returns a Shape2d, properly handling dashed patterns as multiple contours. Use this when dashPattern is specified.
+	Shape2d	calcStrokeAsShape( const StrokeOptions& options ) const;
+	//! Applies a dash pattern to the path, returning a Shape2d with each dash segment as a separate contour. Used internally by calcStrokeAsShape().
+	Shape2d	applyDashPatternAsShape( const std::vector<float>& dashPattern, float dashOffset = 0.0f ) const;
 
 	static int	calcQuadraticBezierMonotoneRegions( const vec2 p[3], float resultT[2] );
 	static vec2	calcQuadraticBezierPos( const vec2 p[3], float t );

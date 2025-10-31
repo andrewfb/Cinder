@@ -30,6 +30,8 @@
 
 #include "cinder/CinderMath.h"
 #include "cinder/Path2d.h"
+#include "cinder/Shape2d.h"
+#include "cinder/Log.h"
 
 #include <algorithm>
 #include <iterator>
@@ -1293,26 +1295,25 @@ Path2d Path2d::getSubPath( float startT, float endT ) const
 		for( size_t s = 0; s < startSegment; ++s )
 			firstPoint += sSegmentTypePointCounts[mSegments[s]];
 
+		vec2 temp[4];  // Max 4 points needed for cubic
 		switch( mSegments[startSegment] ) {
 			case LINETO: // trim line
-				result.mPoints.push_back( mPoints[firstPoint] + startRelT * ( mPoints[firstPoint+1] - mPoints[firstPoint] ) );
-				result.mPoints.push_back( mPoints[firstPoint] + endRelT * ( mPoints[firstPoint+1] - mPoints[firstPoint] ) ); 
-				result.mSegments.push_back( LINETO );
+				temp[0] = mPoints[firstPoint] + startRelT * ( mPoints[firstPoint+1] - mPoints[firstPoint] );
+				temp[1] = mPoints[firstPoint] + endRelT * ( mPoints[firstPoint+1] - mPoints[firstPoint] );
+				result.appendSegment( LINETO, temp );
 			break;
 			case QUADTO:
-				result.mPoints.resize( 3 );
-				trimQuadAt( &mPoints[firstPoint], result.mPoints.data(), startRelT, endRelT );
-				result.mSegments.push_back( QUADTO );
+				trimQuadAt( &mPoints[firstPoint], temp, startRelT, endRelT );
+				result.appendSegment( QUADTO, temp );
 			break;
 			case CUBICTO:
-				result.mPoints.resize( 4 );
-				trimCubicAt( &mPoints[firstPoint], result.mPoints.data(), startRelT, endRelT );
-				result.mSegments.push_back( CUBICTO );
+				trimCubicAt( &mPoints[firstPoint], temp, startRelT, endRelT );
+				result.appendSegment( CUBICTO, temp );
 			break;
 			case CLOSE:
-				result.mPoints.push_back( mPoints[firstPoint] + startRelT * ( mPoints[0] - mPoints[firstPoint] ) );
-				result.mPoints.push_back( mPoints[firstPoint] + endRelT * ( mPoints[0] - mPoints[firstPoint] ) );
-				result.mSegments.push_back( LINETO );
+				temp[0] = mPoints[firstPoint] + startRelT * ( mPoints[0] - mPoints[firstPoint] );
+				temp[1] = mPoints[firstPoint] + endRelT * ( mPoints[0] - mPoints[firstPoint] );
+				result.appendSegment( LINETO, temp );
 			break;
 			default:
 				throw Path2dExc();
@@ -2804,22 +2805,17 @@ void emitArc( Path2d& path, const vec2& center, float angle0, float angle1, floa
 // Uses Kurbo's transform-based approach for stable, consistent caps
 void addOffsetCap( Path2d& path, const vec2& center, const vec2& tangent,
                    const vec2& offsetStart, const vec2& offsetEnd,
-                   float distance, Path2d::OffsetOptions::CapStyle capStyle, float tolerance )
+                   float distance, Path2d::StrokeOptions::CapStyle capStyle, float tolerance )
 {
 	vec2 normal = calcOffsetNormal( tangent );
 
 	switch( capStyle ) {
-		case Path2d::OffsetOptions::CAP_NONE:
-			// No cap - just connect with straight line
-			path.lineTo( offsetEnd );
-			break;
-
-		case Path2d::OffsetOptions::CAP_BUTT:
+		case Path2d::StrokeOptions::CAP_BUTT:
 			// Straight line connecting the two offset edges
 			path.lineTo( offsetEnd );
 			break;
 
-		case Path2d::OffsetOptions::CAP_ROUND: {
+		case Path2d::StrokeOptions::CAP_ROUND: {
 			// Round cap using Kurbo's transformation approach
 			// Instead of calculating angles and deciding on sweep direction,
 			// we build a transformation matrix and always draw the arc the same way
@@ -2876,7 +2872,7 @@ void addOffsetCap( Path2d& path, const vec2& center, const vec2& tangent,
 			break;
 		}
 
-		case Path2d::OffsetOptions::CAP_SQUARE: {
+		case Path2d::StrokeOptions::CAP_SQUARE: {
 			// Square cap extending beyond endpoint by distance
 			vec2 extend = glm::normalize(tangent) * std::abs(distance);
 			vec2 corner0 = offsetStart + extend;
@@ -2922,77 +2918,12 @@ Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) c
 	bool hasContourStart = false;
 	bool contourClosed = false;
 
-	// Helper lambda to finalize current contour with caps if needed
+	// Helper lambda to finalize current contour (simplified - no caps)
 	auto finalizeContour = [&]() {
 		if( !hasContourStart ) return;
 
-		// If contour is open (not closed)
-		if( !contourClosed && hasPrevTangent && options._addCaps ) {
-			// Check if user wants caps
-			if( options.capStyle == OffsetOptions::CAP_NONE ) {
-				// No caps - leave path open (just the outer offset curve)
-				// Don't close, don't add return path
-			}
-			else {
-				// Add end cap
-				vec2 offsetStart = contourLastOffset;
-				vec2 offsetEnd = contourLastPoint - calcOffsetNormal(contourLastTangent) * distance;
-				addOffsetCap( result, contourLastPoint, contourLastTangent,
-				             offsetStart, offsetEnd, distance, options.capStyle, options.tolerance );
-
-				// Now draw the return path (inner offset curve) backwards from end to start
-				// Compute the inner offset without caps
-				OffsetOptions innerOpts = options;
-				innerOpts._addCaps = false;
-				Path2d innerPath = calcOffsetCurve( -distance, innerOpts );
-
-				// Reverse the inner path to go backwards (end to start)
-				// This preserves all curve segments (cubics, quadratics) instead of converting to lines
-				innerPath.reverse();
-
-				// Append all segments from the reversed inner path
-				// Skip the first point since we're already at that position from the end cap
-				if( innerPath.getNumSegments() > 0 ) {
-					const auto& innerSegments = innerPath.getSegments();
-					const auto& innerPoints = innerPath.getPoints();
-
-					size_t pointIndex = 1; // Start at 1 to skip the moveto point
-					for( size_t s = 0; s < innerSegments.size(); ++s ) {
-						SegmentType segType = innerSegments[s];
-
-						switch( segType ) {
-							case MOVETO:
-								// Skip moveto - we're already positioned from the end cap
-								break;
-							case LINETO:
-								result.lineTo( innerPoints[pointIndex] );
-								pointIndex += 1;
-								break;
-							case QUADTO:
-								result.quadTo( innerPoints[pointIndex], innerPoints[pointIndex + 1] );
-								pointIndex += 2;
-								break;
-							case CUBICTO:
-								result.curveTo( innerPoints[pointIndex], innerPoints[pointIndex + 1], innerPoints[pointIndex + 2] );
-								pointIndex += 3;
-								break;
-							case CLOSE:
-								// Skip close - we'll close the full path at the end
-								break;
-						}
-					}
-				}
-
-				// Add start cap
-				vec2 startOffsetOuter = contourStartOffset;
-				vec2 startOffsetInner = contourStartPoint - calcOffsetNormal(contourFirstTangent) * distance;
-				addOffsetCap( result, contourStartPoint, -contourFirstTangent,
-				             startOffsetInner, startOffsetOuter, distance, options.capStyle, options.tolerance );
-
-				// Close the path
-				result.close();
-			}
-		}
+		// calcOffsetCurve now returns open paths only - no caps, no return path
+		// The path is left open for open contours, closed for closed contours
 
 		// Reset for next contour
 		hasPrevTangent = false;
@@ -3160,6 +3091,363 @@ Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) c
 
 	// Finalize any remaining open contour
 	finalizeContour();
+
+	return result;
+}
+
+Path2d Path2d::calcStroke( const StrokeOptions& options ) const
+{
+	Path2d result;
+
+	if( mSegments.empty() || options.width <= 0.0f ) {
+		return result;
+	}
+
+	// Warn if dash pattern is specified - user should use calcStrokeAsShape() instead
+	if( !options.dashPattern.empty() ) {
+		CI_LOG_W( "calcStroke() called with dash pattern - use calcStrokeAsShape() instead for proper multi-contour output" );
+		// Continue with non-dashed stroke
+	}
+
+	// Half width for bilateral expansion
+	float halfWidth = options.width * 0.5f;
+
+	// Create OffsetOptions from StrokeOptions
+	OffsetOptions offsetOpts;
+	offsetOpts.tolerance = options.tolerance;
+	offsetOpts.joinStyle = static_cast<OffsetOptions::JoinStyle>(options.joinStyle);
+	offsetOpts.miterLimit = options.miterLimit;
+
+	// Check if path is closed
+	bool isClosed = !mSegments.empty() && mSegments.back() == CLOSE;
+
+	if( isClosed ) {
+		// For closed paths, just offset both sides and close
+		Path2d outer = (*this).calcOffsetCurve( halfWidth, offsetOpts );
+		Path2d inner = (*this).calcOffsetCurve( -halfWidth, offsetOpts );
+
+		// Reverse inner path
+		inner.reverse();
+
+		// Combine: outer + inner (reversed)
+		if( !outer.empty() && !inner.empty() ) {
+			result = outer;
+
+			// Append inner path segments
+			const auto& innerSegments = inner.getSegments();
+			const auto& innerPoints = inner.getPoints();
+
+			size_t pointIndex = 1; // Skip moveto
+			for( size_t s = 0; s < innerSegments.size(); ++s ) {
+				SegmentType segType = innerSegments[s];
+
+				switch( segType ) {
+					case MOVETO:
+						break; // Skip
+					case LINETO:
+						result.lineTo( innerPoints[pointIndex] );
+						pointIndex += 1;
+						break;
+					case QUADTO:
+						result.quadTo( innerPoints[pointIndex], innerPoints[pointIndex + 1] );
+						pointIndex += 2;
+						break;
+					case CUBICTO:
+						result.curveTo( innerPoints[pointIndex], innerPoints[pointIndex + 1],
+						               innerPoints[pointIndex + 2] );
+						pointIndex += 3;
+						break;
+					case CLOSE:
+						break; // Skip
+				}
+			}
+
+			result.close();
+		}
+	}
+	else {
+		// For open paths, offset both sides and add caps
+		Path2d outer = (*this).calcOffsetCurve( halfWidth, offsetOpts );
+		Path2d inner = (*this).calcOffsetCurve( -halfWidth, offsetOpts );
+
+		if( outer.empty() || inner.empty() ) {
+			return result;
+		}
+
+		// Get tangents at start and end for caps
+		vec2 startPoint = (*this).mPoints[0];
+		vec2 endPoint = (*this).mPoints[(*this).mPoints.size() - 1];
+
+		// Calculate start tangent
+		vec2 startTangent;
+		if( (*this).mSegments.size() > 0 ) {
+			if( (*this).mSegments[0] == LINETO ) {
+				calcSafeTangent( (*this).mPoints[0], (*this).mPoints[1], startTangent );
+			}
+			else if( (*this).mSegments[0] == QUADTO ) {
+				if( !calcSafeTangent( (*this).mPoints[0], (*this).mPoints[1], startTangent ) ) {
+					calcSafeTangent( (*this).mPoints[0], (*this).mPoints[2], startTangent );
+				}
+			}
+			else if( (*this).mSegments[0] == CUBICTO ) {
+				if( !calcSafeTangent( (*this).mPoints[0], (*this).mPoints[1], startTangent ) ) {
+					if( !calcSafeTangent( (*this).mPoints[0], (*this).mPoints[2], startTangent ) ) {
+						calcSafeTangent( (*this).mPoints[0], (*this).mPoints[3], startTangent );
+					}
+				}
+			}
+		}
+
+		// Calculate end tangent
+		vec2 endTangent;
+		size_t lastSegIdx = (*this).mSegments.size() - 1;
+		if( (*this).mSegments[lastSegIdx] == LINETO ) {
+			size_t lastPtIdx = (*this).mPoints.size() - 1;
+			calcSafeTangent( (*this).mPoints[lastPtIdx - 1], (*this).mPoints[lastPtIdx], endTangent );
+		}
+		else if( (*this).mSegments[lastSegIdx] == QUADTO ) {
+			size_t lastPtIdx = (*this).mPoints.size() - 1;
+			if( !calcSafeTangent( (*this).mPoints[lastPtIdx - 1], (*this).mPoints[lastPtIdx], endTangent ) ) {
+				calcSafeTangent( (*this).mPoints[lastPtIdx - 2], (*this).mPoints[lastPtIdx], endTangent );
+			}
+		}
+		else if( (*this).mSegments[lastSegIdx] == CUBICTO ) {
+			size_t lastPtIdx = (*this).mPoints.size() - 1;
+			if( !calcSafeTangent( (*this).mPoints[lastPtIdx - 1], (*this).mPoints[lastPtIdx], endTangent ) ) {
+				if( !calcSafeTangent( (*this).mPoints[lastPtIdx - 2], (*this).mPoints[lastPtIdx], endTangent ) ) {
+					calcSafeTangent( (*this).mPoints[lastPtIdx - 3], (*this).mPoints[lastPtIdx], endTangent );
+				}
+			}
+		}
+
+		// Start with outer path
+		result = outer;
+
+		// Add end cap
+		vec2 outerEnd = outer.getPoints().back();
+		vec2 innerEnd = inner.getPoints().back();
+		addOffsetCap( result, endPoint, endTangent, outerEnd, innerEnd, halfWidth,
+		             options.endCap, options.tolerance );
+
+		// Reverse inner path
+		inner.reverse();
+
+		// Append inner path segments
+		const auto& innerSegments = inner.getSegments();
+		const auto& innerPoints = inner.getPoints();
+
+		size_t pointIndex = 1; // Skip moveto
+		for( size_t s = 0; s < innerSegments.size(); ++s ) {
+			SegmentType segType = innerSegments[s];
+
+			switch( segType ) {
+				case MOVETO:
+					break; // Skip
+				case LINETO:
+					result.lineTo( innerPoints[pointIndex] );
+					pointIndex += 1;
+					break;
+				case QUADTO:
+					result.quadTo( innerPoints[pointIndex], innerPoints[pointIndex + 1] );
+					pointIndex += 2;
+					break;
+				case CUBICTO:
+					result.curveTo( innerPoints[pointIndex], innerPoints[pointIndex + 1],
+					               innerPoints[pointIndex + 2] );
+					pointIndex += 3;
+					break;
+				case CLOSE:
+					break; // Skip
+			}
+		}
+
+		// Add start cap
+		// After reversing, the last point of the reversed path is the start of the original path
+		vec2 innerStart = inner.getPoints()[inner.getPoints().size() - 1];  // Last point of reversed = start of original
+		vec2 outerStart = outer.getPoints()[0];
+		addOffsetCap( result, startPoint, -startTangent, innerStart, outerStart, halfWidth,
+		             options.startCap, options.tolerance );
+
+		// Close the stroked path
+		result.close();
+	}
+
+	return result;
+}
+
+Shape2d Path2d::applyDashPatternAsShape( const std::vector<float>& dashPattern, float dashOffset ) const
+{
+	Shape2d result;
+
+	// Validate pattern
+	if( dashPattern.empty() ) {
+		// Empty pattern, return original path as single contour
+		result.appendContour( *this );
+		return result;
+	}
+
+	// Dash patterns should have even length (alternating on/off), but we can handle odd by duplicating last value
+	std::vector<float> pattern = dashPattern;
+	if( pattern.size() % 2 != 0 ) {
+		pattern.push_back( pattern.back() ); // Duplicate last value to make even
+	}
+
+	// Check for all-zero or negative pattern
+	float patternTotal = 0.0f;
+	for( float len : pattern ) {
+		if( len < 0.0f ) {
+			result.appendContour( *this );
+			return result;
+		}
+		patternTotal += len;
+	}
+	if( patternTotal <= 0.0f ) {
+		return result; // Empty result for all-zero pattern
+	}
+
+	// Calculate total path length
+	float totalLength = calcLength();
+	if( totalLength <= 0.0f ) {
+		CI_LOG_W( "applyDashPatternAsShape: path has zero length" );
+		return result; // Empty path
+	}
+
+	CI_LOG_I( "applyDashPatternAsShape: totalLength=" << totalLength << ", pattern size=" << pattern.size() << ", patternTotal=" << patternTotal );
+
+	// Normalize dash offset (wrap to pattern length)
+	dashOffset = std::fmod( dashOffset, patternTotal );
+	if( dashOffset < 0.0f ) {
+		dashOffset += patternTotal;
+	}
+
+	// Find starting position in pattern
+	size_t patternIndex = 0;
+	float remainingInSegment = pattern[0];
+	bool isDash = true; // First segment is always "on"
+
+	// Adjust for starting mid-pattern
+	if( dashOffset > 0.0f ) {
+		float consumed = 0.0f;
+		for( size_t i = 0; i < pattern.size(); ++i ) {
+			if( consumed + pattern[i] > dashOffset ) {
+				patternIndex = i;
+				remainingInSegment = pattern[i] - (dashOffset - consumed);
+				isDash = (i % 2 == 0);
+				break;
+			}
+			consumed += pattern[i];
+		}
+	}
+
+	// Walk along path applying pattern
+	float distance = 0.0f;
+	float dashStart = isDash ? 0.0f : remainingInSegment;
+
+	while( distance < totalLength ) {
+		float segmentEnd = std::min( distance + remainingInSegment, totalLength );
+
+		if( isDash ) {
+			// Extract sub-path for this dash segment
+			// Use looser tolerance for arc-length calculations during dashing (0.1 is plenty for segmentation)
+			float startT = calcTimeForDistance( dashStart, true, 0.1f );
+			float endT = calcTimeForDistance( segmentEnd, true, 0.1f );
+
+			CI_LOG_I( "Extracting dash: startT=" << startT << ", endT=" << endT << ", dashStart=" << dashStart << ", segmentEnd=" << segmentEnd );
+
+			// Extract the sub-path
+			Path2d dashSegment;
+			try {
+				dashSegment = getSubPath( startT, endT );
+			}
+			catch( const std::exception& e ) {
+				CI_LOG_E( "getSubPath failed: " << e.what() );
+				distance = segmentEnd;
+				patternIndex = (patternIndex + 1) % pattern.size();
+				remainingInSegment = pattern[patternIndex];
+				isDash = !isDash;
+				if( isDash ) dashStart = distance;
+				continue;
+			}
+
+			// Add dash segment as a separate contour
+			if( !dashSegment.empty() && dashSegment.getNumPoints() > 0 ) {
+				result.appendContour( dashSegment );
+			}
+		}
+
+		distance = segmentEnd;
+
+		// Move to next pattern segment
+		patternIndex = (patternIndex + 1) % pattern.size();
+		remainingInSegment = pattern[patternIndex];
+		isDash = !isDash;
+
+		if( isDash ) {
+			dashStart = distance;
+		}
+	}
+
+	CI_LOG_I( "applyDashPatternAsShape: created " << result.getNumContours() << " dash segments" );
+
+	return result;
+}
+
+Shape2d Path2d::calcStrokeAsShape( const StrokeOptions& options ) const
+{
+	Shape2d result;
+
+	if( mSegments.empty() || options.width <= 0.0f ) {
+		return result;
+	}
+
+	// Check if dashing is enabled
+	if( !options.dashPattern.empty() ) {
+		// Apply dash pattern to get Shape2d with multiple contours
+		Shape2d dashedShape = applyDashPatternAsShape( options.dashPattern, options.dashOffset );
+
+		if( dashedShape.empty() ) {
+			return result; // No visible dashes
+		}
+
+		CI_LOG_I( "calcStrokeAsShape: dashedShape has " << dashedShape.getNumContours() << " contours" );
+
+		// Stroke each contour independently
+		StrokeOptions dashStrokeOpts = options;
+		dashStrokeOpts.dashPattern.clear(); // Don't re-dash
+
+		for( size_t i = 0; i < dashedShape.getNumContours(); ++i ) {
+			const Path2d& contour = dashedShape.getContour( i );
+			float segmentLength = contour.calcLength();
+
+			// Only skip truly degenerate segments (numerical noise)
+			if( segmentLength < 0.01f ) {
+				CI_LOG_W( "Skipping degenerate dash segment " << i << " (length " << segmentLength << ")" );
+				continue;
+			}
+
+			try {
+				// Each dash segment gets caps at both ends
+				// Round caps will naturally form circles for very short dashes
+				StrokeOptions segmentOpts = dashStrokeOpts;
+
+				Path2d strokedContour = contour.calcStroke( segmentOpts );
+
+				if( !strokedContour.empty() ) {
+					result.appendContour( strokedContour );
+				}
+			}
+			catch( const std::exception& e ) {
+				CI_LOG_E( "Failed to stroke dash segment " << i << " (length=" << segmentLength << "): " << e.what() );
+			}
+		}
+	}
+	else {
+		// No dashing - just stroke normally
+		Path2d stroked = calcStroke( options );
+		if( !stroked.empty() ) {
+			result.appendContour( stroked );
+		}
+	}
 
 	return result;
 }
