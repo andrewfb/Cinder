@@ -287,6 +287,8 @@ class CI_API Path2d {
 
 	//! Solves the time corresponding to \a segmentRelativeDistance (a measure of arc length). Generally you should use calcNormalizedTime() or calcTimeForDistance() instead.
 	float	segmentSolveTimeForDistance( size_t segment, float segmentLength, float segmentRelativeDistance, float tolerance, int maxIterations ) const;
+	//! Helper for calcTimeForDistance() that uses pre-computed arc lengths (internal use for performance optimization)
+	float	calcTimeForDistanceCached( float distance, float totalLength, const std::vector<float>& segmentLengths, bool wrap, float tolerance, int maxIterations ) const;
 
 	friend class Shape2d;
 	friend class Path2dCalcCache;

@@ -2155,6 +2155,30 @@ float Path2d::calcTimeForDistance( float distance, bool wrap, float tolerance, i
 	return segmentSolveTimeForDistance( currentSegment, currentSegmentLength, distance, tolerance, maxIterations );
 }
 
+// Helper for calcTimeForDistance() that uses pre-computed arc lengths (for performance)
+float Path2d::calcTimeForDistanceCached( float distance, float totalLength, const std::vector<float>& segmentLengths, bool wrap, float tolerance, int maxIterations ) const
+{
+	if( mSegments.empty() || segmentLengths.empty() )
+		return 0;
+
+	if( distance > totalLength ) {
+		if( wrap )
+			distance = fmodf( distance, totalLength );
+		else
+			return 1.0f;
+	}
+
+	// Iterate the segments using cached lengths
+	int currentSegment = 0;
+	float currentSegmentLength = segmentLengths[0];
+	while( distance > currentSegmentLength && currentSegment < (int)segmentLengths.size() - 1 ) {
+		distance -= currentSegmentLength;
+		currentSegmentLength = segmentLengths[++currentSegment];
+	}
+
+	return segmentSolveTimeForDistance( currentSegment, currentSegmentLength, distance, tolerance, maxIterations );
+}
+
 float Path2d::segmentSolveTimeForDistance( size_t segment, float segmentLength, float segmentRelativeDistance, float tolerance, int maxIterations ) const
 {
 	// initialize bisection endpoints
@@ -3305,11 +3329,19 @@ Shape2d Path2d::applyDashPatternAsShape( const std::vector<float>& dashPattern, 
 		return result; // Empty result for all-zero pattern
 	}
 
-	// Calculate total path length
+	// PRE-COMPUTE arc lengths once to avoid repeated expensive integrations
+	// This dramatically improves performance for paths with many dashes
 	float totalLength = calcLength();
 	if( totalLength <= 0.0f ) {
 		CI_LOG_W( "applyDashPatternAsShape: path has zero length" );
 		return result; // Empty path
+	}
+
+	// Cache segment lengths for fast lookup during dashing
+	std::vector<float> segmentLengths;
+	segmentLengths.reserve( getNumSegments() );
+	for( size_t i = 0; i < getNumSegments(); ++i ) {
+		segmentLengths.push_back( calcSegmentLength( i ) );
 	}
 
 	CI_LOG_I( "applyDashPatternAsShape: totalLength=" << totalLength << ", pattern size=" << pattern.size() << ", patternTotal=" << patternTotal );
@@ -3348,9 +3380,9 @@ Shape2d Path2d::applyDashPatternAsShape( const std::vector<float>& dashPattern, 
 
 		if( isDash ) {
 			// Extract sub-path for this dash segment
-			// Use looser tolerance for arc-length calculations during dashing (0.1 is plenty for segmentation)
-			float startT = calcTimeForDistance( dashStart, true, 0.1f );
-			float endT = calcTimeForDistance( segmentEnd, true, 0.1f );
+			// Use cached arc lengths for massive performance improvement (avoids repeated expensive integrations)
+			float startT = calcTimeForDistanceCached( dashStart, totalLength, segmentLengths, true, 0.1f, 16 );
+			float endT = calcTimeForDistanceCached( segmentEnd, totalLength, segmentLengths, true, 0.1f, 16 );
 
 			CI_LOG_I( "Extracting dash: startT=" << startT << ", endT=" << endT << ", dashStart=" << dashStart << ", segmentEnd=" << segmentEnd );
 

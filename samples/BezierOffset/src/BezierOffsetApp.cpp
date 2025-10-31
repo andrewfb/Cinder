@@ -19,7 +19,8 @@ enum class PresetShape {
 	OPEN_S_CURVE,
 	CLOSED_RECT,
 	CLOSED_CIRCLE,
-	CLOSED_STAR
+	CLOSED_STAR,
+	SHARP_ZIGZAG  // For testing join styles
 };
 
 class BezierOffsetApp : public App {
@@ -207,6 +208,65 @@ void BezierOffsetApp::mouseDrag( MouseEvent event )
 
 void BezierOffsetApp::mouseUp( MouseEvent event )
 {
+	// If we were dragging, dump complete state for reproduction
+	if( mDraggingPoint ) {
+		console() << "========== REPRODUCTION STATE DUMP ==========" << std::endl;
+		console() << "Mode: " << (mMode == Mode::STROKE ? "STROKE" : "OFFSET") << std::endl;
+		console() << "Path Closed: " << (mPathClosed ? "true" : "false") << std::endl;
+		console() << std::endl;
+
+		// Dump path
+		console() << "Path Definition:" << std::endl;
+		console() << "  Points: " << mPath.getNumPoints() << std::endl;
+		console() << "  Segments: " << mPath.getNumSegments() << std::endl;
+		for( size_t i = 0; i < mPath.getNumPoints(); ++i ) {
+			vec2 pt = mPath.getPoint( i );
+			console() << "    Point[" << i << "]: (" << pt.x << ", " << pt.y << ")" << std::endl;
+		}
+
+		// Dump stroke parameters
+		if( mMode == Mode::STROKE ) {
+			console() << std::endl;
+			console() << "Stroke Parameters:" << std::endl;
+			console() << "  Width: " << mStrokeWidth << std::endl;
+
+			const char* joinNames[] = { "ROUND", "MITER", "BEVEL" };
+			console() << "  Join Style: " << joinNames[mStrokeJoinStyle] << std::endl;
+			console() << "  Miter Limit: " << mStrokeMiterLimit << std::endl;
+
+			const char* capNames[] = { "BUTT", "ROUND", "SQUARE" };
+			console() << "  Start Cap: " << capNames[mStartCapStyle] << std::endl;
+			console() << "  End Cap: " << capNames[mEndCapStyle] << std::endl;
+
+			console() << std::endl;
+			console() << "Dash Parameters:" << std::endl;
+			console() << "  Enabled: " << (mEnableDashing ? "true" : "false") << std::endl;
+			if( mEnableDashing ) {
+				const char* presetNames[] = { "Dashed", "Dotted", "Dash-Dot", "Dash-Dot-Dot", "Custom" };
+				console() << "  Preset: " << presetNames[mDashPreset] << std::endl;
+				console() << "  Dash On: " << mDashOn << std::endl;
+				console() << "  Dash Off: " << mDashOff << std::endl;
+				console() << "  Dash On2: " << mDashOn2 << std::endl;
+				console() << "  Dash Off2: " << mDashOff2 << std::endl;
+				console() << "  Dash Offset: " << mDashOffset << std::endl;
+			}
+		}
+
+		// Dump offset parameters
+		if( mMode == Mode::OFFSET ) {
+			console() << std::endl;
+			console() << "Offset Parameters:" << std::endl;
+			console() << "  Distance: " << mOffsetDistance << std::endl;
+			console() << "  Tolerance: " << mTolerance << std::endl;
+			const char* joinNames[] = { "ROUND", "MITER", "BEVEL" };
+			console() << "  Join Style: " << joinNames[mJoinStyle] << std::endl;
+			console() << "  Miter Limit: " << mMiterLimit << std::endl;
+			console() << "  Num Curves: " << mNumOffsetCurves << std::endl;
+		}
+
+		console() << "=============================================" << std::endl;
+	}
+
 	mTrackedPoint = -1;
 	mDraggingPoint = false;
 }
@@ -288,6 +348,7 @@ void BezierOffsetApp::loadPresetShape( PresetShape shape )
 			mPath.lineTo( center + vec2( 100, -80 ) );
 			mPath.lineTo( center + vec2( 100, 80 ) );
 			mPath.lineTo( center + vec2( -100, 80 ) );
+			mPath.close();
 			mPathClosed = true;
 			break;
 
@@ -318,6 +379,19 @@ void BezierOffsetApp::loadPresetShape( PresetShape shape )
 			}
 			mPath.close();  // Actually close the star path
 			mPathClosed = true;
+			break;
+		}
+
+		case PresetShape::SHARP_ZIGZAG: {
+			// Sharp zigzag with 90-degree angles - perfect for demonstrating join styles!
+			mPath.moveTo( center + vec2( -150, -50 ) );
+			mPath.lineTo( center + vec2( -100, 50 ) );   // Sharp 90° turn
+			mPath.lineTo( center + vec2( -50, -50 ) );    // Sharp 90° turn
+			mPath.lineTo( center + vec2( 0, 50 ) );       // Sharp 90° turn
+			mPath.lineTo( center + vec2( 50, -50 ) );     // Sharp 90° turn
+			mPath.lineTo( center + vec2( 100, 50 ) );     // Sharp 90° turn
+			mPath.lineTo( center + vec2( 150, -50 ) );    // Sharp 90° turn
+			mPathClosed = false;
 			break;
 		}
 	}
@@ -697,6 +771,11 @@ void BezierOffsetApp::drawImGuiControls()
 	ImGui::SameLine();
 	if( ImGui::Button( "Closed Star" ) ) loadPresetShape( PresetShape::CLOSED_STAR );
 
+	if( ImGui::Button( "Sharp Zigzag (Join Test)" ) ) {
+		loadPresetShape( PresetShape::SHARP_ZIGZAG );
+		mOffsetDistance = 30.0f;  // Good default for seeing joins
+	}
+
 	ImGui::Spacing();
 	ImGui::Separator();
 	ImGui::TextColored( ImVec4( 1.0f, 0.8f, 0.2f, 1.0f ), "Visualization" );
@@ -814,13 +893,13 @@ void BezierOffsetApp::draw()
 	gl::ScopedModelMatrix scpMatrix( mCanvas.getModelMatrix() );
 
 	// Draw bounding boxes if enabled
-	if( mShowBoundingBox && mPath.getNumSegments() > 1 ) {
+	if( mShowBoundingBox && mPath.getNumSegments() > 0 ) {
 		if( mShowOriginal ) {
 			gl::color( ColorA( mOriginalColor, 0.15f ) );
 			gl::drawSolidRect( mPath.calcPreciseBoundingBox() );
 		}
 
-		if( mShowOffset && !mOffsetPath.empty() ) {
+		if( mShowOffset && !mOffsetPath.empty() && mMode == Mode::STROKE ) {
 			gl::color( ColorA( mOffsetColor, 0.15f ) );
 			gl::drawSolidRect( mOffsetPath.calcPreciseBoundingBox() );
 		}
@@ -844,11 +923,18 @@ void BezierOffsetApp::draw()
 
 			Path2d offsetCurve = mPath.calcOffsetCurve( distance, opts );
 
-			// Fade color for intermediate curves
-			ColorA curveColor( mOffsetColor, 1.0f - (1.0f - t) * 0.5f );
-			gl::color( curveColor );
+			// Create smooth gradient from original color to offset color
+			Color gradColor = mOriginalColor * (1.0f - t) + mOffsetColor * t;
+			float alpha = (mNumOffsetCurves > 3) ? (0.3f + 0.7f * t) : 1.0f;  // Fade alpha for many curves
+			gl::color( ColorA( gradColor, alpha ) );
 			gl::lineWidth( (i == mNumOffsetCurves - 1) ? 3.0f : 2.0f );
 			gl::draw( offsetCurve );
+
+			// Draw bounding box for this offset curve
+			if( mShowBoundingBox && !offsetCurve.empty() ) {
+				gl::color( ColorA( gradColor, 0.1f * alpha ) );
+				gl::drawSolidRect( offsetCurve.calcPreciseBoundingBox() );
+			}
 
 			// Draw control points for final curve only
 			if( i == mNumOffsetCurves - 1 && mShowControlPoints ) {
@@ -928,13 +1014,41 @@ void BezierOffsetApp::draw()
 			}
 		}
 
-		// Draw tangents
-		if( mShowTangents && mPath.getNumSegments() > 1 ) {
-			gl::color( Color( 0.2f, 0.9f, 0.2f ) );
+		// Draw tangents on original path
+		if( mShowTangents && mPath.getNumSegments() > 0 ) {
+			gl::color( ColorA( mOriginalColor, 0.6f ) );
 			for( float t = 0; t < 1; t += 0.1f ) {
 				vec2 pos = mPath.getPosition( t );
 				vec2 tan = normalize( mPath.getTangent( t ) );
 				gl::drawLine( pos, pos + tan * 50.0f );
+			}
+		}
+
+		// Draw tangents on offset curves (in offset mode)
+		if( mShowTangents && mMode == Mode::OFFSET && !mPath.empty() ) {
+			for( int i = 0; i < mNumOffsetCurves; ++i ) {
+				float curveT = (float)(i + 1) / (float)mNumOffsetCurves;
+				float distance = mOffsetDistance * curveT;
+
+				Path2d::OffsetOptions opts;
+				opts.tolerance = mTolerance;
+				switch( mJoinStyle ) {
+					case 0: opts.joinStyle = Path2d::OffsetOptions::ROUND; break;
+					case 1: opts.joinStyle = Path2d::OffsetOptions::MITER; break;
+					case 2: opts.joinStyle = Path2d::OffsetOptions::BEVEL; break;
+				}
+				opts.miterLimit = mMiterLimit;
+
+				Path2d offsetCurve = mPath.calcOffsetCurve( distance, opts );
+				if( offsetCurve.empty() || offsetCurve.getNumSegments() == 0 ) continue;
+
+				Color gradColor = mOriginalColor * (1.0f - curveT) + mOffsetColor * curveT;
+				gl::color( ColorA( gradColor, 0.6f ) );
+				for( float t = 0; t < 1; t += 0.1f ) {
+					vec2 pos = offsetCurve.getPosition( t );
+					vec2 tan = normalize( offsetCurve.getTangent( t ) );
+					gl::drawLine( pos, pos + tan * 50.0f );
+				}
 			}
 		}
 	}
@@ -943,7 +1057,7 @@ void BezierOffsetApp::draw()
 	drawImGuiControls();
 }
 
-CINDER_APP( BezierOffsetApp, RendererGl( RendererGl::Options().msaa( 16 ) ), []( App::Settings *settings ) {
+CINDER_APP( BezierOffsetApp, RendererGl( RendererGl::Options().msaa( 8 ) ), []( App::Settings *settings ) {
 	settings->setWindowSize( 1280, 720 );
 	settings->setTitle( "Bezier Offset - Interactive Demo" );
 } )
