@@ -3090,10 +3090,29 @@ Path2d Path2d::calcOffsetCurve( float distance, const OffsetOptions& options ) c
 			break;
 
 			case CLOSE: {
-				// Generate join between last tangent and first tangent of contour
+				// For closed contours, we need to explicitly offset the implicit closing segment
+				// from the last point back to the first point
 				if( hasContourStart && hasPrevTangent ) {
-					addOffsetJoin( contourStartPoint, prevTangent, contourFirstTangent, distance, options, result );
-					// Note: close() will automatically add the closing segment
+					// Calculate tangent of the closing segment (lastPoint → startPoint)
+					vec2 closingTangent;
+					if( calcSafeTangent( contourLastPoint, contourStartPoint, closingTangent ) ) {
+						// Add join at the last point (transition from last segment to closing segment)
+						addOffsetJoin( contourLastPoint, prevTangent, closingTangent, distance, options, result );
+
+						// Offset the closing segment
+						vec2 closingOff0, closingOff1;
+						if( offsetLinearSegment( contourLastPoint, contourStartPoint, distance, closingOff0, closingOff1 ) ) {
+							result.lineTo( closingOff0 );
+							result.lineTo( closingOff1 );
+
+							// Add join at the start point (transition from closing segment to first segment)
+							addOffsetJoin( contourStartPoint, closingTangent, contourFirstTangent, distance, options, result );
+						}
+					}
+					else {
+						// Degenerate closing segment, just add join at start point
+						addOffsetJoin( contourStartPoint, prevTangent, contourFirstTangent, distance, options, result );
+					}
 				}
 
 				if( hasContourStart && !result.empty() ) {
