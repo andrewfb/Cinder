@@ -68,8 +68,10 @@ bool RendererGlGlfw::initialize( void *window, RendererRef sharedRenderer )
 	CGLContextObj contextObj = nullptr;
 	if( windowGlfw ) {
 		id nsContext = glfwGetNSGLContext( windowGlfw );
-		if( nsContext )
+		if( nsContext ) {
 			contextObj = [(NSOpenGLContext*)nsContext CGLContextObj];
+			::CGLRetainContext( contextObj );  // Take our own reference to prevent use-after-free
+		}
 	}
 	auto platformData = std::shared_ptr<cinder::gl::Context::PlatformData>( new cinder::gl::PlatformDataMac( contextObj ) );
 #endif
