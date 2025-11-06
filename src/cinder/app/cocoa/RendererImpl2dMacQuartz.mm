@@ -21,6 +21,10 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
+
+#if !defined( CINDER_GLFW )
+// This file is only for legacy Cocoa backend, not GLFW
+
 #import "cinder/app/cocoa/RendererImpl2dMacQuartz.h"
 
 
@@ -128,3 +132,5 @@
 }
 
 @end
+
+#endif // !defined( CINDER_GLFW )

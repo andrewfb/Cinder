@@ -46,7 +46,9 @@
 		class RendererImplGlCocoaTouch;
 		class EAGLContext;
 	#endif
-#elif defined( CINDER_LINUX )
+#endif
+
+#if defined( CINDER_GLFW )
 	typedef struct GLFWwindow	GLFWwindow;
 #endif
 
@@ -178,13 +180,18 @@ class CI_API RendererGl : public Renderer {
 	static RendererGlRef	create( const Options &options = Options() )	{ return RendererGlRef( new RendererGl( options ) ); }
 	RendererRef				clone() const override							{ return RendererGlRef( new RendererGl( *this ) ); }
 
-#if defined( CINDER_COCOA )
+#if defined( CINDER_GLFW )
+	// GLFW rendering (Linux or macOS)
+	virtual void	setup( void* nativeWindow, RendererRef sharedRenderer ) override;
 	#if defined( CINDER_MAC )
-		void						setup( CGRect frame, NSView *cinderView, RendererRef sharedRenderer, bool retinaEnabled ) override;
-		CGLContextObj				getCglContext() override;
-		CGLPixelFormatObj			getCglPixelFormat() override;
-		virtual NSOpenGLContext*	getNsOpenGlContext();
-	#elif defined( CINDER_COCOA_TOUCH )
+		// macOS-specific methods for GLFW backend
+		CGLContextObj	getCglContext() override;
+	#endif
+#elif defined( CINDER_HEADLESS )
+	// Headless rendering (Linux-specific)
+	virtual void	setup( ci::ivec2 renderSize, RendererRef sharedRenderer ) override;
+#elif defined( CINDER_COCOA )
+	#if defined( CINDER_COCOA_TOUCH )
 		void						setup( const Area &frame, UIView *cinderView, RendererRef sharedRenderer ) override;
 		bool						isEaglLayer() const override { return true; }
 		EAGLContext*				getEaglContext() const;
@@ -199,12 +206,6 @@ class CI_API RendererGl : public Renderer {
 	virtual void	finishToggleFullScreen();
 #elif defined( CINDER_ANDROID )
 	virtual void	setup( ANativeWindow *nativeWindow, RendererRef sharedRenderer ) override;
-#elif defined( CINDER_LINUX )
-#if defined( CINDER_HEADLESS )
-	virtual void	setup( ci::ivec2 renderSize, RendererRef sharedRenderer ) override;
-#else
-	virtual void	setup( void* nativeWindow, RendererRef sharedRenderer ) override;
-#endif
 #endif
 
 	const Options&	getOptions() const { return mOptions; }
@@ -225,9 +226,7 @@ protected:
 	RendererGl( const RendererGl &renderer );
 
 	Options		mOptions;
-#if defined( CINDER_MAC )
-	RendererImplGlMac		*mImpl;
-#elif defined( CINDER_COCOA_TOUCH )
+#if defined( CINDER_COCOA_TOUCH )
 	RendererImplGlCocoaTouch	*mImpl;
 #elif defined( CINDER_MSW_DESKTOP )
 	#if defined( CINDER_GL_ANGLE )
@@ -242,10 +241,15 @@ protected:
 	class RendererGlAndroid		*mImpl;
 	RendererGlAndroid		  *getImpl() { return mImpl; }
 	friend class WindowImplAndroid;
-#elif defined( CINDER_LINUX )
+#elif defined( CINDER_HEADLESS )
+	// Headless rendering (Linux-specific)
 	class RendererGlLinux	*mImpl;
 	RendererGlLinux			*getImpl() { return mImpl; }
-	friend class WindowImplLinux;
+#elif defined( CINDER_GLFW )
+	// GLFW rendering (Linux or macOS)
+	class RendererGlGlfw	*mImpl;
+	RendererGlGlfw			*getImpl() { return mImpl; }
+	friend class WindowImplGlfw;
 #endif
 
 	std::function<void( Renderer* )> mStartDrawFn;

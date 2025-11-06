@@ -295,17 +295,24 @@ public:
 
 	static void onFileDrop( GLFWwindow *glfwWindow, int count, const char **paths )
 	{
-		std::vector<fs::path> files;
-		for( int i = 0; i < count; i++ ) {
-			files.push_back( paths[i] );
-		}
+		auto iter = sWindowMapping.find( glfwWindow );
+		if( sWindowMapping.end() != iter ) {
+			auto& cinderAppImpl = iter->second.first;
+			auto& cinderWindow = iter->second.second;
+			cinderAppImpl->setWindow( cinderWindow );
 
-		// Get the cursor position at the time of the drop
-		double xpos, ypos;
-		::glfwGetCursorPos( glfwWindow, &xpos, &ypos );
-		vec2 dropPoint = { static_cast<float>(xpos), static_cast<float>(ypos) };
-		FileDropEvent dropEvent( getWindow(), dropPoint.x, dropPoint.y, files );
-		getWindow()->emitFileDrop( &dropEvent );
+			std::vector<fs::path> files;
+			for( int i = 0; i < count; i++ ) {
+				files.push_back( paths[i] );
+			}
+
+			// Get the cursor position at the time of the drop so the event lands in the right spot
+			double xpos, ypos;
+			::glfwGetCursorPos( glfwWindow, &xpos, &ypos );
+			vec2 dropPoint = { static_cast<float>(xpos), static_cast<float>(ypos) };
+			FileDropEvent dropEvent( cinderWindow, dropPoint.x, dropPoint.y, files );
+			cinderWindow->emitFileDrop( &dropEvent );
+		}
 	}
 };
 

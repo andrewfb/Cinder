@@ -21,6 +21,9 @@
  POSSIBILITY OF SUCH DAMAGE.
  */
 
+#if !defined( CINDER_GLFW )
+// This file is only for legacy Cocoa backend, not GLFW
+
 #include "cinder/app/cocoa/AppMac.h"
 #include "cinder/app/cocoa/AppImplMac.h"
 #include "cinder/Log.h"
@@ -137,3 +140,5 @@ ivec2 AppMac::getMousePos() const
 }
 
 } } // namespace cinder::app
+
+#endif // !defined( CINDER_GLFW )

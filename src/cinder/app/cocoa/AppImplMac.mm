@@ -21,6 +21,9 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
+#if !defined( CINDER_GLFW )
+// This file is only for legacy Cocoa backend, not GLFW
+
 #include "cinder/app/cocoa/AppImplMac.h"
 #include "cinder/app/Renderer.h"
 #include "cinder/app/Window.h"
@@ -908,3 +911,5 @@ using namespace cinder::app;
 }
 
 @end
+
+#endif // !defined( CINDER_GLFW )
