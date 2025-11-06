@@ -94,6 +94,7 @@
 	cinder::gl::Environment::setCore();
 	
 	CGLContextObj cglContext = (CGLContextObj)[[mView openGLContext] CGLContextObj];
+	::CGLRetainContext( cglContext );  // Take our own reference to prevent use-after-free
 	::CGLSetCurrentContext( cglContext );
 	auto platformData = std::shared_ptr<cinder::gl::Context::PlatformData>( new cinder::gl::PlatformDataMac( cglContext ) );
 	platformData->mObjectTracking = options.getObjectTracking();

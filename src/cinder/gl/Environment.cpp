@@ -102,7 +102,7 @@ void destroyPlatformData( Context::PlatformData *data )
 {
 #if defined( CINDER_MAC )
 	auto platformData = dynamic_cast<PlatformDataMac*>( data );
-	::CGLDestroyContext( platformData->mCglContext );
+	::CGLReleaseContext( platformData->mCglContext );
 #elif defined( CINDER_COCOA_TOUCH )
 	auto platformData = dynamic_cast<PlatformDataIos*>( data );
 	[(EAGLContext*)platformData->mEaglContext release];

@@ -127,7 +127,7 @@ struct PlatformDataMac : public Context::PlatformData {
 	PlatformDataMac( CGLContextObj cglContext )
 		: mCglContext( cglContext )
 	{}
-	
+
 	CGLContextObj		mCglContext;
 };
 
