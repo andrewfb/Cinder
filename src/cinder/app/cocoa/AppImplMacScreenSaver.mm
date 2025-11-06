@@ -21,6 +21,10 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
+
+#if !defined( CINDER_GLFW )
+// This file is only for legacy Cocoa backend, not GLFW
+
 #import "cinder/app/cocoa/AppImplMacScreenSaver.h"
 #include "cinder/app/cocoa/PlatformCocoa.h"
 #include "cinder/CinderAssert.h"
@@ -539,3 +543,4 @@ static AppImplMacScreenSaver* getAppImpl()
 }
 
 @end
+#endif // !defined( CINDER_GLFW )

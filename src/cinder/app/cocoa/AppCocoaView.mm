@@ -21,6 +21,9 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
+#if !defined( CINDER_GLFW )
+// This file is only for legacy Cocoa backend, not GLFW
+
 #import <Cocoa/Cocoa.h>
 
 #include "cinder/app/cocoa/AppCocoaView.h"
@@ -609,3 +612,5 @@ void AppCocoaView::showCursor()
 }
 
 } } // namespace cinder::app
+
+#endif // !defined( CINDER_GLFW )
