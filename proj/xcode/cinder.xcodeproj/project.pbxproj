@@ -61,6 +61,10 @@
 		0012CD882EBBDA2A0026B039 /* AppGlfw.h in Headers */ = {isa = PBXBuildFile; fileRef = 0012CD842EBBDA2A0026B039 /* AppGlfw.h */; };
 		0012CD892EBBDA2A0026B039 /* AppImplGlfw.h in Headers */ = {isa = PBXBuildFile; fileRef = 0012CD852EBBDA2A0026B039 /* AppImplGlfw.h */; };
 		0012CD8A2EBBDA2A0026B039 /* RendererGlGlfw.h in Headers */ = {isa = PBXBuildFile; fileRef = 0012CD862EBBDA2A0026B039 /* RendererGlGlfw.h */; };
+		0012D3802EBDAABA0026B039 /* AppGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D37C2EBDAABA0026B039 /* AppGlfw.cpp */; };
+		0012D3812EBDAABA0026B039 /* AppImplGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D37D2EBDAABA0026B039 /* AppImplGlfw.cpp */; };
+		0012D3822EBDAABA0026B039 /* RendererGlGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D37E2EBDAABA0026B039 /* RendererGlGlfw.cpp */; };
+		0012D3832EBDAABA0026B039 /* WindowImplGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D37F2EBDAABA0026B039 /* WindowImplGlfw.cpp */; };
 		0014407F14CDB8D900D99000 /* Plane.h in Headers */ = {isa = PBXBuildFile; fileRef = 0014407E14CDB8D900D99000 /* Plane.h */; };
 		001E3561115D5EFA000C228C /* Xml.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 001E355E115D5EFA000C228C /* Xml.cpp */; };
 		001E3565115D5F14000C228C /* Xml.h in Headers */ = {isa = PBXBuildFile; fileRef = 001E3562115D5F14000C228C /* Xml.h */; };
@@ -272,7 +276,6 @@
 		03B0993BC7DC49A18700235B /* CanvasUi.h in Headers */ = {isa = PBXBuildFile; fileRef = CCEA2460CD2F4C1C93972D5F /* CanvasUi.h */; };
 		04AD9E19A91B4D2D808D2DEF /* cocoa_monitor.m in Sources */ = {isa = PBXBuildFile; fileRef = 4539F08A8F9446C6A2B53201 /* cocoa_monitor.m */; };
 		06CBD5FAE61F47CC8CB7C5A6 /* CanvasUi.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 585C940D97494FD6B1641420 /* CanvasUi.cpp */; };
-		0B3B9C5CE26E43F2B3EE9506 /* RendererGlGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3DA0848851764A088725F252 /* RendererGlGlfw.cpp */; };
 		0BA31503AB7E4E978D7825C0 /* vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = F4C3F3D45D3043FD88006E71 /* vulkan.c */; };
 		0EA50E43B02F4CED80DFABC8 /* cocoa_window.m in Sources */ = {isa = PBXBuildFile; fileRef = 6F5DFE900C3E4694861D4225 /* cocoa_window.m */; };
 		1116CC4D1A5F154000023856 /* Platform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1116CC4A1A5F154000023856 /* Platform.cpp */; };
@@ -1101,7 +1104,6 @@
 		51B6EBD717634069BDD1E4DB /* platform.c in Sources */ = {isa = PBXBuildFile; fileRef = BC0DF9A29C084F7DBE1733B7 /* platform.c */; };
 		5391FE660E95CB01002A13D5 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0867D6A5FE840307C02AAC07 /* AppKit.framework */; };
 		575212C758BE40188A60E975 /* context.c in Sources */ = {isa = PBXBuildFile; fileRef = FF8BB2BEB3B24A6786383A5F /* context.c */; };
-		586EF6DF580B4230B5368700 /* AppGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 16BBCD60B0B74E6F8FCC6E6C /* AppGlfw.cpp */; };
 		8390A5892BD14F74A8FD10B7 /* null_window.c in Sources */ = {isa = PBXBuildFile; fileRef = DDC538FC5BFB4056AAACC498 /* null_window.c */; };
 		8499F5B723F60DA000360A6F /* glad.c in Sources */ = {isa = PBXBuildFile; fileRef = 8499F5B623F60DA000360A6F /* glad.c */; };
 		84A3FFD324048CAC00932807 /* CinderImGui.h in Headers */ = {isa = PBXBuildFile; fileRef = 84A3FFD224048CAC00932807 /* CinderImGui.h */; };
@@ -1125,7 +1127,6 @@
 		92AF10066D6041E09E56B37A /* posix_module.c in Sources */ = {isa = PBXBuildFile; fileRef = 6CACD51097F141AFA99A589B /* posix_module.c */; };
 		949F123AD40D4D2E8698B2E6 /* cocoa_init.m in Sources */ = {isa = PBXBuildFile; fileRef = 434F29DBC77B48938219C983 /* cocoa_init.m */; };
 		98E3B86D2C4849E0A6AD6B2E /* null_init.c in Sources */ = {isa = PBXBuildFile; fileRef = 45400D9FA51249A890BAEFA4 /* null_init.c */; };
-		9DE5A626D4394FC9A76FAFE9 /* WindowImplGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C0A8FFC990004259846BE23F /* WindowImplGlfw.cpp */; };
 		B0245F5919BEDF3200BC878D /* Query.h in Headers */ = {isa = PBXBuildFile; fileRef = B0245F5819BEDF3200BC878D /* Query.h */; };
 		B06DE70319C74935008B9E1B /* Query.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B06DE70219C74935008B9E1B /* Query.cpp */; };
 		B31987EB1ACB9D8B00DEB9EF /* draw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B31987EA1ACB9D8B00DEB9EF /* draw.cpp */; };
@@ -1608,7 +1609,6 @@
 		C7BA408B0FA8C13A00AADC07 /* AudioUnit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C7BA408A0FA8C13A00AADC07 /* AudioUnit.framework */; };
 		C7BA408D0FA8C13A00AADC07 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C7BA408C0FA8C13A00AADC07 /* CoreAudio.framework */; };
 		D2AAC088055469A000DB518D /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7B1FEA5585E11CA2CBB /* Cocoa.framework */; };
-		D3AB8704F31749AB9EA32076 /* AppImplGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B7B0ADCFC1D742C88E320789 /* AppImplGlfw.cpp */; };
 		D5325497BD0347A4BD88EFC8 /* window.c in Sources */ = {isa = PBXBuildFile; fileRef = 9677578BF77E4A25B613F52F /* window.c */; };
 		D64BE767FF6D405297BF1944 /* input.c in Sources */ = {isa = PBXBuildFile; fileRef = 2D22DC49E980424BA2271009 /* input.c */; };
 		D8A5A81A19BFDE8700811132 /* CaptureImplAvFoundation.mm in Sources */ = {isa = PBXBuildFile; fileRef = C7FA5FC112124A790065683B /* CaptureImplAvFoundation.mm */; };
@@ -1673,6 +1673,10 @@
 		0012CD842EBBDA2A0026B039 /* AppGlfw.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppGlfw.h; path = ../app/glfw/AppGlfw.h; sourceTree = "<group>"; };
 		0012CD852EBBDA2A0026B039 /* AppImplGlfw.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppImplGlfw.h; path = ../app/glfw/AppImplGlfw.h; sourceTree = "<group>"; };
 		0012CD862EBBDA2A0026B039 /* RendererGlGlfw.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = RendererGlGlfw.h; path = ../app/glfw/RendererGlGlfw.h; sourceTree = "<group>"; };
+		0012D37C2EBDAABA0026B039 /* AppGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; name = AppGlfw.cpp; path = ../app/glfw/AppGlfw.cpp; sourceTree = "<group>"; };
+		0012D37D2EBDAABA0026B039 /* AppImplGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; name = AppImplGlfw.cpp; path = ../app/glfw/AppImplGlfw.cpp; sourceTree = "<group>"; };
+		0012D37E2EBDAABA0026B039 /* RendererGlGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; name = RendererGlGlfw.cpp; path = ../app/glfw/RendererGlGlfw.cpp; sourceTree = "<group>"; };
+		0012D37F2EBDAABA0026B039 /* WindowImplGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; name = WindowImplGlfw.cpp; path = ../app/glfw/WindowImplGlfw.cpp; sourceTree = "<group>"; };
 		0014407E14CDB8D900D99000 /* Plane.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Plane.h; sourceTree = "<group>"; };
 		001E355E115D5EFA000C228C /* Xml.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Xml.cpp; sourceTree = "<group>"; };
 		001E3562115D5F14000C228C /* Xml.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Xml.h; sourceTree = "<group>"; };
@@ -2122,7 +2126,6 @@
 		11C6F75D1AA391FE0001FA5C /* ShaderPreprocessor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ShaderPreprocessor.h; path = gl/ShaderPreprocessor.h; sourceTree = "<group>"; };
 		11C97C89192F0BD700A510B5 /* CurrentFunction.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CurrentFunction.h; sourceTree = "<group>"; };
 		11FD37E31A8EDB9E002B6EA9 /* Signals.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Signals.cpp; sourceTree = "<group>"; };
-		16BBCD60B0B74E6F8FCC6E6C /* AppGlfw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AppGlfw.cpp; sourceTree = "<group>"; };
 		1F3B15B603984485A5B49D1F /* egl_context.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = egl_context.c; path = ../../src/glfw/src/egl_context.c; sourceTree = "<group>"; };
 		277C2CEC1366632B00178A29 /* Matrix22.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Matrix22.h; sourceTree = "<group>"; };
 		277C2CED1366632B00178A29 /* Matrix33.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Matrix33.h; sourceTree = "<group>"; };
@@ -2137,7 +2140,6 @@
 		2D22DC49E980424BA2271009 /* input.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = input.c; path = ../../src/glfw/src/input.c; sourceTree = "<group>"; };
 		32DBCF5E0370ADEE00C91783 /* cinder_Prefix.pch */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cinder_Prefix.pch; sourceTree = "<group>"; };
 		3D24E0CB66454D37864E67F6 /* osmesa_context.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = osmesa_context.c; path = ../../src/glfw/src/osmesa_context.c; sourceTree = "<group>"; };
-		3DA0848851764A088725F252 /* RendererGlGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; path = RendererGlGlfw.cpp; sourceTree = "<group>"; };
 		4048A28E795940FB8236EF06 /* null_joystick.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = null_joystick.c; path = ../../src/glfw/src/null_joystick.c; sourceTree = "<group>"; };
 		434708D81267EE4300AA7349 /* Blend.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Blend.cpp; path = ip/Blend.cpp; sourceTree = "<group>"; };
 		434F29DBC77B48938219C983 /* cocoa_init.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = cocoa_init.m; path = ../../src/glfw/src/cocoa_init.m; sourceTree = "<group>"; };
@@ -2338,10 +2340,8 @@
 		B3EA40F41DD0F12200E34348 /* psnames.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = psnames.c; path = ../../src/freetype/psnames/psnames.c; sourceTree = "<group>"; };
 		B3EA40F91DD0F13C00E34348 /* type1cid.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = type1cid.c; path = ../../src/freetype/cid/type1cid.c; sourceTree = "<group>"; };
 		B3EA40FD1DD0F15400E34348 /* bdflib.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = bdflib.c; path = ../../src/freetype/bdf/bdflib.c; sourceTree = "<group>"; };
-		B7B0ADCFC1D742C88E320789 /* AppImplGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp.preprocessed; fileEncoding = 4; path = AppImplGlfw.cpp; sourceTree = "<group>"; };
 		BC0DF9A29C084F7DBE1733B7 /* platform.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = platform.c; path = ../../src/glfw/src/platform.c; sourceTree = "<group>"; };
 		BF126B2038074B00A5B0372F /* init.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = init.c; path = ../../src/glfw/src/init.c; sourceTree = "<group>"; };
-		C0A8FFC990004259846BE23F /* WindowImplGlfw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WindowImplGlfw.cpp; sourceTree = "<group>"; };
 		C2E39706ACD744888270319A /* null_monitor.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = null_monitor.c; path = ../../src/glfw/src/null_monitor.c; sourceTree = "<group>"; };
 		C70E19FE106AA38700E63577 /* Buffer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Buffer.h; sourceTree = "<group>"; };
 		C70E1A01106AA39D00E63577 /* Buffer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Buffer.cpp; sourceTree = "<group>"; };
@@ -2426,10 +2426,10 @@
 		0012CD8B2EBBDA5A0026B039 /* glfw */ = {
 			isa = PBXGroup;
 			children = (
-				16BBCD60B0B74E6F8FCC6E6C /* AppGlfw.cpp */,
-				B7B0ADCFC1D742C88E320789 /* AppImplGlfw.cpp */,
-				C0A8FFC990004259846BE23F /* WindowImplGlfw.cpp */,
-				3DA0848851764A088725F252 /* RendererGlGlfw.cpp */,
+				0012D37C2EBDAABA0026B039 /* AppGlfw.cpp */,
+				0012D37D2EBDAABA0026B039 /* AppImplGlfw.cpp */,
+				0012D37E2EBDAABA0026B039 /* RendererGlGlfw.cpp */,
+				0012D37F2EBDAABA0026B039 /* WindowImplGlfw.cpp */,
 			);
 			path = glfw;
 			sourceTree = "<group>";
@@ -5278,10 +5278,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				586EF6DF580B4230B5368700 /* AppGlfw.cpp in Sources */,
-				D3AB8704F31749AB9EA32076 /* AppImplGlfw.cpp in Sources */,
-				9DE5A626D4394FC9A76FAFE9 /* WindowImplGlfw.cpp in Sources */,
-				0B3B9C5CE26E43F2B3EE9506 /* RendererGlGlfw.cpp in Sources */,
 				575212C758BE40188A60E975 /* context.c in Sources */,
 				2075DB9CFFC44627A7E68FD5 /* init.c in Sources */,
 				D64BE767FF6D405297BF1944 /* input.c in Sources */,
@@ -5313,6 +5309,7 @@
 				00241AC00E830DD5004D34EB /* Matrix.cpp in Sources */,
 				B3EA40501DD0EF1B00E34348 /* pfr.c in Sources */,
 				111A5EAF191F703D005C3166 /* codebook.c in Sources */,
+				0012D3822EBDAABA0026B039 /* RendererGlGlfw.cpp in Sources */,
 				008CE83D0E94672E00644A05 /* Surface.cpp in Sources */,
 				B3EA40821DD0F00900E34348 /* ftbase.c in Sources */,
 				008CE83E0E94672E00644A05 /* Channel.cpp in Sources */,
@@ -5436,6 +5433,7 @@
 				B322C4791DC7DC7100D2E661 /* inffast.c in Sources */,
 				00419C6F11057CC6007EC9AD /* Fill.cpp in Sources */,
 				B3EA40AC1DD0F00900E34348 /* ftpatent.c in Sources */,
+				0012D3832EBDAABA0026B039 /* WindowImplGlfw.cpp in Sources */,
 				003CE47F242A9823007BE072 /* MediaTime.cpp in Sources */,
 				00419C7011057CC6007EC9AD /* Flip.cpp in Sources */,
 				00419C7111057CC6007EC9AD /* Grayscale.cpp in Sources */,
@@ -5541,6 +5539,7 @@
 				B3EA40971DD0F00900E34348 /* ftgasp.c in Sources */,
 				B3EA40911DD0F00900E34348 /* ftdebug.c in Sources */,
 				111A5FF8191F72AE005C3166 /* PanNode.cpp in Sources */,
+				0012D3812EBDAABA0026B039 /* AppImplGlfw.cpp in Sources */,
 				8499F5B723F60DA000360A6F /* glad.c in Sources */,
 				008B43A814F5F8F800B55B07 /* Svg.cpp in Sources */,
 				0034C318151A5B7F003F2E30 /* Unicode.cpp in Sources */,
@@ -5549,6 +5548,7 @@
 				0034C321151A5B9F003F2E30 /* linebreak.c in Sources */,
 				B3EA40C31DD0F02900E34348 /* smooth.c in Sources */,
 				114B7553192B2F9800E30153 /* MonitorNode.cpp in Sources */,
+				0012D3802EBDAABA0026B039 /* AppGlfw.cpp in Sources */,
 				111A5FAD191F72AE005C3166 /* ContextAudioUnit.cpp in Sources */,
 				0034C327151A5B9F003F2E30 /* linebreakdata.c in Sources */,
 				0003F4201992D64100647C8B /* Vbo.cpp in Sources */,
