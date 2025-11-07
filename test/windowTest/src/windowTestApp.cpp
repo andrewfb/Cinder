@@ -58,7 +58,7 @@ void WindowTestApp::mouseDrag( MouseEvent event )
 void WindowTestApp::prepareSettings( Settings *settings )
 {
 	settings->setPowerManagementEnabled( false );
-	settings->setQuitOnLastWindowCloseEnabled( false );
+	settings->setQuitOnLastWindowCloseEnabled( true );
 //	settings->setFullScreen( true );
 	settings->setWindowSize( 800, 500 );
 	settings->setTitle( "title set from App::Settings" );

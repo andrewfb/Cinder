@@ -125,6 +125,7 @@ public:
 
 		::glfwSetWindowSizeCallback( glfwWindow, GlfwCallbacks::onWindowSize );
 		::glfwSetWindowPosCallback( glfwWindow, GlfwCallbacks::onWindowMove );
+		::glfwSetWindowFocusCallback( glfwWindow, GlfwCallbacks::onWindowFocus );
 		::glfwSetKeyCallback( glfwWindow, GlfwCallbacks::onKeyboard );
 		// Note: NOT using glfwSetCharCallback - we compute characters directly in onKeyboard
 		::glfwSetCursorPosCallback( glfwWindow, GlfwCallbacks::onMousePos );
@@ -160,6 +161,34 @@ public:
 			cinderAppImpl->setWindow( cinderWindow );
 
 			cinderWindow->emitMove();
+		}
+	}
+
+	static void onWindowFocus( GLFWwindow* glfwWindow, int focused ) {
+		auto iter = sWindowMapping.find( glfwWindow );
+		if( sWindowMapping.end() != iter ) {
+			auto& cinderAppImpl = iter->second.first;
+			auto& cinderWindow = iter->second.second;
+			cinderAppImpl->setWindow( cinderWindow );
+
+			// Check if any of our windows has focus
+			bool anyWindowFocused = false;
+			for( auto& windowImpl : cinderAppImpl->mWindows ) {
+				if( ::glfwGetWindowAttrib( windowImpl->getNative(), GLFW_FOCUSED ) ) {
+					anyWindowFocused = true;
+					break;
+				}
+			}
+
+			// Emit app-level activation signals only when the overall state changes
+			if( anyWindowFocused && !cinderAppImpl->mActive ) {
+				cinderAppImpl->mActive = true;
+				cinderAppImpl->mApp->emitDidBecomeActive();
+			}
+			else if( !anyWindowFocused && cinderAppImpl->mActive ) {
+				cinderAppImpl->mActive = false;
+				cinderAppImpl->mApp->emitWillResignActive();
+			}
 		}
 	}
 
@@ -509,6 +538,7 @@ void AppImplGlfw::run()
 		goto terminate;
 
 	// issue initial app activation event
+	mActive = true;
 	mApp->emitDidBecomeActive();
 
 	// isse initial resize revent

@@ -80,6 +80,7 @@ private:
 
 	bool						mSetupHasBeenCalled = false;
 	bool						mQuitOnLastWindowClosed;
+	bool						mActive = false;
 
 	double						mNextFrameTime;
 
