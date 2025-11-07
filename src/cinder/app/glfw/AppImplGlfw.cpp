@@ -89,7 +89,8 @@
 	bool shouldQuit = mApp->privateEmitShouldQuit();
 	if( shouldQuit ) {
 		// App allows quit - let GLFW mark windows as should-close
-		return [mGlfwDelegate applicationShouldTerminate:sender];
+		BOOL ignored = [mGlfwDelegate applicationShouldTerminate:sender];
+        return NSTerminateNow;
 	}
 	else {
 		// App vetoed quit - don't do anything

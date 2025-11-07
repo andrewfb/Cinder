@@ -74,7 +74,8 @@ class CI_API RendererGl : public Renderer {
 #else
 			mMsaaSamples = 0;
 			mCoreProfile = true;
-			mVersion = std::pair<int,int>( 3, 2 );
+			// Use (0, 0) to indicate "request highest available version"
+			mVersion = std::pair<int,int>( 0, 0 );
 #endif
 #if ! defined( CINDER_GL_ES )
 			mDebugContext = false;
