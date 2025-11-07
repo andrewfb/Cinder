@@ -72,18 +72,29 @@ WindowImplGlfw::WindowImplGlfw( const Window::Format &format, WindowImplGlfw *sh
 #else // Desktop
 	int32_t majorVersion = options.getVersion().first;
 	int32_t minorVersion = options.getVersion().second;
-	::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, majorVersion );
-	::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, minorVersion );
+
+	// If version is (0, 0) and Core Profile is requested, request 4.1 (highest on macOS)
+	// If version is (0, 0) and Core Profile not requested, use GLFW default (compatibility)
+	if( majorVersion == 0 && minorVersion == 0 ) {
+		if( options.getCoreProfile() ) {
+			// Core Profile requires >= 3.2, request 4.1 for maximum compatibility on macOS
+			::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
+			::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
+		}
+		// else: don't set version hints, GLFW will use compatibility profile with default version
+	}
+	else {
+		::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, majorVersion );
+		::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, minorVersion );
+	}
+
 	::glfwWindowHint( GLFW_DECORATED, format.isBorderless() ? GL_FALSE : GL_TRUE );
 	::glfwWindowHint( GLFW_RESIZABLE, format.isResizable() ? GL_TRUE : GL_FALSE );
 	::glfwWindowHint( GLFW_FLOATING, format.isAlwaysOnTop() ? GL_TRUE : GL_FALSE );
-	if( options.getCoreProfile() ) {
+
+	if( options.getCoreProfile() )
 		::glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
-		std::cout << "Rendering with OpenGL Core Profile " << majorVersion << "." << minorVersion << std::endl;
-	}
-	else {
-		std::cout << "Rendering with OpenGL " << majorVersion << "." << minorVersion << std::endl;
-	}
+
 	if( options.getDebug() )
 		::glfwWindowHint( GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE );
 #endif
