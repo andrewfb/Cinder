@@ -84,12 +84,13 @@ void WindowTestApp::setup()
 	getWindow()->getSignalDisplayChange().connect( std::bind( &WindowTestApp::displayChange, this ) );
 	getWindow()->getSignalClose().connect( std::bind( &WindowTestApp::windowClose, this ) );
 	
-	getSignalDidBecomeActive().connect( [] { CI_LOG_V( "App became active." ); } );
-	getSignalWillResignActive().connect( [] { CI_LOG_V( "App will resign active." ); } );
+	getSignalDidBecomeActive().connect( [this] { console() << "App didBecomeActive signal received" << std::endl; } );
+	getSignalWillResignActive().connect( [this] { console() << "App willResignActive signal received" << std::endl; } );
 }
 
 bool WindowTestApp::shouldQuit()
 {
+	console() << "App shouldQuit() signal received - allowing quit" << std::endl;
 	return true;
 }
 

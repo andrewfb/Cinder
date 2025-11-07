@@ -2338,7 +2338,7 @@
 		B3EA40F41DD0F12200E34348 /* psnames.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = psnames.c; path = ../../src/freetype/psnames/psnames.c; sourceTree = "<group>"; };
 		B3EA40F91DD0F13C00E34348 /* type1cid.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = type1cid.c; path = ../../src/freetype/cid/type1cid.c; sourceTree = "<group>"; };
 		B3EA40FD1DD0F15400E34348 /* bdflib.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = bdflib.c; path = ../../src/freetype/bdf/bdflib.c; sourceTree = "<group>"; };
-		B7B0ADCFC1D742C88E320789 /* AppImplGlfw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AppImplGlfw.cpp; sourceTree = "<group>"; };
+		B7B0ADCFC1D742C88E320789 /* AppImplGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp.preprocessed; fileEncoding = 4; path = AppImplGlfw.cpp; sourceTree = "<group>"; };
 		BC0DF9A29C084F7DBE1733B7 /* platform.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = platform.c; path = ../../src/glfw/src/platform.c; sourceTree = "<group>"; };
 		BF126B2038074B00A5B0372F /* init.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = init.c; path = ../../src/glfw/src/init.c; sourceTree = "<group>"; };
 		C0A8FFC990004259846BE23F /* WindowImplGlfw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WindowImplGlfw.cpp; sourceTree = "<group>"; };

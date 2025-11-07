@@ -33,7 +33,83 @@
 #elif defined( CINDER_MAC )
 	#include <thread>
 	#include <chrono>
+	#import <Cocoa/Cocoa.h>
 #endif
+
+#if defined( CINDER_MAC )
+// Custom NSApplicationDelegate that wraps GLFW's delegate and emits Cinder signals
+@interface CinderGlfwAppDelegate : NSObject <NSApplicationDelegate>
+{
+	id<NSApplicationDelegate> mGlfwDelegate;
+	cinder::app::AppGlfw *mApp;
+	bool *mQuitOnLastWindowClosed;
+}
+- (id)initWithGlfwDelegate:(id<NSApplicationDelegate>)glfwDelegate app:(cinder::app::AppGlfw*)app quitOnLastWindowClosed:(bool*)quitOnLastWindowClosed;
+@end
+
+@implementation CinderGlfwAppDelegate
+
+- (id)initWithGlfwDelegate:(id<NSApplicationDelegate>)glfwDelegate app:(cinder::app::AppGlfw*)app quitOnLastWindowClosed:(bool*)quitOnLastWindowClosed
+{
+	self = [super init];
+	if( self ) {
+		mGlfwDelegate = glfwDelegate;
+		mApp = app;
+		mQuitOnLastWindowClosed = quitOnLastWindowClosed;
+	}
+	return self;
+}
+
+- (void)applicationDidBecomeActive:(NSNotification *)notification
+{
+	mApp->emitDidBecomeActive();
+	// Also forward to GLFW's delegate if it implements this
+	if( [mGlfwDelegate respondsToSelector:@selector(applicationDidBecomeActive:)] ) {
+		[mGlfwDelegate applicationDidBecomeActive:notification];
+	}
+}
+
+- (void)applicationWillResignActive:(NSNotification *)notification
+{
+	mApp->emitWillResignActive();
+	// Also forward to GLFW's delegate if it implements this
+	if( [mGlfwDelegate respondsToSelector:@selector(applicationWillResignActive:)] ) {
+		[mGlfwDelegate applicationWillResignActive:notification];
+	}
+}
+
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)application
+{
+	return *mQuitOnLastWindowClosed;
+}
+
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender
+{
+	// First, ask the Cinder app if it wants to quit
+	bool shouldQuit = mApp->privateEmitShouldQuit();
+	if( shouldQuit ) {
+		// App allows quit - let GLFW mark windows as should-close
+		return [mGlfwDelegate applicationShouldTerminate:sender];
+	}
+	else {
+		// App vetoed quit - don't do anything
+		return NSTerminateCancel;
+	}
+}
+
+// Automatically forward all other methods to GLFW's delegate
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)selector
+{
+	return [mGlfwDelegate methodSignatureForSelector:selector];
+}
+
+- (void)forwardInvocation:(NSInvocation *)invocation
+{
+	[invocation invokeWithTarget:mGlfwDelegate];
+}
+
+@end
+#endif // CINDER_MAC
 
 namespace cinder { namespace app {
 
@@ -341,9 +417,18 @@ AppImplGlfw::AppImplGlfw( AppGlfw *aApp, const AppGlfw::Settings &settings )
 		std::exit( 1 );
 	}
 
+	// Initialize settings before creating delegate (which needs mQuitOnLastWindowClosed)
 	mFrameRate = settings.getFrameRate();
 	mFrameRateEnabled = settings.isFrameRateEnabled();
 	mQuitOnLastWindowClosed = settings.isQuitOnLastWindowCloseEnabled();
+
+#if defined( CINDER_MAC )
+	// Replace GLFW's NSApplicationDelegate with our own that emits Cinder signals
+	NSApplication *nsApp = [NSApplication sharedApplication];
+	id<NSApplicationDelegate> glfwDelegate = [nsApp delegate];
+	CinderGlfwAppDelegate *cinderDelegate = [[CinderGlfwAppDelegate alloc] initWithGlfwDelegate:glfwDelegate app:mApp quitOnLastWindowClosed:&mQuitOnLastWindowClosed];
+	[nsApp setDelegate:cinderDelegate];
+#endif
 
 	auto formats = settings.getWindowFormats();
 	if( formats.empty() ) {
