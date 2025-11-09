@@ -73,7 +73,16 @@ WindowImplGlfw::WindowImplGlfw( const Window::Format &format, WindowImplGlfw *sh
 	int32_t majorVersion = options.getVersion().first;
 	int32_t minorVersion = options.getVersion().second;
 
-	// If version is explicitly specified, use that version
+#if defined( CINDER_MAC )
+	// On macOS, if Core Profile requested but no version specified, request 4.1 (highest available)
+	// Core Profile requires >= 3.2, and macOS strictly enforces this
+	if( options.getCoreProfile() && majorVersion == 0 && minorVersion == 0 ) {
+		majorVersion = 4;
+		minorVersion = 1;
+	}
+#endif
+
+	// If version is explicitly specified (or set above for macOS Core Profile), use that version
 	// Otherwise don't set version hints - GLFW will give us the highest available
 	if( majorVersion != 0 || minorVersion != 0 ) {
 		::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, majorVersion );
