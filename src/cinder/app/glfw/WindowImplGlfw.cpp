@@ -73,17 +73,9 @@ WindowImplGlfw::WindowImplGlfw( const Window::Format &format, WindowImplGlfw *sh
 	int32_t majorVersion = options.getVersion().first;
 	int32_t minorVersion = options.getVersion().second;
 
-	// If version is (0, 0) and Core Profile is requested, request 4.1 (highest on macOS)
-	// If version is (0, 0) and Core Profile not requested, use GLFW default (compatibility)
-	if( majorVersion == 0 && minorVersion == 0 ) {
-		if( options.getCoreProfile() ) {
-			// Core Profile requires >= 3.2, request 4.1 for maximum compatibility on macOS
-			::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
-			::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
-		}
-		// else: don't set version hints, GLFW will use compatibility profile with default version
-	}
-	else {
+	// If version is explicitly specified, use that version
+	// Otherwise don't set version hints - GLFW will give us the highest available
+	if( majorVersion != 0 || minorVersion != 0 ) {
 		::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, majorVersion );
 		::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, minorVersion );
 	}
