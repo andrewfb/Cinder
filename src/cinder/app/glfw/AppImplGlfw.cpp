@@ -33,84 +33,8 @@
 #elif defined( CINDER_MAC )
 	#include <thread>
 	#include <chrono>
-	#import <Cocoa/Cocoa.h>
+	#include "cinder/app/glfw/AppImplGlfwMac.h"
 #endif
-
-#if defined( CINDER_MAC )
-// Custom NSApplicationDelegate that wraps GLFW's delegate and emits Cinder signals
-@interface CinderGlfwAppDelegate : NSObject <NSApplicationDelegate>
-{
-	id<NSApplicationDelegate> mGlfwDelegate;
-	cinder::app::AppGlfw *mApp;
-	bool *mQuitOnLastWindowClosed;
-}
-- (id)initWithGlfwDelegate:(id<NSApplicationDelegate>)glfwDelegate app:(cinder::app::AppGlfw*)app quitOnLastWindowClosed:(bool*)quitOnLastWindowClosed;
-@end
-
-@implementation CinderGlfwAppDelegate
-
-- (id)initWithGlfwDelegate:(id<NSApplicationDelegate>)glfwDelegate app:(cinder::app::AppGlfw*)app quitOnLastWindowClosed:(bool*)quitOnLastWindowClosed
-{
-	self = [super init];
-	if( self ) {
-		mGlfwDelegate = glfwDelegate;
-		mApp = app;
-		mQuitOnLastWindowClosed = quitOnLastWindowClosed;
-	}
-	return self;
-}
-
-- (void)applicationDidBecomeActive:(NSNotification *)notification
-{
-	mApp->emitDidBecomeActive();
-	// Also forward to GLFW's delegate if it implements this
-	if( [mGlfwDelegate respondsToSelector:@selector(applicationDidBecomeActive:)] ) {
-		[mGlfwDelegate applicationDidBecomeActive:notification];
-	}
-}
-
-- (void)applicationWillResignActive:(NSNotification *)notification
-{
-	mApp->emitWillResignActive();
-	// Also forward to GLFW's delegate if it implements this
-	if( [mGlfwDelegate respondsToSelector:@selector(applicationWillResignActive:)] ) {
-		[mGlfwDelegate applicationWillResignActive:notification];
-	}
-}
-
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)application
-{
-	return *mQuitOnLastWindowClosed;
-}
-
-- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender
-{
-	// First, ask the Cinder app if it wants to quit
-	bool shouldQuit = mApp->privateEmitShouldQuit();
-	if( shouldQuit ) {
-		// App allows quit - let GLFW mark windows as should-close
-		BOOL ignored = [mGlfwDelegate applicationShouldTerminate:sender];
-        return NSTerminateNow;
-	}
-	else {
-		// App vetoed quit - don't do anything
-		return NSTerminateCancel;
-	}
-}
-
-// Automatically forward all other methods to GLFW's delegate
-- (NSMethodSignature *)methodSignatureForSelector:(SEL)selector
-{
-	return [mGlfwDelegate methodSignatureForSelector:selector];
-}
-
-- (void)forwardInvocation:(NSInvocation *)invocation
-{
-	[invocation invokeWithTarget:mGlfwDelegate];
-}
-
-@end
-#endif // CINDER_MAC
 
 namespace cinder { namespace app {
 
@@ -125,7 +49,6 @@ public:
 
 		::glfwSetWindowSizeCallback( glfwWindow, GlfwCallbacks::onWindowSize );
 		::glfwSetWindowPosCallback( glfwWindow, GlfwCallbacks::onWindowMove );
-		::glfwSetWindowFocusCallback( glfwWindow, GlfwCallbacks::onWindowFocus );
 		::glfwSetKeyCallback( glfwWindow, GlfwCallbacks::onKeyboard );
 		// Note: NOT using glfwSetCharCallback - we compute characters directly in onKeyboard
 		::glfwSetCursorPosCallback( glfwWindow, GlfwCallbacks::onMousePos );
@@ -161,34 +84,6 @@ public:
 			cinderAppImpl->setWindow( cinderWindow );
 
 			cinderWindow->emitMove();
-		}
-	}
-
-	static void onWindowFocus( GLFWwindow* glfwWindow, int focused ) {
-		auto iter = sWindowMapping.find( glfwWindow );
-		if( sWindowMapping.end() != iter ) {
-			auto& cinderAppImpl = iter->second.first;
-			auto& cinderWindow = iter->second.second;
-			cinderAppImpl->setWindow( cinderWindow );
-
-			// Check if any of our windows has focus
-			bool anyWindowFocused = false;
-			for( auto& windowImpl : cinderAppImpl->mWindows ) {
-				if( ::glfwGetWindowAttrib( windowImpl->getNative(), GLFW_FOCUSED ) ) {
-					anyWindowFocused = true;
-					break;
-				}
-			}
-
-			// Emit app-level activation signals only when the overall state changes
-			if( anyWindowFocused && !cinderAppImpl->mActive ) {
-				cinderAppImpl->mActive = true;
-				cinderAppImpl->mApp->emitDidBecomeActive();
-			}
-			else if( !anyWindowFocused && cinderAppImpl->mActive ) {
-				cinderAppImpl->mActive = false;
-				cinderAppImpl->mApp->emitWillResignActive();
-			}
 		}
 	}
 
@@ -453,11 +348,8 @@ AppImplGlfw::AppImplGlfw( AppGlfw *aApp, const AppGlfw::Settings &settings )
 	mQuitOnLastWindowClosed = settings.isQuitOnLastWindowCloseEnabled();
 
 #if defined( CINDER_MAC )
-	// Replace GLFW's NSApplicationDelegate with our own that emits Cinder signals
-	NSApplication *nsApp = [NSApplication sharedApplication];
-	id<NSApplicationDelegate> glfwDelegate = [nsApp delegate];
-	CinderGlfwAppDelegate *cinderDelegate = [[CinderGlfwAppDelegate alloc] initWithGlfwDelegate:glfwDelegate app:mApp quitOnLastWindowClosed:&mQuitOnLastWindowClosed];
-	[nsApp setDelegate:cinderDelegate];
+	// Setup macOS-specific NSApplicationDelegate wrapper
+	setupMacOSDelegate( mApp, &mQuitOnLastWindowClosed );
 #endif
 
 	auto formats = settings.getWindowFormats();

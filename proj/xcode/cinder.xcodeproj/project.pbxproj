@@ -61,10 +61,11 @@
 		0012CD882EBBDA2A0026B039 /* AppGlfw.h in Headers */ = {isa = PBXBuildFile; fileRef = 0012CD842EBBDA2A0026B039 /* AppGlfw.h */; };
 		0012CD892EBBDA2A0026B039 /* AppImplGlfw.h in Headers */ = {isa = PBXBuildFile; fileRef = 0012CD852EBBDA2A0026B039 /* AppImplGlfw.h */; };
 		0012CD8A2EBBDA2A0026B039 /* RendererGlGlfw.h in Headers */ = {isa = PBXBuildFile; fileRef = 0012CD862EBBDA2A0026B039 /* RendererGlGlfw.h */; };
-		0012D3802EBDAABA0026B039 /* AppGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D37C2EBDAABA0026B039 /* AppGlfw.cpp */; };
-		0012D3812EBDAABA0026B039 /* AppImplGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D37D2EBDAABA0026B039 /* AppImplGlfw.cpp */; };
-		0012D3822EBDAABA0026B039 /* RendererGlGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D37E2EBDAABA0026B039 /* RendererGlGlfw.cpp */; };
-		0012D3832EBDAABA0026B039 /* WindowImplGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D37F2EBDAABA0026B039 /* WindowImplGlfw.cpp */; };
+		0012D3F42EBEBD890026B039 /* AppGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D3F02EBEBD890026B039 /* AppGlfw.cpp */; };
+		0012D3F52EBEBD890026B039 /* WindowImplGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D3F12EBEBD890026B039 /* WindowImplGlfw.cpp */; };
+		0012D3F62EBEBD890026B039 /* AppImplGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D3F22EBEBD890026B039 /* AppImplGlfw.cpp */; };
+		0012D3F72EBEBD890026B039 /* RendererGlGlfw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0012D3F32EBEBD890026B039 /* RendererGlGlfw.cpp */; };
+		0012D3F92EBEC55D0026B039 /* AppImplGlfwMac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 0012D3F82EBEC55D0026B039 /* AppImplGlfwMac.mm */; };
 		0014407F14CDB8D900D99000 /* Plane.h in Headers */ = {isa = PBXBuildFile; fileRef = 0014407E14CDB8D900D99000 /* Plane.h */; };
 		001E3561115D5EFA000C228C /* Xml.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 001E355E115D5EFA000C228C /* Xml.cpp */; };
 		001E3565115D5F14000C228C /* Xml.h in Headers */ = {isa = PBXBuildFile; fileRef = 001E3562115D5F14000C228C /* Xml.h */; };
@@ -393,12 +394,6 @@
 		116C06271ABD2C06004D8297 /* scoped.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 116C06221ABD2C06004D8297 /* scoped.cpp */; };
 		116C062A1ABD2C06004D8297 /* wrapper.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 116C06231ABD2C06004D8297 /* wrapper.cpp */; };
 		1181F7C81A7F8792001BBFA2 /* AppBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1181F7C71A7F8792001BBFA2 /* AppBase.cpp */; };
-		118CA4151A9427F700841458 /* AppMac.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 118CA4081A9427F700841458 /* AppMac.cpp */; };
-		118CA41B1A9427F700841458 /* AppCocoaView.mm in Sources */ = {isa = PBXBuildFile; fileRef = 118CA40A1A9427F700841458 /* AppCocoaView.mm */; };
-		118CA41E1A9427F700841458 /* AppImplMac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 118CA40B1A9427F700841458 /* AppImplMac.mm */; };
-		118CA4211A9427F700841458 /* RendererImplGlMac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 118CA40C1A9427F700841458 /* RendererImplGlMac.mm */; };
-		118CA4241A9427F700841458 /* RendererImpl2dMacQuartz.mm in Sources */ = {isa = PBXBuildFile; fileRef = 118CA40D1A9427F700841458 /* RendererImpl2dMacQuartz.mm */; };
-		118CA4331A9427F700841458 /* CinderViewMac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 118CA4121A9427F700841458 /* CinderViewMac.mm */; };
 		118CA4391A9427F700841458 /* PlatformCocoa.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 118CA4141A9427F700841458 /* PlatformCocoa.cpp */; };
 		11A38FB01E7769AC008C452D /* Export.h in Headers */ = {isa = PBXBuildFile; fileRef = 11A38FAE1E7769AC008C452D /* Export.h */; };
 		11A38FB11E7769AC008C452D /* FileWatcher.h in Headers */ = {isa = PBXBuildFile; fileRef = 11A38FAF1E7769AC008C452D /* FileWatcher.h */; };
@@ -1673,10 +1668,11 @@
 		0012CD842EBBDA2A0026B039 /* AppGlfw.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppGlfw.h; path = ../app/glfw/AppGlfw.h; sourceTree = "<group>"; };
 		0012CD852EBBDA2A0026B039 /* AppImplGlfw.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppImplGlfw.h; path = ../app/glfw/AppImplGlfw.h; sourceTree = "<group>"; };
 		0012CD862EBBDA2A0026B039 /* RendererGlGlfw.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = RendererGlGlfw.h; path = ../app/glfw/RendererGlGlfw.h; sourceTree = "<group>"; };
-		0012D37C2EBDAABA0026B039 /* AppGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; name = AppGlfw.cpp; path = ../app/glfw/AppGlfw.cpp; sourceTree = "<group>"; };
-		0012D37D2EBDAABA0026B039 /* AppImplGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; name = AppImplGlfw.cpp; path = ../app/glfw/AppImplGlfw.cpp; sourceTree = "<group>"; };
-		0012D37E2EBDAABA0026B039 /* RendererGlGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; name = RendererGlGlfw.cpp; path = ../app/glfw/RendererGlGlfw.cpp; sourceTree = "<group>"; };
-		0012D37F2EBDAABA0026B039 /* WindowImplGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; name = WindowImplGlfw.cpp; path = ../app/glfw/WindowImplGlfw.cpp; sourceTree = "<group>"; };
+		0012D3F02EBEBD890026B039 /* AppGlfw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AppGlfw.cpp; sourceTree = "<group>"; };
+		0012D3F12EBEBD890026B039 /* WindowImplGlfw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WindowImplGlfw.cpp; sourceTree = "<group>"; };
+		0012D3F22EBEBD890026B039 /* AppImplGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; path = AppImplGlfw.cpp; sourceTree = "<group>"; };
+		0012D3F32EBEBD890026B039 /* RendererGlGlfw.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; path = RendererGlGlfw.cpp; sourceTree = "<group>"; };
+		0012D3F82EBEC55D0026B039 /* AppImplGlfwMac.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AppImplGlfwMac.mm; sourceTree = "<group>"; };
 		0014407E14CDB8D900D99000 /* Plane.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Plane.h; sourceTree = "<group>"; };
 		001E355E115D5EFA000C228C /* Xml.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Xml.cpp; sourceTree = "<group>"; };
 		001E3562115D5F14000C228C /* Xml.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Xml.h; sourceTree = "<group>"; };
@@ -2074,17 +2070,10 @@
 		117C98151AC6815400957DC6 /* audio.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = audio.h; sourceTree = "<group>"; };
 		1181F7C31A7F8760001BBFA2 /* AppBase.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AppBase.h; path = app/AppBase.h; sourceTree = "<group>"; };
 		1181F7C71A7F8792001BBFA2 /* AppBase.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = AppBase.cpp; path = app/AppBase.cpp; sourceTree = "<group>"; };
-		118CA4081A9427F700841458 /* AppMac.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; path = AppMac.cpp; sourceTree = "<group>"; };
 		118CA4091A9427F700841458 /* AppCocoaTouch.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; path = AppCocoaTouch.cpp; sourceTree = "<group>"; };
-		118CA40A1A9427F700841458 /* AppCocoaView.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AppCocoaView.mm; sourceTree = "<group>"; };
-		118CA40B1A9427F700841458 /* AppImplMac.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AppImplMac.mm; sourceTree = "<group>"; };
-		118CA40C1A9427F700841458 /* RendererImplGlMac.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = RendererImplGlMac.mm; sourceTree = "<group>"; };
-		118CA40D1A9427F700841458 /* RendererImpl2dMacQuartz.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = RendererImpl2dMacQuartz.mm; sourceTree = "<group>"; };
-		118CA40E1A9427F700841458 /* AppImplMacScreenSaver.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AppImplMacScreenSaver.mm; sourceTree = "<group>"; };
 		118CA40F1A9427F700841458 /* AppImplCocoaTouch.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AppImplCocoaTouch.mm; sourceTree = "<group>"; };
 		118CA4101A9427F700841458 /* RendererImplGlCocoaTouch.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = RendererImplGlCocoaTouch.mm; sourceTree = "<group>"; };
 		118CA4111A9427F700841458 /* RendererImpl2dCocoaTouchQuartz.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = RendererImpl2dCocoaTouchQuartz.mm; sourceTree = "<group>"; };
-		118CA4121A9427F700841458 /* CinderViewMac.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = CinderViewMac.mm; sourceTree = "<group>"; };
 		118CA4131A9427F700841458 /* CinderViewCocoaTouch.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = CinderViewCocoaTouch.mm; sourceTree = "<group>"; };
 		118CA4141A9427F700841458 /* PlatformCocoa.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; path = PlatformCocoa.cpp; sourceTree = "<group>"; };
 		118CA43D1A94280600841458 /* AppMsw.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = AppMsw.cpp; sourceTree = "<group>"; };
@@ -2096,13 +2085,10 @@
 		118CA4431A94280600841458 /* RendererImplGlMsw.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = RendererImplGlMsw.cpp; sourceTree = "<group>"; };
 		118CA4441A94280600841458 /* AppImplMswScreenSaver.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = AppImplMswScreenSaver.cpp; sourceTree = "<group>"; };
 		118CA4471A94280600841458 /* PlatformMsw.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformMsw.cpp; sourceTree = "<group>"; };
-		118CA4501A9428BE00841458 /* AppMac.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppMac.h; sourceTree = "<group>"; };
 		118CA4511A9428BE00841458 /* AppCocoaTouch.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppCocoaTouch.h; sourceTree = "<group>"; };
 		118CA4521A9428BE00841458 /* AppCocoaView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppCocoaView.h; sourceTree = "<group>"; };
-		118CA4531A9428BE00841458 /* AppImplMac.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppImplMac.h; sourceTree = "<group>"; };
 		118CA4541A9428BE00841458 /* RendererImplGlMac.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RendererImplGlMac.h; sourceTree = "<group>"; };
 		118CA4551A9428BE00841458 /* RendererImpl2dMacQuartz.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RendererImpl2dMacQuartz.h; sourceTree = "<group>"; };
-		118CA4561A9428BE00841458 /* AppImplMacScreenSaver.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppImplMacScreenSaver.h; sourceTree = "<group>"; };
 		118CA4571A9428BE00841458 /* AppImplCocoaTouch.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppImplCocoaTouch.h; sourceTree = "<group>"; };
 		118CA4581A9428BE00841458 /* RendererImplGlCocoaTouch.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RendererImplGlCocoaTouch.h; sourceTree = "<group>"; };
 		118CA4591A9428BE00841458 /* RendererImpl2dCocoaTouchQuartz.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RendererImpl2dCocoaTouchQuartz.h; sourceTree = "<group>"; };
@@ -2118,7 +2104,6 @@
 		118CA4641A9428BE00841458 /* RendererImplGlMsw.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RendererImplGlMsw.h; sourceTree = "<group>"; };
 		118CA4651A9428BE00841458 /* AppImplMswScreenSaver.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppImplMswScreenSaver.h; sourceTree = "<group>"; };
 		118CA4681A9428BE00841458 /* PlatformMsw.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PlatformMsw.h; sourceTree = "<group>"; };
-		118CA46A1A94296900841458 /* CinderViewMac.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CinderViewMac.h; sourceTree = "<group>"; };
 		11A38FAE1E7769AC008C452D /* Export.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Export.h; sourceTree = "<group>"; };
 		11A38FAF1E7769AC008C452D /* FileWatcher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FileWatcher.h; sourceTree = "<group>"; };
 		11A38FB21E7769CE008C452D /* FileWatcher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileWatcher.cpp; sourceTree = "<group>"; };
@@ -2426,12 +2411,14 @@
 		0012CD8B2EBBDA5A0026B039 /* glfw */ = {
 			isa = PBXGroup;
 			children = (
-				0012D37C2EBDAABA0026B039 /* AppGlfw.cpp */,
-				0012D37D2EBDAABA0026B039 /* AppImplGlfw.cpp */,
-				0012D37E2EBDAABA0026B039 /* RendererGlGlfw.cpp */,
-				0012D37F2EBDAABA0026B039 /* WindowImplGlfw.cpp */,
+				0012D3F02EBEBD890026B039 /* AppGlfw.cpp */,
+				0012D3F22EBEBD890026B039 /* AppImplGlfw.cpp */,
+				0012D3F32EBEBD890026B039 /* RendererGlGlfw.cpp */,
+				0012D3F12EBEBD890026B039 /* WindowImplGlfw.cpp */,
+				0012D3F82EBEC55D0026B039 /* AppImplGlfwMac.mm */,
 			);
-			path = glfw;
+			name = glfw;
+			path = app/glfw;
 			sourceTree = "<group>";
 		};
 		0012CD8C2EBBDB620026B039 /* glfw */ = {
@@ -3279,19 +3266,12 @@
 		118CA4071A9427F700841458 /* cocoa */ = {
 			isa = PBXGroup;
 			children = (
-				118CA4081A9427F700841458 /* AppMac.cpp */,
 				118CA4091A9427F700841458 /* AppCocoaTouch.cpp */,
-				118CA40A1A9427F700841458 /* AppCocoaView.mm */,
 				118CA40F1A9427F700841458 /* AppImplCocoaTouch.mm */,
-				118CA40B1A9427F700841458 /* AppImplMac.mm */,
-				118CA40E1A9427F700841458 /* AppImplMacScreenSaver.mm */,
 				118CA4131A9427F700841458 /* CinderViewCocoaTouch.mm */,
-				118CA4121A9427F700841458 /* CinderViewMac.mm */,
 				118CA4141A9427F700841458 /* PlatformCocoa.cpp */,
 				118CA4111A9427F700841458 /* RendererImpl2dCocoaTouchQuartz.mm */,
-				118CA40D1A9427F700841458 /* RendererImpl2dMacQuartz.mm */,
 				118CA4101A9427F700841458 /* RendererImplGlCocoaTouch.mm */,
-				118CA40C1A9427F700841458 /* RendererImplGlMac.mm */,
 			);
 			name = cocoa;
 			path = app/cocoa;
@@ -3320,11 +3300,7 @@
 				118CA4511A9428BE00841458 /* AppCocoaTouch.h */,
 				118CA4521A9428BE00841458 /* AppCocoaView.h */,
 				118CA4571A9428BE00841458 /* AppImplCocoaTouch.h */,
-				118CA4531A9428BE00841458 /* AppImplMac.h */,
-				118CA4561A9428BE00841458 /* AppImplMacScreenSaver.h */,
-				118CA4501A9428BE00841458 /* AppMac.h */,
 				118CA45A1A9428BE00841458 /* CinderViewCocoaTouch.h */,
-				118CA46A1A94296900841458 /* CinderViewMac.h */,
 				118CA4591A9428BE00841458 /* RendererImpl2dCocoaTouchQuartz.h */,
 				118CA4551A9428BE00841458 /* RendererImpl2dMacQuartz.h */,
 				118CA4581A9428BE00841458 /* RendererImplGlCocoaTouch.h */,
@@ -5300,7 +5276,6 @@
 				92AF10066D6041E09E56B37A /* posix_module.c in Sources */,
 				DFE1BB6EAD8B4089A463AFC7 /* posix_thread.c in Sources */,
 				D8A5A81A19BFDE8700811132 /* CaptureImplAvFoundation.mm in Sources */,
-				118CA4241A9427F700841458 /* RendererImpl2dMacQuartz.mm in Sources */,
 				111A5EBB191F703D005C3166 /* lpc.c in Sources */,
 				B3EA40D71DD0F09C00E34348 /* ftgzip.c in Sources */,
 				84A3FFF724048D6200932807 /* imgui_demo.cpp in Sources */,
@@ -5309,7 +5284,6 @@
 				00241AC00E830DD5004D34EB /* Matrix.cpp in Sources */,
 				B3EA40501DD0EF1B00E34348 /* pfr.c in Sources */,
 				111A5EAF191F703D005C3166 /* codebook.c in Sources */,
-				0012D3822EBDAABA0026B039 /* RendererGlGlfw.cpp in Sources */,
 				008CE83D0E94672E00644A05 /* Surface.cpp in Sources */,
 				B3EA40821DD0F00900E34348 /* ftbase.c in Sources */,
 				008CE83E0E94672E00644A05 /* Channel.cpp in Sources */,
@@ -5348,12 +5322,12 @@
 				111A5EBD191F703D005C3166 /* lsp.c in Sources */,
 				B3EA40BB1DD0F00900E34348 /* fttype1.c in Sources */,
 				006D705919942BF5008149E2 /* QuickTimeImplLegacy.cpp in Sources */,
-				118CA41E1A9427F700841458 /* AppImplMac.mm in Sources */,
 				B3EA40F51DD0F12200E34348 /* psnames.c in Sources */,
 				0003F3EA1992D64100647C8B /* EnvironmentCore.cpp in Sources */,
 				111A5EA8191F703D005C3166 /* bitrate.c in Sources */,
 				111A5EE4191F703D005C3166 /* window.c in Sources */,
 				0099871A0F79D0750042F211 /* CinderCocoa.mm in Sources */,
+				0012D3F72EBEBD890026B039 /* RendererGlGlfw.cpp in Sources */,
 				111A5EED191F703D005C3166 /* r8bbase.cpp in Sources */,
 				111A5EC1191F703D005C3166 /* mdct.c in Sources */,
 				009EE4720F7A9FAC00F17CB1 /* PolyLine.cpp in Sources */,
@@ -5372,6 +5346,7 @@
 				002DFC080FA50D1600E45AE0 /* TriMesh.cpp in Sources */,
 				008FCFF31A7497C600A86EC4 /* jsoncpp.cpp in Sources */,
 				002DFD510FA5600900E45AE0 /* ObjLoader.cpp in Sources */,
+				0012D3F92EBEC55D0026B039 /* AppImplGlfwMac.mm in Sources */,
 				111A5FB9191F72AE005C3166 /* Context.cpp in Sources */,
 				0003F4231992D64100647C8B /* VboMesh.cpp in Sources */,
 				B3EA408E1DD0F00900E34348 /* ftcid.c in Sources */,
@@ -5392,7 +5367,6 @@
 				111A5FD7191F72AE005C3166 /* FilterNode.cpp in Sources */,
 				B3EA40461DD0EEF700E34348 /* cff.c in Sources */,
 				111A5FC5191F72AE005C3166 /* Converter.cpp in Sources */,
-				118CA4331A9427F700841458 /* CinderViewMac.mm in Sources */,
 				0049C1B71010E5B10015B4B9 /* Renderer.cpp in Sources */,
 				006D705619942BF5008149E2 /* QuickTimeImplAvf.mm in Sources */,
 				11C6F75A1AA391E50001FA5C /* ShaderPreprocessor.cpp in Sources */,
@@ -5433,7 +5407,6 @@
 				B322C4791DC7DC7100D2E661 /* inffast.c in Sources */,
 				00419C6F11057CC6007EC9AD /* Fill.cpp in Sources */,
 				B3EA40AC1DD0F00900E34348 /* ftpatent.c in Sources */,
-				0012D3832EBDAABA0026B039 /* WindowImplGlfw.cpp in Sources */,
 				003CE47F242A9823007BE072 /* MediaTime.cpp in Sources */,
 				00419C7011057CC6007EC9AD /* Flip.cpp in Sources */,
 				00419C7111057CC6007EC9AD /* Grayscale.cpp in Sources */,
@@ -5480,6 +5453,7 @@
 				27BE4DDD1DA9E4FC00DE84C9 /* ImageSourceFileQoi.cpp in Sources */,
 				00A113D5135535C500081873 /* Triangulate.cpp in Sources */,
 				B3EA40EB1DD0F0EE00E34348 /* psaux.c in Sources */,
+				0012D3F62EBEBD890026B039 /* AppImplGlfw.cpp in Sources */,
 				0003F3DE1992D64100647C8B /* BufferTexture.cpp in Sources */,
 				00A114051355369A00081873 /* bucketalloc.c in Sources */,
 				1116CC4D1A5F154000023856 /* Platform.cpp in Sources */,
@@ -5520,7 +5494,6 @@
 				B3EA409D1DD0F00900E34348 /* ftgxval.c in Sources */,
 				006D704A19942BF5008149E2 /* AvfUtils.mm in Sources */,
 				0003F3FC1992D64100647C8B /* Shader.cpp in Sources */,
-				118CA4151A9427F700841458 /* AppMac.cpp in Sources */,
 				111A5FAA191F72AE005C3166 /* CinderCoreAudio.cpp in Sources */,
 				111A5EB5191F703D005C3166 /* floor1.c in Sources */,
 				0003F3F61992D64100647C8B /* GlslProg.cpp in Sources */,
@@ -5533,13 +5506,12 @@
 				43F78EF21516DAB700EB63B5 /* Json.cpp in Sources */,
 				B3EA40FA1DD0F13C00E34348 /* type1cid.c in Sources */,
 				11A38FB31E7769CE008C452D /* FileWatcher.cpp in Sources */,
+				0012D3F52EBEBD890026B039 /* WindowImplGlfw.cpp in Sources */,
 				111A5EE2191F703D005C3166 /* vorbisenc.c in Sources */,
-				118CA4211A9427F700841458 /* RendererImplGlMac.mm in Sources */,
 				0003F3DB1992D64100647C8B /* BufferObj.cpp in Sources */,
 				B3EA40971DD0F00900E34348 /* ftgasp.c in Sources */,
 				B3EA40911DD0F00900E34348 /* ftdebug.c in Sources */,
 				111A5FF8191F72AE005C3166 /* PanNode.cpp in Sources */,
-				0012D3812EBDAABA0026B039 /* AppImplGlfw.cpp in Sources */,
 				8499F5B723F60DA000360A6F /* glad.c in Sources */,
 				008B43A814F5F8F800B55B07 /* Svg.cpp in Sources */,
 				0034C318151A5B7F003F2E30 /* Unicode.cpp in Sources */,
@@ -5548,7 +5520,7 @@
 				0034C321151A5B9F003F2E30 /* linebreak.c in Sources */,
 				B3EA40C31DD0F02900E34348 /* smooth.c in Sources */,
 				114B7553192B2F9800E30153 /* MonitorNode.cpp in Sources */,
-				0012D3802EBDAABA0026B039 /* AppGlfw.cpp in Sources */,
+				0012D3F42EBEBD890026B039 /* AppGlfw.cpp in Sources */,
 				111A5FAD191F72AE005C3166 /* ContextAudioUnit.cpp in Sources */,
 				0034C327151A5B9F003F2E30 /* linebreakdata.c in Sources */,
 				0003F4201992D64100647C8B /* Vbo.cpp in Sources */,
@@ -5560,7 +5532,6 @@
 				B3EA40881DD0F00900E34348 /* ftbdf.c in Sources */,
 				007A7B13158D098D00BEAD18 /* Window.cpp in Sources */,
 				B3EA40851DD0F00900E34348 /* ftbbox.c in Sources */,
-				118CA41B1A9427F700841458 /* AppCocoaView.mm in Sources */,
 				0003F4051992D64100647C8B /* TextureFont.cpp in Sources */,
 				111A600A191F72AE005C3166 /* Target.cpp in Sources */,
 				111A5EDA191F703D005C3166 /* registry.c in Sources */,
