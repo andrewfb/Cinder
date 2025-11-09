@@ -71,6 +71,12 @@ void WindowTestApp::setup()
 	for( auto display : Display::getDisplays() )
 		CI_LOG_V( "display name: '" << display->getName() << "', bounds: " << display->getBounds() );
 
+	// Log OpenGL version information
+	console() << "OpenGL Version: " << glGetString( GL_VERSION ) << std::endl;
+	console() << "GLSL Version: " << glGetString( GL_SHADING_LANGUAGE_VERSION ) << std::endl;
+	console() << "OpenGL Vendor: " << glGetString( GL_VENDOR ) << std::endl;
+	console() << "OpenGL Renderer: " << glGetString( GL_RENDERER ) << std::endl;
+
 	getWindow()->setUserData( new WindowData );
 
 	getWindow()->getSignalMouseDown().connect( signals::slot( this, &WindowTestApp::anotherTest ) );
