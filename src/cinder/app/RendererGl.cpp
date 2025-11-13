@@ -30,6 +30,7 @@
 
 #if defined( CINDER_GLFW )
 	#include "cinder/app/glfw/RendererGlGlfw.h"
+	#include "cinder/app/glfw/RendererImplGlfw.h"
 	#if defined( CINDER_MAC )
 		#define GLFW_EXPOSE_NATIVE_COCOA
 		#define GLFW_EXPOSE_NATIVE_NSGL
@@ -55,12 +56,18 @@ namespace cinder { namespace app {
 
 RendererGl::RendererGl( const RendererGl::Options &options )
 	: Renderer(), mImpl( nullptr ), mOptions( options )
-{}
+{
+#if defined( CINDER_GLFW )
+	mImpl = new RendererGlGlfw( this );
+#endif
+}
 
 RendererGl::RendererGl( const RendererGl &renderer )
 	: Renderer( renderer ), mImpl( nullptr ), mOptions( renderer.mOptions )
 {
-#if defined( CINDER_MSW_DESKTOP )
+#if defined( CINDER_GLFW )
+	mImpl = new RendererGlGlfw( this );
+#elif defined( CINDER_MSW_DESKTOP )
 #elif defined( CINDER_ANDROID )
 	mImpl = 0;
 #endif
@@ -315,6 +322,15 @@ CGLContextObj RendererGl::getCglContext()
 	return nullptr;
 }
 #endif // CINDER_MAC
+
+RendererImplGlfw* RendererGl::getGlfwRendererImpl()
+{
+	if( mImpl ) {
+		RendererGlGlfw* glfwImpl = static_cast<RendererGlGlfw*>( mImpl );
+		return glfwImpl->getImpl();
+	}
+	return nullptr;
+}
 
 void RendererGl::startDraw()
 {

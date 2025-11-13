@@ -90,6 +90,7 @@ list( APPEND SRC_SET_CINDER_APP
 	${CINDER_SRC_DIR}/cinder/app/Platform.cpp
 	${CINDER_SRC_DIR}/cinder/app/Renderer.cpp
 	${CINDER_SRC_DIR}/cinder/app/RendererGl.cpp
+	${CINDER_SRC_DIR}/cinder/app/RendererMetal.cpp
 	${CINDER_SRC_DIR}/cinder/app/Window.cpp
 )
 
@@ -504,6 +505,9 @@ list( APPEND SRC_SET_APP_GLFW
 	${CINDER_SRC_DIR}/cinder/app/glfw/AppImplGlfw.cpp
 	${CINDER_SRC_DIR}/cinder/app/glfw/WindowImplGlfw.cpp
 	${CINDER_SRC_DIR}/cinder/app/glfw/RendererGlGlfw.cpp
+	${CINDER_SRC_DIR}/cinder/app/glfw/RendererImplGlfwGl.cpp
+	${CINDER_SRC_DIR}/cinder/app/glfw/RendererMetalGlfw.cpp
+	${CINDER_SRC_DIR}/cinder/app/glfw/RendererImplGlfwMetal.mm
 )
 
 # Note: These source sets are used by platform_macosx.cmake and platform_linux.cmake

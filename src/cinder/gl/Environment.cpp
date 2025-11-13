@@ -165,19 +165,6 @@ ContextRef Environment::createSharedContext( const Context *sharedContext )
 
 	// Return PlatformDataMac (native CGL context), not PlatformDataLinux
 	shared_ptr<Context::PlatformData> platformData = shared_ptr<Context::PlatformData>( new PlatformDataMac( cglContext ), destroyPlatformData );
-/*#elif defined( CINDER_MAC_LEGACY_APP )
-	// macOS legacy Cocoa: both main and shared contexts use native CGL
-	auto sharedContextPlatformData = dynamic_pointer_cast<PlatformDataMac>( sharedContext->getPlatformData() );
-	CGLContextObj prevContext = ::CGLGetCurrentContext();
-	CGLContextObj sharedContextCgl = sharedContextPlatformData->mCglContext;
-	CGLPixelFormatObj sharedContextPixelFormat = ::CGLGetPixelFormat( sharedContextCgl );
-	CGLContextObj cglContext;
-	if( ::CGLCreateContext( sharedContextPixelFormat, sharedContextCgl, (CGLContextObj*)&cglContext ) != kCGLNoError ) {
-		throw ExcContextAllocation();
-	}
-
-	::CGLSetCurrentContext( cglContext );
-	shared_ptr<Context::PlatformData> platformData = shared_ptr<Context::PlatformData>( new PlatformDataMac( cglContext ), destroyPlatformData );*/
 #elif defined( CINDER_LINUX ) && defined( CINDER_GLFW )
 	// Linux with GLFW: use GLFW's invisible window approach
 	// Save the current GLFW context for restoration later

@@ -55,6 +55,7 @@ public:
 		::glfwSetMouseButtonCallback( glfwWindow, GlfwCallbacks::onMouseButton );
 		::glfwSetScrollCallback( glfwWindow, GlfwCallbacks::onMouseWheel );
 		::glfwSetDropCallback( glfwWindow, GlfwCallbacks::onFileDrop );
+//		::glfwSetWindowRefreshCallback( glfwWindow, GlfwCallbacks::onWindowRefresh );
 	}
 
 	static void unregisterWindowEvents( GLFWwindow *glfwWindow ) {
@@ -73,6 +74,7 @@ public:
 			cinderAppImpl->setWindow( cinderWindow );
 
 			cinderWindow->emitResize();
+			cinderAppImpl->forceDraw( cinderWindow );
 		}
 	}
 
@@ -318,6 +320,18 @@ public:
 			vec2 dropPoint = { static_cast<float>(xpos), static_cast<float>(ypos) };
 			FileDropEvent dropEvent( cinderWindow, dropPoint.x, dropPoint.y, files );
 			cinderWindow->emitFileDrop( &dropEvent );
+		}
+	}
+	
+	static void onWindowRefresh( GLFWwindow* glfwWindow )
+	{
+		auto iter = sWindowMapping.find( glfwWindow );
+		if( sWindowMapping.end() != iter ) {
+			auto &cinderAppImpl = iter->second.first;
+			auto &cinderWindow  = iter->second.second;
+
+			cinderAppImpl->setWindow( cinderWindow );
+			cinderWindow->emitDraw();
 		}
 	}
 };
@@ -650,6 +664,12 @@ void AppImplGlfw::registerWindowEvents( WindowImplGlfw* window )
 void AppImplGlfw::unregisterWindowEvents( WindowImplGlfw* window )
 {
 	GlfwCallbacks::unregisterWindowEvents( window->getNative() );
+}
+
+void AppImplGlfw::forceDraw( cinder::app::WindowRef window )
+{
+	mApp->privateUpdate__();
+	dynamic_cast<WindowImplGlfw*>( window->getImpl() )->draw();
 }
 
 }} // namespace cinder::app

@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2012, The Cinder Project, All rights reserved.
+ Copyright (c) 2015, The Cinder Project, All rights reserved.
 
  This code is intended for use with the Cinder C++ library: http://libcinder.org
 
@@ -23,33 +23,32 @@
 
 #pragma once
 
-#include "cinder/app/AppBase.h"
-#include <memory>
+#include "cinder/app/glfw/RendererImplGlfw.h"
 
-typedef struct GLFWwindow GLFWwindow;
+namespace cinder { namespace gl {
+	class Context;
+	typedef std::shared_ptr<Context>	ContextRef;
+} }
 
 namespace cinder { namespace app {
 
-class RendererImplGlfw;
+class WindowImplGlfw;
 
-class RendererGlGlfw {
+class RendererImplGlfwGl : public RendererImplGlfw {
  public:
+	RendererImplGlfwGl( class RendererGl *aRenderer );
 
-	RendererGlGlfw( class RendererGl *aRenderer );
-	virtual ~RendererGlGlfw();
+	virtual void	prepareWindowHints() override;
+	virtual bool	initialize( GLFWwindow *window, RendererRef sharedRenderer ) override;
+	virtual void	kill() override;
+	virtual void	defaultResize() const override;
+	virtual void	swapBuffers() const override;
+	virtual void	makeCurrentContext( bool force = false ) override;
 
-	virtual bool		initialize( void *window, RendererRef sharedRenderer );
-	virtual void		kill();
-	virtual void		defaultResize() const;
-	virtual void		swapBuffers() const;
-	virtual void		makeCurrentContext( bool force = false );
-
-	void*				getNativeWindow() const { return mGlfwWindow; }
-	RendererImplGlfw*	getImpl() { return mImpl.get(); }
-
- private:
-	std::unique_ptr<RendererImplGlfw>	mImpl;
-	GLFWwindow							*mGlfwWindow = nullptr;
+ protected:
+	class RendererGl	*mRenderer;
+	GLFWwindow			*mGlfwWindow;
+	gl::ContextRef		mCinderContext;
 };
 
-}} // namespace cinder::app
+} } // namespace cinder::app

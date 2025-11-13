@@ -35,6 +35,7 @@ public:
 	void draw() override;
 
 	void fileDrop( FileDropEvent event ) override;
+    void resize() override { console() << "Resized!" << getWindowSize() << std::endl; }
 
 private:
 	void addEvent( const EventRecord& record );

@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2012, The Cinder Project, All rights reserved.
+ Copyright (c) 2015, The Cinder Project, All rights reserved.
 
  This code is intended for use with the Cinder C++ library: http://libcinder.org
 
@@ -23,33 +23,26 @@
 
 #pragma once
 
-#include "cinder/app/AppBase.h"
-#include <memory>
+#include "cinder/app/Renderer.h"
 
 typedef struct GLFWwindow GLFWwindow;
 
 namespace cinder { namespace app {
 
-class RendererImplGlfw;
+class WindowImplGlfw;
 
-class RendererGlGlfw {
+class RendererImplGlfw {
  public:
+	virtual ~RendererImplGlfw() {}
 
-	RendererGlGlfw( class RendererGl *aRenderer );
-	virtual ~RendererGlGlfw();
-
-	virtual bool		initialize( void *window, RendererRef sharedRenderer );
-	virtual void		kill();
-	virtual void		defaultResize() const;
-	virtual void		swapBuffers() const;
-	virtual void		makeCurrentContext( bool force = false );
-
-	void*				getNativeWindow() const { return mGlfwWindow; }
-	RendererImplGlfw*	getImpl() { return mImpl.get(); }
-
- private:
-	std::unique_ptr<RendererImplGlfw>	mImpl;
-	GLFWwindow							*mGlfwWindow = nullptr;
+	// Called before glfwCreateWindow to set window hints
+	virtual void	prepareWindowHints() = 0;
+	// Called after glfwCreateWindow to initialize renderer
+	virtual bool	initialize( GLFWwindow *window, RendererRef sharedRenderer ) = 0;
+	virtual void	kill() = 0;
+	virtual void	defaultResize() const = 0;
+	virtual void	swapBuffers() const = 0;
+	virtual void	makeCurrentContext( bool force = false ) = 0;
 };
 
-}} // namespace cinder::app
+} } // namespace cinder::app

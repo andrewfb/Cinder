@@ -21,6 +21,7 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "cinder/app/glfw/RendererImplGlfw.h"
 #include "cinder/app/RendererGl.h"
 #include "cinder/app/glfw/WindowImplGlfw.h"
 #include "cinder/app/glfw/AppImplGlfw.h"
@@ -46,61 +47,19 @@ WindowImplGlfw::WindowImplGlfw( const Window::Format &format, WindowImplGlfw *sh
 	if( sharedRendererWindow )
 		sharedGlfwWindow = reinterpret_cast<GLFWwindow*>( sharedRendererWindow->getNative() );
 
-	const auto& options = std::dynamic_pointer_cast<RendererGl>( mRenderer )->getOptions();
-#if defined( CINDER_GL_ES )
-	::glfwDefaultWindowHints();
-	::glfwWindowHint( GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API );
-	::glfwWindowHint( GLFW_CLIENT_API, GLFW_OPENGL_ES_API );
-  #if CINDER_GL_ES_VERSION >= CINDER_GL_ES_VERSION_3_2
-	::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 3 );
-	::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 2 );
-	std::cout << "Rendering with OpenGL ES 3.2" << std::endl;
-  #elif CINDER_GL_ES_VERSION >= CINDER_GL_ES_VERSION_3_1
-	::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 3 );
-	::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
-	std::cout << "Rendering with OpenGL ES 3.1" << std::endl;
-  #elif CINDER_GL_ES_VERSION >= CINDER_GL_ES_VERSION_3
-	::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 3 );
-	::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 0 );
-	std::cout << "Rendering with OpenGL ES 3.0" << std::endl;
-  #elif CINDER_GL_ES_VERSION >= CINDER_GL_ES_VERSION_2
-	::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 2 );
-	::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 0 );
-	std::cout << "Rendering with OpenGL ES 2.0" << std::endl;
-  #endif
-
-#else // Desktop
-	int32_t majorVersion = options.getVersion().first;
-	int32_t minorVersion = options.getVersion().second;
-
-#if defined( CINDER_MAC )
-	// On macOS, if Core Profile requested but no version specified, request 4.1 (highest available)
-	// Core Profile requires >= 3.2, and macOS strictly enforces this
-	if( options.getCoreProfile() && majorVersion == 0 && minorVersion == 0 ) {
-		majorVersion = 4;
-		minorVersion = 1;
-	}
-#endif
-
-	// If version is explicitly specified (or set above for macOS Core Profile), use that version
-	// Otherwise don't set version hints - GLFW will give us the highest available
-	if( majorVersion != 0 || minorVersion != 0 ) {
-		::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, majorVersion );
-		::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, minorVersion );
+	// Get the renderer impl and have it prepare GLFW window hints
+	auto rendererGl = std::dynamic_pointer_cast<RendererGl>( mRenderer );
+	if( rendererGl ) {
+		auto rendererImpl = rendererGl->getGlfwRendererImpl();
+		if( rendererImpl ) {
+			rendererImpl->prepareWindowHints();
+		}
 	}
 
+	// Set window-specific hints (not renderer-specific)
 	::glfwWindowHint( GLFW_DECORATED, format.isBorderless() ? GL_FALSE : GL_TRUE );
 	::glfwWindowHint( GLFW_RESIZABLE, format.isResizable() ? GL_TRUE : GL_FALSE );
 	::glfwWindowHint( GLFW_FLOATING, format.isAlwaysOnTop() ? GL_TRUE : GL_FALSE );
-
-	if( options.getCoreProfile() )
-		::glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
-
-	if( options.getDebug() )
-		::glfwWindowHint( GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE );
-#endif
-
-	::glfwWindowHint( GLFW_SAMPLES, options.getMsaa() );
 
 	if( mFullScreen ) {
 #if defined( CINDER_LINUX )

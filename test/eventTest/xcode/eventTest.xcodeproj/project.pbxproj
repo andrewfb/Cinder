@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		0012D3852EBDB3A00026B039 /* CinderApp.icns in Resources */ = {isa = PBXBuildFile; fileRef = 0012D3842EBDB3960026B039 /* CinderApp.icns */; };
+		0012D3FD2EC3ED500026B039 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0012D3FC2EC3ED500026B039 /* Metal.framework */; };
+		0012D4012EC3EDF50026B039 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0012D4002EC3EDF50026B039 /* QuartzCore.framework */; };
 		00241AEF0E83114D004D34EB /* eventTest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00241AEE0E83114D004D34EB /* eventTest.cpp */; };
 		006D729C1995319F008149E2 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 006D729A1995319F008149E2 /* AVFoundation.framework */; };
 		006D729D1995319F008149E2 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 006D729B1995319F008149E2 /* CoreMedia.framework */; };
@@ -24,6 +26,9 @@
 
 /* Begin PBXFileReference section */
 		0012D3842EBDB3960026B039 /* CinderApp.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; name = CinderApp.icns; path = ../../../samples/data/CinderApp.icns; sourceTree = "<group>"; };
+		0012D3FC2EC3ED500026B039 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		0012D3FE2EC3ED650026B039 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		0012D4002EC3EDF50026B039 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		00241AEE0E83114D004D34EB /* eventTest.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = eventTest.cpp; path = ../src/eventTest.cpp; sourceTree = SOURCE_ROOT; };
 		006D729A1995319F008149E2 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		006D729B1995319F008149E2 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
@@ -49,6 +54,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0012D4012EC3EDF50026B039 /* QuartzCore.framework in Frameworks */,
+				0012D3FD2EC3ED500026B039 /* Metal.framework in Frameworks */,
 				113241D41B66DCFE0064A24A /* IOSurface.framework in Frameworks */,
 				113241D21B66DCF30064A24A /* IOKit.framework in Frameworks */,
 				006D729C1995319F008149E2 /* AVFoundation.framework in Frameworks */,
@@ -138,6 +145,9 @@
 		29B97323FDCFA39411CA2CEA /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				0012D4002EC3EDF50026B039 /* QuartzCore.framework */,
+				0012D3FE2EC3ED650026B039 /* MetalKit.framework */,
+				0012D3FC2EC3ED500026B039 /* Metal.framework */,
 				113241D31B66DCFE0064A24A /* IOSurface.framework */,
 				113241D11B66DCF30064A24A /* IOKit.framework */,
 				006D729A1995319F008149E2 /* AVFoundation.framework */,

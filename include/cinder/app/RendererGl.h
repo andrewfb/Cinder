@@ -61,6 +61,10 @@ typedef std::shared_ptr<Context>		ContextRef;
 
 namespace cinder { namespace app {
 
+#if defined( CINDER_GLFW )
+	class RendererImplGlfw;
+#endif
+
 typedef std::shared_ptr<class RendererGl>	RendererGlRef;
 class CI_API RendererGl : public Renderer {
   public:
@@ -184,6 +188,7 @@ class CI_API RendererGl : public Renderer {
 #if defined( CINDER_GLFW )
 	// GLFW rendering (Linux or macOS)
 	virtual void	setup( void* nativeWindow, RendererRef sharedRenderer ) override;
+	RendererImplGlfw*	getGlfwRendererImpl();
 	#if defined( CINDER_MAC )
 		// macOS-specific methods for GLFW backend
 		CGLContextObj	getCglContext() override;
@@ -250,7 +255,7 @@ protected:
 	// GLFW rendering (Linux or macOS)
 	class RendererGlGlfw	*mImpl;
 	RendererGlGlfw			*getImpl() { return mImpl; }
-	friend class WindowImplGlfw;
+	friend class RendererImplGlfwGl;
 #endif
 
 	std::function<void( Renderer* )> mStartDrawFn;

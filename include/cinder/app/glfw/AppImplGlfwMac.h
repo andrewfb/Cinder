@@ -1,15 +1,15 @@
 /*
- Copyright (c) 2012, The Cinder Project, All rights reserved.
+ Copyright (c) 2015, The Cinder Project, All rights reserved.
 
  This code is intended for use with the Cinder C++ library: http://libcinder.org
 
  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
  the following conditions are met:
 
-	* Redistributions of source code must retain the above copyright notice, this list of conditions and
-	   the following disclaimer.
-	* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-	   the following disclaimer in the documentation and/or other materials provided with the distribution.
+ * Redistributions of source code must retain the above copyright notice, this list of conditions and
+	the following disclaimer.
+ * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
+	the following disclaimer in the documentation and/or other materials provided with the distribution.
 
  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -23,33 +23,17 @@
 
 #pragma once
 
-#include "cinder/app/AppBase.h"
-#include <memory>
-
-typedef struct GLFWwindow GLFWwindow;
-
 namespace cinder { namespace app {
 
-class RendererImplGlfw;
+class AppGlfw;
+class WindowImplGlfw;
 
-class RendererGlGlfw {
- public:
+// Setup macOS-specific NSApplicationDelegate wrapper
+// This should be called during AppImplGlfw initialization on macOS
+void setupMacOSDelegate( AppGlfw *app, bool *quitOnLastWindowClosed );
 
-	RendererGlGlfw( class RendererGl *aRenderer );
-	virtual ~RendererGlGlfw();
-
-	virtual bool		initialize( void *window, RendererRef sharedRenderer );
-	virtual void		kill();
-	virtual void		defaultResize() const;
-	virtual void		swapBuffers() const;
-	virtual void		makeCurrentContext( bool force = false );
-
-	void*				getNativeWindow() const { return mGlfwWindow; }
-	RendererImplGlfw*	getImpl() { return mImpl.get(); }
-
- private:
-	std::unique_ptr<RendererImplGlfw>	mImpl;
-	GLFWwindow							*mGlfwWindow = nullptr;
-};
+// Enable multitouch on a GLFW window
+// Client apps should call this if they want to receive touch events
+void enableMultiTouchForWindow( void *nativeWindow, WindowImplGlfw *windowImpl );
 
 }} // namespace cinder::app

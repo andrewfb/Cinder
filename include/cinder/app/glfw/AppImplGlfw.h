@@ -91,6 +91,8 @@ private:
 	void						unregisterWindowEvents( WindowImplGlfw* window );
 	void						closeAndEraseWindow( std::list<std::unique_ptr<WindowImplGlfw>>::iterator &windowIt );
 
+	void						forceDraw( app::WindowRef window );
+	
 	friend class AppGlfw;
 	friend class WindowImplGlfw;
 	friend class GlfwCallbacks;

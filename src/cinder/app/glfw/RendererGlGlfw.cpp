@@ -22,97 +22,44 @@
 */
 
 #include "cinder/app/glfw/RendererGlGlfw.h"
+#include "cinder/app/glfw/RendererImplGlfwGl.h"
 #include "cinder/app/RendererGl.h"
-#include "cinder/gl/Context.h"
-#include "cinder/gl/Environment.h"
-
-#if defined( CINDER_MAC )
-	#define GLFW_EXPOSE_NATIVE_COCOA
-	#define GLFW_EXPOSE_NATIVE_NSGL
-	#include <glfw/glfw3.h>
-	#include <glfw/glfw3native.h>
-#endif
-
-#include "glad/glad.h"
-#include "glfw/glfw3.h"
 
 namespace cinder { namespace app {
 
- RendererGlGlfw::RendererGlGlfw( RendererGl *aRenderer )
-	: mRenderer( aRenderer )
+RendererGlGlfw::RendererGlGlfw( RendererGl *aRenderer )
 {
+	mImpl = std::unique_ptr<RendererImplGlfw>( new RendererImplGlfwGl( aRenderer ) );
 }
 
 RendererGlGlfw::~RendererGlGlfw()
 {
 }
 
-
 bool RendererGlGlfw::initialize( void *window, RendererRef sharedRenderer )
 {
-	mContext = reinterpret_cast<GLFWwindow*>( window );
-
-	::glfwMakeContextCurrent( mContext );
-
-#if defined( CINDER_GL_ES )
-	gl::Environment::setEs();
-#else
-	gl::Environment::setCore();
-#endif
-	gl::env()->initializeFunctionPointers();
-
-#if defined( CINDER_LINUX )
-	std::shared_ptr<gl::PlatformDataLinux> platformData( new gl::PlatformDataLinux( mContext ) );
-#elif defined( CINDER_MAC )
-	GLFWwindow* windowGlfw = static_cast<GLFWwindow*>( window );
-	CGLContextObj contextObj = nullptr;
-	if( windowGlfw ) {
-		id nsContext = glfwGetNSGLContext( windowGlfw );
-		if( nsContext ) {
-			contextObj = [(NSOpenGLContext*)nsContext CGLContextObj];
-			::CGLRetainContext( contextObj );  // Take our own reference to prevent use-after-free
-		}
-	}
-	auto platformData = std::shared_ptr<cinder::gl::Context::PlatformData>( new cinder::gl::PlatformDataMac( contextObj ) );
-#endif
-
-#if ! defined( CINDER_GL_ES )
-	platformData->mDebug = mRenderer->getOptions().getDebug();
-	platformData->mDebugLogSeverity = mRenderer->getOptions().getDebugLogSeverity();
-	platformData->mDebugBreakSeverity = mRenderer->getOptions().getDebugBreakSeverity();
-	platformData->mObjectTracking = mRenderer->getOptions().getObjectTracking();
-#endif
-
-	mCinderContext = gl::Context::createFromExisting( platformData );
-	mCinderContext->makeCurrent();
-
-	::glfwSwapInterval( 1 );
-
-	return true;
+	mGlfwWindow = reinterpret_cast<GLFWwindow*>( window );
+	return mImpl->initialize( mGlfwWindow, sharedRenderer );
 }
 
 void RendererGlGlfw::kill()
 {
+	mImpl->kill();
 }
 
 void RendererGlGlfw::defaultResize() const
 {
-	int width = 0;
-	int height = 0;
-	glfwGetFramebufferSize( mContext, &width, &height );
-
-	gl::viewport( 0, 0, width, height );
-	gl::setMatricesWindow( width, height );
+	mImpl->defaultResize();
 }
 
 void RendererGlGlfw::swapBuffers() const
 {
-	::glfwSwapBuffers( mContext );
+	mImpl->swapBuffers();
 }
 
 void RendererGlGlfw::makeCurrentContext( bool force )
 {
-	mCinderContext->makeCurrent( force );
+	mImpl->makeCurrentContext( force );
 }
 
 }} // namespace cinder::app
