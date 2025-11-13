@@ -67,6 +67,7 @@ if( NOT CINDER_HEADLESS ) # Desktop ogl, es2, es3, RPi with GLFW
 		${CINDER_SRC_DIR}/cinder/app/glfw/AppGlfw.cpp
 		${CINDER_SRC_DIR}/cinder/app/glfw/AppImplGlfw.cpp
 		${CINDER_SRC_DIR}/cinder/app/glfw/RendererGlGlfw.cpp
+		${CINDER_SRC_DIR}/cinder/app/glfw/RendererImplGlfwGl.cpp
 		${CINDER_SRC_DIR}/cinder/app/glfw/WindowImplGlfw.cpp
 	)
 
