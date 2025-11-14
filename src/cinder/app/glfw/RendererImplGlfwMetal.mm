@@ -29,8 +29,8 @@
 #if defined( CINDER_MAC )
 
 #define GLFW_EXPOSE_NATIVE_COCOA
-#include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
+#include <glfw/glfw3.h>
+#include <glfw/glfw3native.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <QuartzCore/CATransaction.h>
@@ -112,6 +112,10 @@ bool RendererImplGlfwMetal::initialize( GLFWwindow *window, RendererRef sharedRe
 {
 	mGlfwWindow = window;
 
+	if( sharedRenderer ) {
+		CI_LOG_E( "RendererImplGlfwMetal does not support shared renderers yet." );
+	}
+
 	@autoreleasepool {
 		// Create Metal device
 		id<MTLDevice> device = MTLCreateSystemDefaultDevice();
@@ -119,7 +123,7 @@ bool RendererImplGlfwMetal::initialize( GLFWwindow *window, RendererRef sharedRe
 			CI_LOG_E( "Failed to create Metal device" );
 			return false;
 		}
-		mMetalDevice = (__bridge_retained void*)device;
+		mMetalDevice = (__bridge_retained CFTypeRef)device;
 
 		// Create command queue
 		id<MTLCommandQueue> commandQueue = [device newCommandQueue];
@@ -127,7 +131,7 @@ bool RendererImplGlfwMetal::initialize( GLFWwindow *window, RendererRef sharedRe
 			CI_LOG_E( "Failed to create Metal command queue" );
 			return false;
 		}
-		mMetalCommandQueue = (__bridge_retained void*)commandQueue;
+		mMetalCommandQueue = (__bridge_retained CFTypeRef)commandQueue;
 
 		// Get the NSWindow and set up the Metal layer
 		NSWindow *nsWindow = glfwGetCocoaWindow( mGlfwWindow );
@@ -201,12 +205,12 @@ void RendererImplGlfwMetal::swapBuffers() const
 
 void* RendererImplGlfwMetal::getMetalDevice() const
 {
-	return mMetalDevice;
+	return const_cast<void*>( mMetalDevice );
 }
 
 void* RendererImplGlfwMetal::getMetalCommandQueue() const
 {
-	return mMetalCommandQueue;
+	return const_cast<void*>( mMetalCommandQueue );
 }
 
 void* RendererImplGlfwMetal::getMetalLayer() const

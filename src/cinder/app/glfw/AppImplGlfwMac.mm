@@ -116,6 +116,24 @@ extern "C" NSWindow* glfwGetCocoaWindow(GLFWwindow* window);
 
 static char kTouchIdMapKey;
 static char kWindowImplKey;
+static char kHasOriginalTouchesBeganKey;
+static char kHasOriginalTouchesMovedKey;
+static char kHasOriginalTouchesEndedKey;
+static char kHasOriginalTouchesCancelledKey;
+
+static inline bool classHasOriginalSelector( Class cls, void *key )
+{
+	NSNumber *flag = objc_getAssociatedObject( cls, key );
+	return flag ? [flag boolValue] : false;
+}
+
+static inline void setClassHasOriginalSelector( Class cls, void *key, bool value )
+{
+	if( value )
+		objc_setAssociatedObject( cls, key, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC );
+	else
+		objc_setAssociatedObject( cls, key, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC );
+}
 
 - (NSMutableDictionary *)cinderTouchIdMap
 {
@@ -129,12 +147,14 @@ static char kWindowImplKey;
 
 - (cinder::app::WindowImplGlfw *)cinderWindowImpl
 {
-	return (cinder::app::WindowImplGlfw *)objc_getAssociatedObject(self, &kWindowImplKey);
+	NSValue *value = objc_getAssociatedObject(self, &kWindowImplKey);
+	return value ? static_cast<cinder::app::WindowImplGlfw *>( [value pointerValue] ) : nullptr;
 }
 
 - (void)setCinderWindowImpl:(cinder::app::WindowImplGlfw *)impl
 {
-	objc_setAssociatedObject(self, &kWindowImplKey, [NSValue valueWithPointer:impl], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	NSValue *value = impl ? [NSValue valueWithPointer:impl] : nil;
+	objc_setAssociatedObject(self, &kWindowImplKey, value, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 - (uint32_t)cinderAddTouchToMap:(NSTouch *)touch withPoint:(cinder::vec2)point prevPointMap:(std::map<uint32_t,cinder::vec2>&)prevPointMap
@@ -180,12 +200,7 @@ static char kWindowImplKey;
 
 - (void)cinder_touchesBeganWithEvent:(NSEvent *)event
 {
-	// Call original implementation first (if it exists)
-	if( [self respondsToSelector:@selector(cinder_touchesBeganWithEvent:)] ) {
-		[self cinder_touchesBeganWithEvent:event];
-	}
-
-	if( !self.cinderWindowImpl )
+	if( ! self.cinderWindowImpl )
 		return;
 
 	static std::map<uint32_t,cinder::vec2> sPrevPointMap;
@@ -212,7 +227,7 @@ static char kWindowImplKey;
 		sActiveTouches.push_back( cinder::app::TouchEvent::Touch( pt, prev.second, prev.first, eventTime, touch ) );
 	}
 
-	if( !touchList.empty() ) {
+	if( ! touchList.empty() ) {
 		cinder::app::TouchEvent touchEvent( self.cinderWindowImpl->getWindow(), touchList );
 		self.cinderWindowImpl->getWindow()->emitTouchesBegan( &touchEvent );
 	}
@@ -220,12 +235,7 @@ static char kWindowImplKey;
 
 - (void)cinder_touchesMovedWithEvent:(NSEvent *)event
 {
-	// Call original implementation first (if it exists)
-	if( [self respondsToSelector:@selector(cinder_touchesMovedWithEvent:)] ) {
-		[self cinder_touchesMovedWithEvent:event];
-	}
-
-	if( !self.cinderWindowImpl )
+	if( ! self.cinderWindowImpl )
 		return;
 
 	static std::map<uint32_t,cinder::vec2> sPrevPointMap;
@@ -261,12 +271,7 @@ static char kWindowImplKey;
 
 - (void)cinder_touchesEndedWithEvent:(NSEvent *)event
 {
-	// Call original implementation first (if it exists)
-	if( [self respondsToSelector:@selector(cinder_touchesEndedWithEvent:)] ) {
-		[self cinder_touchesEndedWithEvent:event];
-	}
-
-	if( !self.cinderWindowImpl )
+	if( ! self.cinderWindowImpl )
 		return;
 
 	static std::map<uint32_t,cinder::vec2> sPrevPointMap;
@@ -303,12 +308,7 @@ static char kWindowImplKey;
 
 - (void)cinder_touchesCancelledWithEvent:(NSEvent *)event
 {
-	// Call original implementation first (if it exists)
-	if( [self respondsToSelector:@selector(cinder_touchesCancelledWithEvent:)] ) {
-		[self cinder_touchesCancelledWithEvent:event];
-	}
-
-	if( !self.cinderWindowImpl )
+	if( ! self.cinderWindowImpl )
 		return;
 
 	static std::map<uint32_t,cinder::vec2> sPrevPointMap;
@@ -372,29 +372,36 @@ void enableMultiTouchForWindow( void *nativeWindow, WindowImplGlfw *windowImpl )
 
 	// Swizzle touch event methods
 	Class viewClass = [contentView class];
+	static NSMutableSet<Class> *sSwizzledViewClasses = nil;
+	static dispatch_once_t onceToken;
+	dispatch_once( &onceToken, ^{
+		sSwizzledViewClasses = [[NSMutableSet alloc] init];
+	} );
 
-	Method originalBegan = class_getInstanceMethod(viewClass, @selector(touchesBeganWithEvent:));
-	Method swizzledBegan = class_getInstanceMethod(viewClass, @selector(cinder_touchesBeganWithEvent:));
-	if( originalBegan && swizzledBegan ) {
-		method_exchangeImplementations(originalBegan, swizzledBegan);
-	}
+	if( ! [sSwizzledViewClasses containsObject:viewClass] ) {
+		auto swizzleSelector = ^( SEL originalSel, SEL swizzledSel, void *flagKey ) {
+			Method originalMethod = class_getInstanceMethod( viewClass, originalSel );
+			Method swizzledMethod = class_getInstanceMethod( viewClass, swizzledSel );
+			if( ! swizzledMethod )
+				return;
 
-	Method originalMoved = class_getInstanceMethod(viewClass, @selector(touchesMovedWithEvent:));
-	Method swizzledMoved = class_getInstanceMethod(viewClass, @selector(cinder_touchesMovedWithEvent:));
-	if( originalMoved && swizzledMoved ) {
-		method_exchangeImplementations(originalMoved, swizzledMoved);
-	}
+			bool hasOriginal = ( originalMethod != nullptr );
+			if( hasOriginal ) {
+				method_exchangeImplementations( originalMethod, swizzledMethod );
+			}
+			else {
+				class_addMethod( viewClass, originalSel, method_getImplementation( swizzledMethod ), method_getTypeEncoding( swizzledMethod ) );
+			}
 
-	Method originalEnded = class_getInstanceMethod(viewClass, @selector(touchesEndedWithEvent:));
-	Method swizzledEnded = class_getInstanceMethod(viewClass, @selector(cinder_touchesEndedWithEvent:));
-	if( originalEnded && swizzledEnded ) {
-		method_exchangeImplementations(originalEnded, swizzledEnded);
-	}
+			setClassHasOriginalSelector( viewClass, flagKey, hasOriginal );
+		};
 
-	Method originalCancelled = class_getInstanceMethod(viewClass, @selector(touchesCancelledWithEvent:));
-	Method swizzledCancelled = class_getInstanceMethod(viewClass, @selector(cinder_touchesCancelledWithEvent:));
-	if( originalCancelled && swizzledCancelled ) {
-		method_exchangeImplementations(originalCancelled, swizzledCancelled);
+		swizzleSelector( @selector(touchesBeganWithEvent:), @selector(cinder_touchesBeganWithEvent:), &kHasOriginalTouchesBeganKey );
+		swizzleSelector( @selector(touchesMovedWithEvent:), @selector(cinder_touchesMovedWithEvent:), &kHasOriginalTouchesMovedKey );
+		swizzleSelector( @selector(touchesEndedWithEvent:), @selector(cinder_touchesEndedWithEvent:), &kHasOriginalTouchesEndedKey );
+		swizzleSelector( @selector(touchesCancelledWithEvent:), @selector(cinder_touchesCancelledWithEvent:), &kHasOriginalTouchesCancelledKey );
+
+		[sSwizzledViewClasses addObject:viewClass];
 	}
 }
 

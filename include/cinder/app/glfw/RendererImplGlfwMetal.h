@@ -27,6 +27,7 @@
 #include <mutex>
 
 #if defined( CINDER_MAC )
+#include <CoreFoundation/CoreFoundation.h>
 
 #if defined( __OBJC__ )
 	@class CAMetalLayer;
@@ -76,8 +77,8 @@ class RendererImplGlfwMetal : public RendererImplGlfw {
 	class RendererMetal		*mRenderer;
 	GLFWwindow				*mGlfwWindow;
 
-	void					*mMetalDevice;			// id<MTLDevice>
-	void					*mMetalCommandQueue;	// id<MTLCommandQueue>
+	CFTypeRef				mMetalDevice;			// id<MTLDevice>
+	CFTypeRef				mMetalCommandQueue;		// id<MTLCommandQueue>
 	mutable std::recursive_mutex	mMetalLayerMutex;		// Protects layer/device access
 };
 

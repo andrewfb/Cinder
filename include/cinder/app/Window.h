@@ -463,7 +463,7 @@ class CI_API Window : public std::enable_shared_from_this<Window> {
 
 #if defined( CINDER_GLFW )
 	void		setImpl( WindowImplGlfw *impl ) { mImpl = impl; }
-#elif defined( CINDER_COCOA )
+#elif defined( CINDER_COCOA_TOUCH )
   #if defined( __OBJC__ )
 	void		setImpl( id<WindowImplCocoa> impl ) { mImpl = impl; }
   #else
@@ -487,7 +487,7 @@ class CI_API Window : public std::enable_shared_from_this<Window> {
 
 #if defined( CINDER_GLFW )
 	WindowImplGlfw		*mImpl;
-#elif defined( CINDER_COCOA )
+#elif defined( CINDER_COCOA_TOUCH )
   #if defined( __OBJC__ )
 	id<WindowImplCocoa>		mImpl;
   #else

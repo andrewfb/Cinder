@@ -76,6 +76,7 @@ private:
 
 	float						mFrameRate;
 	bool						mFrameRateEnabled;
+	bool						mMultiTouchEnabled;
 	bool						mShouldQuit = false;
 
 	bool						mSetupHasBeenCalled = false;

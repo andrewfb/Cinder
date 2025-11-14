@@ -360,6 +360,7 @@ AppImplGlfw::AppImplGlfw( AppGlfw *aApp, const AppGlfw::Settings &settings )
 	mFrameRate = settings.getFrameRate();
 	mFrameRateEnabled = settings.isFrameRateEnabled();
 	mQuitOnLastWindowClosed = settings.isQuitOnLastWindowCloseEnabled();
+	mMultiTouchEnabled = settings.isMultiTouchEnabled();
 
 #if defined( CINDER_MAC )
 	// Setup macOS-specific NSApplicationDelegate wrapper
@@ -517,6 +518,11 @@ WindowRef AppImplGlfw::createWindow( Window::Format format )
 	auto *windowImplPtr = windowImpl.get();
 	mWindows.push_back( std::move( windowImpl ) );
 
+#if defined( CINDER_MAC )
+	if( getApp() )
+		enableMultiTouchForWindow( mWindows.back()->getNative(), windowImplPtr );
+#endif
+		
 	// emit initial resize if we have fired setup
 	if( mSetupHasBeenCalled ) {
 		windowImplPtr->getWindow()->emitResize();

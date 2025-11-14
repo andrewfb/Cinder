@@ -1121,7 +1121,6 @@
 		84A3FFF524048D6200932807 /* imgui_widgets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 84A3FFEE24048D6200932807 /* imgui_widgets.cpp */; };
 		84A3FFF624048D6200932807 /* imgui_freetype.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 84A3FFEF24048D6200932807 /* imgui_freetype.cpp */; };
 		84A3FFF724048D6200932807 /* imgui_demo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 84A3FFF024048D6200932807 /* imgui_demo.cpp */; };
-		8C1928E832804339A884D0AC /* RendererMetalGlfw.h in Headers */ = {isa = PBXBuildFile; fileRef = C9C1AEE51F454C17A4796B7C /* RendererMetalGlfw.h */; };
 		92AF10066D6041E09E56B37A /* posix_module.c in Sources */ = {isa = PBXBuildFile; fileRef = 6CACD51097F141AFA99A589B /* posix_module.c */; };
 		949F123AD40D4D2E8698B2E6 /* cocoa_init.m in Sources */ = {isa = PBXBuildFile; fileRef = 434F29DBC77B48938219C983 /* cocoa_init.m */; };
 		98E3B86D2C4849E0A6AD6B2E /* null_init.c in Sources */ = {isa = PBXBuildFile; fileRef = 45400D9FA51249A890BAEFA4 /* null_init.c */; };
@@ -2346,7 +2345,6 @@
 		C7BA408C0FA8C13A00AADC07 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		C7FA5FC112124A790065683B /* CaptureImplAvFoundation.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = CaptureImplAvFoundation.mm; sourceTree = "<group>"; };
 		C7FA5FC512124B1C0065683B /* CaptureImplAvFoundation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CaptureImplAvFoundation.h; sourceTree = "<group>"; };
-		C9C1AEE51F454C17A4796B7C /* RendererMetalGlfw.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = RendererMetalGlfw.h; path = ../app/glfw/RendererMetalGlfw.h; sourceTree = "<group>"; };
 		CCEA2460CD2F4C1C93972D5F /* CanvasUi.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasUi.h; sourceTree = "<group>"; };
 		D2AAC07E0554694100DB518D /* libcinder.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libcinder.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		D2F7E8BE07B2D77200F64583 /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = /System/Library/Frameworks/CoreData.framework; sourceTree = "<absolute>"; };
@@ -2417,7 +2415,6 @@
 				0012CD8E2EBBDA2A0026B039 /* RendererImplGlfwGl.h */,
 				A4CAB7B961E94B2CBF92D779 /* RendererImplGlfwMetal.h */,
 				EAD54ABCA3F84D849EB0BD2C /* RendererMetal.h */,
-				C9C1AEE51F454C17A4796B7C /* RendererMetalGlfw.h */,
 				0012CD832EBBDA2A0026B039 /* WindowImplGlfw.h */,
 			);
 			path = glfw;
@@ -4437,7 +4434,6 @@
 				0012CD8C2EBBDA2A0026B039 /* RendererImplGlfwGl.h in Headers */,
 				BC8926A0BB4E427D81B6D719 /* RendererImplGlfwMetal.h in Headers */,
 				BF1ABC3D9ABF4B8D8A48AEFE /* RendererMetal.h in Headers */,
-				8C1928E832804339A884D0AC /* RendererMetalGlfw.h in Headers */,
 				111A5EE8191F703D005C3166 /* CDSPFracInterpolator.h in Headers */,
 				B322C4911DC7DC7100D2E661 /* trees.h in Headers */,
 				009EE5790F803F7A00F17CB1 /* BandedMatrix.h in Headers */,

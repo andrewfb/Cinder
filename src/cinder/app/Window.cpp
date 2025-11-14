@@ -181,7 +181,7 @@ void Window::setBorderless( bool borderless )
 {
 	testValid();
 	
-#if defined( CINDER_COCOA ) && ! defined( CINDER_GLFW )
+#if defined( CINDER_COCOA_TOUCH )
 	[mImpl setBorderless:borderless];
 #else
 	mImpl->setBorderless( borderless );
@@ -192,7 +192,7 @@ bool Window::isAlwaysOnTop() const
 {
 	testValid();
 	
-#if defined( CINDER_COCOA ) && ! defined( CINDER_GLFW )
+#if defined( CINDER_COCOA_TOUCH )
 	return [mImpl isAlwaysOnTop];
 #else
 	return mImpl->isAlwaysOnTop();
@@ -203,7 +203,7 @@ void Window::setAlwaysOnTop( bool alwaysOnTop )
 {
 	testValid();
 	
-#if defined( CINDER_COCOA ) && ! defined( CINDER_GLFW )
+#if defined( CINDER_COCOA_TOUCH )
 	[mImpl setAlwaysOnTop:alwaysOnTop];
 #else
 	mImpl->setAlwaysOnTop( alwaysOnTop );
@@ -214,7 +214,7 @@ void Window::hide()
 {
 	testValid();
 	
-#if defined( CINDER_COCOA ) && ! defined( CINDER_GLFW )
+#if defined( CINDER_COCOA_TOUCH )
 	[mImpl hide];
 #else
 	mImpl->hide();
@@ -225,7 +225,7 @@ void Window::show()
 {
 	testValid();
 	
-#if defined( CINDER_COCOA ) && ! defined( CINDER_GLFW )
+#if defined( CINDER_COCOA_TOUCH )
 	[mImpl show];
 #else
 	mImpl->show();
@@ -236,7 +236,7 @@ bool Window::isHidden() const
 {
 	testValid();
 	
-#if defined( CINDER_COCOA ) && ! defined( CINDER_GLFW )
+#if defined( CINDER_COCOA_TOUCH )
 	return [mImpl isHidden];
 #else
 	return mImpl->isHidden();
@@ -247,7 +247,7 @@ DisplayRef Window::getDisplay() const
 {
 	testValid();
 
-#if defined( CINDER_COCOA ) && ! defined( CINDER_GLFW )
+#if defined( CINDER_COCOA_TOUCH )
 	return [mImpl getDisplay];
 #else
 	return mImpl->getDisplay();
@@ -258,7 +258,7 @@ RendererRef Window::getRenderer() const
 {
 	testValid();
 	
-#if defined( CINDER_COCOA ) && ! defined( CINDER_GLFW )
+#if defined( CINDER_COCOA_TOUCH )
 	return [mImpl getRenderer];
 #else
 	return mImpl->getRenderer();
@@ -269,7 +269,7 @@ void* Window::getNative() const
 {
 	testValid();
 
-#if defined( CINDER_COCOA ) && ! defined( CINDER_GLFW )
+#if defined( CINDER_COCOA_TOUCH )
 	return [mImpl getNative];
 #else
 	return (void*)mImpl->getNative();
@@ -400,14 +400,14 @@ const std::vector<TouchEvent::Touch>& Window::getActiveTouches() const
 {
 	testValid();
 	
-#if defined( CINDER_COCOA ) && ! defined( CINDER_GLFW )
+#if defined( CINDER_COCOA_TOUCH )
 	return [mImpl getActiveTouches];
 #elif defined( CINDER_MSW_DESKTOP )
 	return mImpl->getActiveTouches();
 #elif defined( CINDER_ANDROID )
 	return mImpl->getActiveTouches();	
-#elif defined( CINDER_LINUX )
-	return mImpl->getActiveTouches();	
+#elif defined( CINDER_GLFW )
+	return mImpl->getActiveTouches();
 #endif
 }
 

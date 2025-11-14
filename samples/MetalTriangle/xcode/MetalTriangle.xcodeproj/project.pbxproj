@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0012D3FB2EC2ED710026B039 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0012D3FA2EC2ED710026B039 /* Metal.framework */; };
+		004683F92EC6C944006B7F63 /* RendererImplGlfwMetal.mm in Sources */ = {isa = PBXBuildFile; fileRef = 004683F82EC6C944006B7F63 /* RendererImplGlfwMetal.mm */; };
 		006D72D619953296008149E2 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 006D72D419953296008149E2 /* AVFoundation.framework */; };
 		006D72D719953296008149E2 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 006D72D519953296008149E2 /* CoreMedia.framework */; };
 		007CD3382E96FD050060E372 /* CinderApp.icns in Resources */ = {isa = PBXBuildFile; fileRef = 007CD3372E96FBEC0060E372 /* CinderApp.icns */; };
@@ -19,7 +20,6 @@
 		00B9955A1B128DF400A5C623 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00B995581B128DF400A5C623 /* IOKit.framework */; };
 		00B9955B1B128DF400A5C623 /* IOSurface.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00B995591B128DF400A5C623 /* IOSurface.framework */; };
 		00BAE65A0E7ED9C10018A608 /* MetalTriangleApp.mm in Sources */ = {isa = PBXBuildFile; fileRef = 00BAE6590E7ED9C10018A608 /* MetalTriangleApp.mm */; };
-		00BFF2592EC69336009ABCBF /* RendererImplGlfwMetal.mm in Sources */ = {isa = PBXBuildFile; fileRef = 00BFF2582EC69336009ABCBF /* RendererImplGlfwMetal.mm */; };
 		00BFF25D2EC6938C009ABCBF /* RendererMetal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00BFF25C2EC6938C009ABCBF /* RendererMetal.cpp */; };
 		5323E6B20EAFCA74003A9687 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5323E6B10EAFCA74003A9687 /* CoreVideo.framework */; };
 		8D11072F0486CEB800E47090 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */; };
@@ -27,6 +27,7 @@
 
 /* Begin PBXFileReference section */
 		0012D3FA2EC2ED710026B039 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		004683F82EC6C944006B7F63 /* RendererImplGlfwMetal.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = RendererImplGlfwMetal.mm; path = ../../../src/cinder/app/glfw/RendererImplGlfwMetal.mm; sourceTree = SOURCE_ROOT; };
 		006D72D419953296008149E2 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		006D72D519953296008149E2 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		007CD3372E96FBEC0060E372 /* CinderApp.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; name = CinderApp.icns; path = ../../data/CinderApp.icns; sourceTree = "<group>"; };
@@ -38,8 +39,7 @@
 		00B995581B128DF400A5C623 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		00B995591B128DF400A5C623 /* IOSurface.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOSurface.framework; path = System/Library/Frameworks/IOSurface.framework; sourceTree = SDKROOT; };
 		00BAE6590E7ED9C10018A608 /* MetalTriangleApp.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = MetalTriangleApp.mm; path = ../src/MetalTriangleApp.mm; sourceTree = SOURCE_ROOT; };
-		00BFF2582EC69336009ABCBF /* RendererImplGlfwMetal.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = RendererImplGlfwMetal.mm; path = ../../../../../src/cinder/app/glfw/RendererImplGlfwMetal.mm; sourceTree = "<group>"; };
-		00BFF25C2EC6938C009ABCBF /* RendererMetal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = RendererMetal.cpp; path = ../../../../src/cinder/app/RendererMetal.cpp; sourceTree = "<group>"; };
+		00BFF25C2EC6938C009ABCBF /* RendererMetal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = RendererMetal.cpp; path = ../../../src/cinder/app/RendererMetal.cpp; sourceTree = SOURCE_ROOT; };
 		1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = /System/Library/Frameworks/Cocoa.framework; sourceTree = "<absolute>"; };
 		13E42FB307B3F0F600E4EEF1 /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = /System/Library/Frameworks/CoreData.framework; sourceTree = "<absolute>"; };
 		29B97324FDCFA39411CA2CEA /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = /System/Library/Frameworks/AppKit.framework; sourceTree = "<absolute>"; };
@@ -76,10 +76,10 @@
 		00BFF2412EC69090009ABCBF /* glfw */ = {
 			isa = PBXGroup;
 			children = (
-				00BFF2582EC69336009ABCBF /* RendererImplGlfwMetal.mm */,
+				004683F82EC6C944006B7F63 /* RendererImplGlfwMetal.mm */,
 			);
 			path = glfw;
-			sourceTree = "<group>";
+			sourceTree = SOURCE_ROOT;
 		};
 		00BFF24B2EC690B7009ABCBF /* cinder */ = {
 			isa = PBXGroup;
@@ -88,7 +88,7 @@
 				00BFF2412EC69090009ABCBF /* glfw */,
 			);
 			path = cinder;
-			sourceTree = "<group>";
+			sourceTree = SOURCE_ROOT;
 		};
 		00BFF25E2EC6949D009ABCBF /* cinder */ = {
 			isa = PBXGroup;
@@ -247,7 +247,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				00BFF25D2EC6938C009ABCBF /* RendererMetal.cpp in Sources */,
-				00BFF2592EC69336009ABCBF /* RendererImplGlfwMetal.mm in Sources */,
+				004683F92EC6C944006B7F63 /* RendererImplGlfwMetal.mm in Sources */,
 				00BAE65A0E7ED9C10018A608 /* MetalTriangleApp.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -269,6 +269,7 @@
 				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "$(HOME)/Applications";
+				MACOSX_DEPLOYMENT_TARGET = 10.13.2;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_LDFLAGS = (
 					"$(CINDER_PATH)/lib/macosx/$(CONFIGURATION)/libcinder.a",
@@ -299,6 +300,7 @@
 				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "$(HOME)/Applications";
+				MACOSX_DEPLOYMENT_TARGET = 10.13.2;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_LDFLAGS = (
 					"$(CINDER_PATH)/lib/macosx/$(CONFIGURATION)/libcinder.a",
