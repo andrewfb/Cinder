@@ -503,11 +503,10 @@ list( APPEND SRC_SET_GLFW_X11
 list( APPEND SRC_SET_APP_GLFW
 	${CINDER_SRC_DIR}/cinder/app/glfw/AppGlfw.cpp
 	${CINDER_SRC_DIR}/cinder/app/glfw/AppImplGlfw.cpp
+	${CINDER_SRC_DIR}/cinder/app/glfw/AppImplGlfwMac.mm
 	${CINDER_SRC_DIR}/cinder/app/glfw/WindowImplGlfw.cpp
 	${CINDER_SRC_DIR}/cinder/app/glfw/RendererGlGlfw.cpp
 	${CINDER_SRC_DIR}/cinder/app/glfw/RendererImplGlfwGl.cpp
-	${CINDER_SRC_DIR}/cinder/app/glfw/RendererMetalGlfw.cpp
-	${CINDER_SRC_DIR}/cinder/app/glfw/RendererImplGlfwMetal.mm
 )
 
 # Note: These source sets are used by platform_macosx.cmake and platform_linux.cmake

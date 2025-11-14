@@ -1,29 +1,7 @@
 cmake_minimum_required( VERSION 3.16 FATAL_ERROR )
 
-# Backend selection for macOS
-option( CINDER_MAC_USE_GLFW "Use GLFW backend on macOS (recommended)" ON )
-option( CINDER_MAC_USE_COCOA "Use deprecated Cocoa backend on macOS" OFF )
-
-# Validate mutual exclusivity
-if( CINDER_MAC_USE_GLFW AND CINDER_MAC_USE_COCOA )
-	message( FATAL_ERROR "CINDER_MAC_USE_GLFW and CINDER_MAC_USE_COCOA are mutually exclusive. Choose one." )
-endif()
-
-if( NOT CINDER_MAC_USE_GLFW AND NOT CINDER_MAC_USE_COCOA )
-	message( FATAL_ERROR "Must select either CINDER_MAC_USE_GLFW or CINDER_MAC_USE_COCOA" )
-endif()
-
-if( CINDER_MAC_USE_GLFW )
-	set( CINDER_PLATFORM "GLFW" )
-	message( STATUS "Using GLFW backend for macOS" )
-else()
-	set( CINDER_PLATFORM "Cocoa" )
-	message( DEPRECATION
-		"The Cocoa backend is deprecated and will receive only bug fixes. "
-		"Please migrate to GLFW by setting CINDER_MAC_USE_GLFW=ON. "
-		"See src/cinder/app/cocoa/DEPRECATED.md for migration guide."
-	)
-endif()
+set( CINDER_PLATFORM "GLFW" )
+message( STATUS "Using GLFW backend for macOS" )
 
 # Build universal binaries for macOS (arm64 + x86_64) to match Xcode default behavior
 if( NOT CMAKE_OSX_ARCHITECTURES )
@@ -42,17 +20,8 @@ list( APPEND SRC_SET_COCOA
 	${CINDER_SRC_DIR}/cinder/ImageSourceFileQuartz.cpp
 	${CINDER_SRC_DIR}/cinder/ImageTargetFileQuartz.cpp
 	${CINDER_SRC_DIR}/cinder/UrlImplCocoa.mm
-	${CINDER_SRC_DIR}/cinder/cocoa/CinderCocoa.mm
-)
-
-list( APPEND SRC_SET_APP_COCOA
-	${CINDER_SRC_DIR}/cinder/app/cocoa/AppCocoaView.mm
-	${CINDER_SRC_DIR}/cinder/app/cocoa/AppImplMac.mm
-	${CINDER_SRC_DIR}/cinder/app/cocoa/AppMac.cpp
-	${CINDER_SRC_DIR}/cinder/app/cocoa/CinderViewMac.mm
 	${CINDER_SRC_DIR}/cinder/app/cocoa/PlatformCocoa.cpp
-	${CINDER_SRC_DIR}/cinder/app/cocoa/RendererImpl2dMacQuartz.mm
-	${CINDER_SRC_DIR}/cinder/app/cocoa/RendererImplGlMac.mm
+	${CINDER_SRC_DIR}/cinder/cocoa/CinderCocoa.mm
 )
 
 if( NOT CINDER_DISABLE_AUDIO )
@@ -68,41 +37,29 @@ endif()
 # GLFW Backend (macOS)
 # ----------------------------------------------------------------------------------------------------------------------
 
-if( CINDER_MAC_USE_GLFW )
-	# Define CINDER_GLFW preprocessor macro
-	list( APPEND CINDER_DEFINES CINDER_GLFW )
+# Define CINDER_GLFW preprocessor macro
+list( APPEND CINDER_DEFINES CINDER_GLFW )
 
-	# Add GLFW app implementation sources
-	list( APPEND SRC_SET_APP_GLFW
-		${CINDER_SRC_DIR}/cinder/app/glfw/AppGlfw.cpp
-		${CINDER_SRC_DIR}/cinder/app/glfw/AppImplGlfw.cpp
-		${CINDER_SRC_DIR}/cinder/app/glfw/WindowImplGlfw.cpp
-		${CINDER_SRC_DIR}/cinder/app/glfw/RendererGlGlfw.cpp
-	)
+# Add GLFW app implementation sources
+list( APPEND SRC_SET_APP_GLFW
+	${CINDER_SRC_DIR}/cinder/app/glfw/AppGlfw.cpp
+	${CINDER_SRC_DIR}/cinder/app/glfw/AppImplGlfw.cpp
+	${CINDER_SRC_DIR}/cinder/app/glfw/WindowImplGlfw.cpp
+	${CINDER_SRC_DIR}/cinder/app/glfw/RendererGlGlfw.cpp
+)
 
-	# Add GLFW library sources (core + Cocoa backend)
-	list( APPEND CINDER_SRC_FILES
-		${SRC_SET_APP_GLFW}
-		${SRC_SET_GLFW}
-		${SRC_SET_GLFW_COCOA}
-	)
+# Add GLFW library sources (core + Cocoa backend)
+list( APPEND CINDER_SRC_FILES
+	${SRC_SET_APP_GLFW}
+	${SRC_SET_GLFW}
+	${SRC_SET_GLFW_COCOA}
+)
 
-	# Add GLFW-specific compile definitions
-	list( APPEND CINDER_DEFINES _GLFW_COCOA )
+# Add GLFW-specific compile definitions
+list( APPEND CINDER_DEFINES _GLFW_COCOA )
 
-	source_group( "cinder\\app\\glfw" FILES ${SRC_SET_APP_GLFW} )
-	source_group( "thirdparty\\glfw" FILES ${SRC_SET_GLFW} ${SRC_SET_GLFW_COCOA} )
-endif()
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Cocoa Backend (macOS) - DEPRECATED
-# ----------------------------------------------------------------------------------------------------------------------
-
-if( CINDER_MAC_USE_COCOA )
-	# Define CINDER_MAC_LEGACY_APP for legacy Cocoa backend
-	list( APPEND CINDER_DEFINES CINDER_MAC_LEGACY_APP )
-	message( STATUS "Using legacy Cocoa backend (CINDER_MAC_LEGACY_APP defined)" )
-endif()
+source_group( "cinder\\app\\glfw" FILES ${SRC_SET_APP_GLFW} )
+source_group( "thirdparty\\glfw" FILES ${SRC_SET_GLFW} ${SRC_SET_GLFW_COCOA} )
 
 # specify what files need to be compiled as Objective-C++
 list( APPEND CINDER_SOURCES_OBJCPP
@@ -111,32 +68,21 @@ list( APPEND CINDER_SOURCES_OBJCPP
 	${CINDER_SRC_DIR}/cinder/Log.cpp
 	${CINDER_SRC_DIR}/cinder/System.cpp
 	${CINDER_SRC_DIR}/cinder/Utilities.cpp
+	${CINDER_SRC_DIR}/cinder/app/cocoa/PlatformCocoa.cpp
 	${CINDER_SRC_DIR}/cinder/gl/Environment.cpp
+	${CINDER_SRC_DIR}/cinder/app/glfw/AppImplGlfwMac.mm
 )
 
-if( CINDER_MAC_USE_GLFW )
-	# GLFW backend needs these as Obj-C++ for macOS system integration
-	list( APPEND CINDER_SOURCES_OBJCPP
-		${CINDER_SRC_DIR}/cinder/Clipboard.cpp
-		${CINDER_SRC_DIR}/cinder/Display.cpp
-		${CINDER_SRC_DIR}/cinder/app/AppBase.cpp
-		${CINDER_SRC_DIR}/cinder/app/Renderer.cpp
-		${CINDER_SRC_DIR}/cinder/app/RendererGl.cpp
-		${CINDER_SRC_DIR}/cinder/app/Window.cpp
-	)
-else()
-	# Cocoa backend needs these as Obj-C++
-	list( APPEND CINDER_SOURCES_OBJCPP
-		${CINDER_SRC_DIR}/cinder/Clipboard.cpp
-		${CINDER_SRC_DIR}/cinder/Display.cpp
-		${CINDER_SRC_DIR}/cinder/app/AppBase.cpp
-		${CINDER_SRC_DIR}/cinder/app/Renderer.cpp
-		${CINDER_SRC_DIR}/cinder/app/RendererGl.cpp
-		${CINDER_SRC_DIR}/cinder/app/Window.cpp
-		${CINDER_SRC_DIR}/cinder/app/cocoa/AppMac.cpp
-		${CINDER_SRC_DIR}/cinder/app/cocoa/PlatformCocoa.cpp
-	)
-endif()
+# GLFW backend needs these as Obj-C++ for macOS system integration
+list( APPEND CINDER_SOURCES_OBJCPP
+	${CINDER_SRC_DIR}/cinder/Clipboard.cpp
+	${CINDER_SRC_DIR}/cinder/Display.cpp
+	${CINDER_SRC_DIR}/cinder/app/AppBase.cpp
+	${CINDER_SRC_DIR}/cinder/app/Renderer.cpp
+	${CINDER_SRC_DIR}/cinder/app/RendererGl.cpp
+	${CINDER_SRC_DIR}/cinder/app/Window.cpp
+	${CINDER_SRC_DIR}/cinder/app/glfw/RendererImplGlfwGl.cpp
+)
 
 if( NOT CINDER_DISABLE_VIDEO )
 	list( APPEND SRC_SET_QTIME
@@ -157,7 +103,6 @@ set_source_files_properties( ${CINDER_SOURCES_OBJCPP}
 
 list( APPEND CINDER_SRC_FILES
 	${SRC_SET_COCOA}
-	${SRC_SET_APP_COCOA}
 	${SRC_SET_AUDIO_COCOA}
 )
 
@@ -212,7 +157,6 @@ list( APPEND CINDER_LIBS_DEPENDS
 )
 
 source_group( "cinder\\cocoa"           FILES ${SRC_SET_COCOA} )
-source_group( "cinder\\app\\cocoa"      FILES ${SRC_SET_APP_COCOA} )
 source_group( "cinder\\audio\\cocoa"    FILES ${SRC_SET_AUDIO_COCOA} )
 
 set( MACOS_SUBFOLDER            "${CINDER_PATH}/lib/${CINDER_TARGET_SUBFOLDER}" )

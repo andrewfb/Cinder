@@ -28,7 +28,9 @@
 // Auto-detect and enable GLFW by default on macOS and Linux
 #if defined( CINDER_MAC )
 	#define CINDER_GLFW
-	#define _GLFW_COCOA
+    #if ! defined( _GLFW_COCOA )
+        #define _GLFW_COCOA
+    #endif
 #elif defined( CINDER_LINUX ) && ! defined( CINDER_HEADLESS ) && ! defined( CINDER_GLFW )
 	// Linux defaults to GLFW unless CINDER_HEADLESS is defined
 	#define CINDER_GLFW
