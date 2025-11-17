@@ -20,7 +20,7 @@
 		00B9955A1B128DF400A5C623 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00B995581B128DF400A5C623 /* IOKit.framework */; };
 		00B9955B1B128DF400A5C623 /* IOSurface.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00B995591B128DF400A5C623 /* IOSurface.framework */; };
 		00BAE65A0E7ED9C10018A608 /* MetalTriangleApp.mm in Sources */ = {isa = PBXBuildFile; fileRef = 00BAE6590E7ED9C10018A608 /* MetalTriangleApp.mm */; };
-		00BFF25D2EC6938C009ABCBF /* RendererMetal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 00BFF25C2EC6938C009ABCBF /* RendererMetal.cpp */; };
+		00BFF25D2EC6938C009ABCBF /* RendererMetal.mm in Sources */ = {isa = PBXBuildFile; fileRef = 00BFF25C2EC6938C009ABCBF /* RendererMetal.mm */; };
 		5323E6B20EAFCA74003A9687 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5323E6B10EAFCA74003A9687 /* CoreVideo.framework */; };
 		8D11072F0486CEB800E47090 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */; };
 /* End PBXBuildFile section */
@@ -39,7 +39,7 @@
 		00B995581B128DF400A5C623 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		00B995591B128DF400A5C623 /* IOSurface.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOSurface.framework; path = System/Library/Frameworks/IOSurface.framework; sourceTree = SDKROOT; };
 		00BAE6590E7ED9C10018A608 /* MetalTriangleApp.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = MetalTriangleApp.mm; path = ../src/MetalTriangleApp.mm; sourceTree = SOURCE_ROOT; };
-		00BFF25C2EC6938C009ABCBF /* RendererMetal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = RendererMetal.cpp; path = ../../../src/cinder/app/RendererMetal.cpp; sourceTree = SOURCE_ROOT; };
+		00BFF25C2EC6938C009ABCBF /* RendererMetal.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = RendererMetal.mm; path = ../../../src/cinder/app/RendererMetal.mm; sourceTree = SOURCE_ROOT; };
 		1058C7A1FEA54F0111CA2CBB /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = /System/Library/Frameworks/Cocoa.framework; sourceTree = "<absolute>"; };
 		13E42FB307B3F0F600E4EEF1 /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = /System/Library/Frameworks/CoreData.framework; sourceTree = "<absolute>"; };
 		29B97324FDCFA39411CA2CEA /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = /System/Library/Frameworks/AppKit.framework; sourceTree = "<absolute>"; };
@@ -84,7 +84,7 @@
 		00BFF24B2EC690B7009ABCBF /* cinder */ = {
 			isa = PBXGroup;
 			children = (
-				00BFF25C2EC6938C009ABCBF /* RendererMetal.cpp */,
+				00BFF25C2EC6938C009ABCBF /* RendererMetal.mm */,
 				00BFF2412EC69090009ABCBF /* glfw */,
 			);
 			path = cinder;
@@ -246,7 +246,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				00BFF25D2EC6938C009ABCBF /* RendererMetal.cpp in Sources */,
+				00BFF25D2EC6938C009ABCBF /* RendererMetal.mm in Sources */,
 				004683F92EC6C944006B7F63 /* RendererImplGlfwMetal.mm in Sources */,
 				00BAE65A0E7ED9C10018A608 /* MetalTriangleApp.mm in Sources */,
 			);

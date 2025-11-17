@@ -28,6 +28,8 @@
 
 //#include "cinder/app/glfw/RendererImplGlfw.h"
 #include "cinder/app/glfw/RendererImplGlfwMetal.h"
+#import <Metal/Metal.h>
+#import <QuartzCore/CAMetalLayer.h>
 
 namespace cinder { namespace app {
 
@@ -124,10 +126,82 @@ void* RendererMetal::getMetalLayer() const
 
 Surface8u RendererMetal::copyWindowSurface( const Area &area, int32_t windowHeightPixels )
 {
-	// TODO: Implement Metal surface capture
-	// For now, return an empty surface
-	Surface8u s( area.getWidth(), area.getHeight(), false );
-	return s;
+	@autoreleasepool {
+		// Get Metal layer from the renderer implementation
+		CAMetalLayer* metalLayer = (__bridge CAMetalLayer*)getMetalLayer();
+		if( ! metalLayer ) {
+			return Surface8u( area.getWidth(), area.getHeight(), false );
+		}
+
+		// Get the current drawable's texture
+		id<CAMetalDrawable> drawable = [metalLayer nextDrawable];
+		if( ! drawable ) {
+			return Surface8u( area.getWidth(), area.getHeight(), false );
+		}
+
+		id<MTLTexture> sourceTexture = drawable.texture;
+		id<MTLDevice> device = (__bridge id<MTLDevice>)getMetalDevice();
+		id<MTLCommandQueue> commandQueue = (__bridge id<MTLCommandQueue>)getMetalCommandQueue();
+
+		if( ! sourceTexture || ! device || ! commandQueue ) {
+			return Surface8u( area.getWidth(), area.getHeight(), false );
+		}
+
+		// Create a readable texture descriptor
+		MTLTextureDescriptor* readableDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+																								 width:area.getWidth()
+																								height:area.getHeight()
+																							 mipmapped:NO];
+		readableDesc.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
+		readableDesc.storageMode = MTLStorageModeShared;  // Shared for CPU readback
+
+		id<MTLTexture> readableTexture = [device newTextureWithDescriptor:readableDesc];
+		if( ! readableTexture ) {
+			return Surface8u( area.getWidth(), area.getHeight(), false );
+		}
+
+		// Create command buffer and blit encoder to copy the texture
+		id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+		id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
+
+		// Copy from drawable texture to readable texture
+		[blitEncoder copyFromTexture:sourceTexture
+						 sourceSlice:0
+						 sourceLevel:0
+						sourceOrigin:MTLOriginMake( area.getX1(), area.getY1(), 0 )
+						  sourceSize:MTLSizeMake( area.getWidth(), area.getHeight(), 1 )
+						   toTexture:readableTexture
+					destinationSlice:0
+					destinationLevel:0
+				   destinationOrigin:MTLOriginMake( 0, 0, 0 )];
+
+		[blitEncoder endEncoding];
+		[commandBuffer commit];
+		[commandBuffer waitUntilCompleted];
+
+		// Create surface and copy pixel data
+		Surface8u surface( area.getWidth(), area.getHeight(), false, SurfaceChannelOrder::BGRA );
+
+		// Get bytes from the readable texture
+		NSUInteger bytesPerRow = area.getWidth() * 4;  // BGRA = 4 bytes per pixel
+		[readableTexture getBytes:surface.getData()
+					  bytesPerRow:bytesPerRow
+					   fromRegion:MTLRegionMake2D( 0, 0, area.getWidth(), area.getHeight() )
+					  mipmapLevel:0];
+
+		// Metal uses top-left origin, but Surface8u expects bottom-left for OpenGL compatibility
+		// Flip the surface vertically
+		Surface8u flipped( area.getWidth(), area.getHeight(), false, SurfaceChannelOrder::BGRA );
+		for( int32_t y = 0; y < area.getHeight(); ++y ) {
+			std::memcpy( flipped.getData( ivec2( 0, area.getHeight() - 1 - y ) ),
+						 surface.getData( ivec2( 0, y ) ),
+						 area.getWidth() * 4 );
+		}
+
+		[readableTexture release];
+
+		return flipped;
+	}
 }
 
 } } // namespace cinder::app
