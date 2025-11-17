@@ -90,7 +90,6 @@ list( APPEND SRC_SET_CINDER_APP
 	${CINDER_SRC_DIR}/cinder/app/Platform.cpp
 	${CINDER_SRC_DIR}/cinder/app/Renderer.cpp
 	${CINDER_SRC_DIR}/cinder/app/RendererGl.cpp
-	${CINDER_SRC_DIR}/cinder/app/RendererMetal.cpp
 	${CINDER_SRC_DIR}/cinder/app/Window.cpp
 )
 
