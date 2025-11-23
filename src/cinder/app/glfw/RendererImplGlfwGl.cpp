@@ -80,26 +80,24 @@ void RendererImplGlfwGl::prepareWindowHints()
 	::glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
 	if( ! options.getCoreProfile() )
 		CI_LOG_E( "Ignoring request for compatibility profile. Unsupported on macOS" );
-#else // Desktop OpenGL
+#else // Desktop Linux/Windows
 	int32_t majorVersion = options.getVersion().first;
 	int32_t minorVersion = options.getVersion().second;
 
-#if defined( CINDER_MAC )
-	// On macOS we hard-code the latest GL on core profile
-	majorVersion = 4;
-	minorVersion = 1;
-	options.mCoreProfile = true;
-#endif
-
-	// If version is explicitly specified (or set above for macOS Core Profile), use that version
+	// If version is explicitly specified, use that version
 	// Otherwise don't set version hints - GLFW will give us the highest available
 	if( majorVersion != 0 || minorVersion != 0 ) {
 		::glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, majorVersion );
 		::glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, minorVersion );
 	}
 
-	if( options.getCoreProfile() )
-		::glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
+	// Only set profile if explicitly specified by user
+	if( options.getProfileSpecified() ) {
+		if( options.getCoreProfile() )
+			::glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
+		else
+			::glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE );
+	}
 
 	if( options.getDebug() )
 		::glfwWindowHint( GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE );

@@ -74,10 +74,17 @@ class CI_API RendererGl : public Renderer {
 #if defined( CINDER_COCOA_TOUCH )
 			mMsaaSamples = 0;
 			mCoreProfile = false;
+			mProfileSpecified = false;
 			mVersion = std::pair<int,int>( 2, 0 );
-#else
+#elif defined( CINDER_MAC )
 			mMsaaSamples = 0;
 			mCoreProfile = true;
+			mProfileSpecified = true;  // macOS always specifies profile
+			mVersion = std::pair<int,int>( 4, 1 );
+#else
+			mMsaaSamples = 0;
+			mCoreProfile = false;
+			mProfileSpecified = false;  // Let GLFW auto-select when profile not specified
 			// Use (0, 0) to indicate "request highest available version"
 			mVersion = std::pair<int,int>( 0, 0 );
 #endif
@@ -94,9 +101,10 @@ class CI_API RendererGl : public Renderer {
 			mColorBpc = 8;
 		}
 
-		Options&	coreProfile( bool enable = true ) { mCoreProfile = enable; return *this; }
+		Options&	coreProfile( bool enable = true ) { mCoreProfile = enable; mProfileSpecified = true; return *this; }
 		bool		getCoreProfile() const { return mCoreProfile; }
-		void		setCoreProfile( bool enable ) { mCoreProfile = enable; }
+		void		setCoreProfile( bool enable ) { mCoreProfile = enable; mProfileSpecified = true; }
+		bool		getProfileSpecified() const { return mProfileSpecified; }
 
 		Options&			version( int major, int minor ) { mVersion = std::make_pair( major, minor ); return *this; }
 		Options&			version( std::pair<int,int> version ) { mVersion = version; return *this; }
@@ -164,6 +172,7 @@ class CI_API RendererGl : public Renderer {
 
 	  protected:
 		bool					mCoreProfile;
+		bool					mProfileSpecified;
 		std::pair<int,int>		mVersion;
 		int						mMsaaSamples;
 		bool					mStencil;
