@@ -244,7 +244,6 @@ void WindowTestApp::resize()
 
 void WindowTestApp::windowDraw()
 {
-    console() << "Draw " << getElapsedFrames() << std::endl;
 	gl::enableAlphaBlending();
 //	glEnable(GL_MULTISAMPLE_ARB);
 	if( getWindow() == getForegroundWindow() )
