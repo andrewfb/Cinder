@@ -1154,7 +1154,7 @@ void roundJoin( BezPathD& out, double tolerance, const glm::dvec2& center,
 void roundJoinRev( BezPathD& out, double tolerance, const glm::dvec2& center,
 				   const glm::dvec2& norm, double angle );
 
-void roundJoin( BezPathD& out, double /*tolerance*/, const glm::dvec2& center,
+void roundJoin( BezPathD& out, double tolerance, const glm::dvec2& center,
 				const glm::dvec2& norm, double angle )
 {
 	double radius = glm::length( norm );
@@ -1167,8 +1167,11 @@ void roundJoin( BezPathD& out, double /*tolerance*/, const glm::dvec2& center,
 		);
 	};
 
-	// Use π/2 (90°) max per segment, matching Path2d::arc() behavior
-	constexpr double maxAngle = PI / 2.0;
+	// Compute max angle per segment based on tolerance
+	// Arc approximation error ≈ radius * θ²/8, so θ ≤ sqrt(8 * tolerance / radius)
+	// Clamp to reasonable range: min π/16 (many segments), max π/2 (few segments)
+	double maxAngle = std::sqrt( 8.0 * tolerance / radius );
+	maxAngle = std::clamp( maxAngle, PI / 16.0, PI / 2.0 );
 
 	int numSegments = static_cast<int>( std::ceil( std::abs( angle ) / maxAngle ) );
 	numSegments = std::max( 1, numSegments );
@@ -1194,7 +1197,7 @@ void roundJoin( BezPathD& out, double /*tolerance*/, const glm::dvec2& center,
 	}
 }
 
-void roundJoinRev( BezPathD& out, double /*tolerance*/, const glm::dvec2& center,
+void roundJoinRev( BezPathD& out, double tolerance, const glm::dvec2& center,
 				   const glm::dvec2& norm, double angle )
 {
 	double radius = glm::length( norm );
@@ -1207,8 +1210,11 @@ void roundJoinRev( BezPathD& out, double /*tolerance*/, const glm::dvec2& center
 		);
 	};
 
-	// Use π/2 (90°) max per segment, matching Path2d::arc() behavior
-	constexpr double maxAngle = PI / 2.0;
+	// Compute max angle per segment based on tolerance
+	// Arc approximation error ≈ radius * θ²/8, so θ ≤ sqrt(8 * tolerance / radius)
+	// Clamp to reasonable range: min π/16 (many segments), max π/2 (few segments)
+	double maxAngle = std::sqrt( 8.0 * tolerance / radius );
+	maxAngle = std::clamp( maxAngle, PI / 16.0, PI / 2.0 );
 
 	int numSegments = static_cast<int>( std::ceil( std::abs( angle ) / maxAngle ) );
 	numSegments = std::max( 1, numSegments );
