@@ -64,6 +64,7 @@ private:
 	float       mOffsetDistance = 20.0f;
 	float       mTolerance = 0.25f;
 	int         mNumOffsetCurves = 1;
+	bool        mRemoveSelfIntersections = false;
 
 	// Stroke parameters
 	float       mStrokeWidth = 40.0f;
@@ -280,6 +281,77 @@ void BezierOffsetApp::keyDown( KeyEvent event )
 				}
 			}
 			break;
+		case 'i':
+		case 'I':
+			// Dump self-intersection debug info
+			{
+				cout << "\n========== SELF-INTERSECTION DEBUG ==========" << endl;
+
+				// Get the offset result WITHOUT removeSelfIntersections
+				StrokeJoin joinStyle;
+				switch( mJoinStyle ) {
+					case 0: joinStyle = StrokeJoin::Bevel; break;
+					case 1: joinStyle = StrokeJoin::Miter; break;
+					default: joinStyle = StrokeJoin::Round; break;
+				}
+
+				Shape2d rawOffset = mUseShape
+					? offset( mInputShape, mOffsetDistance, joinStyle, mMiterLimit, mTolerance, false )
+					: offset( mPath, mOffsetDistance, joinStyle, mMiterLimit, mTolerance, false );
+
+				cout << "Raw offset has " << rawOffset.getNumContours() << " contour(s)" << endl;
+
+				for( size_t c = 0; c < rawOffset.getNumContours(); ++c ) {
+					const Path2d& contour = rawOffset.getContour( c );
+					cout << "\n--- Contour " << c << " ---" << endl;
+					cout << "  Segments: " << contour.getNumSegments() << ", Points: " << contour.getNumPoints() << endl;
+					cout << "  isClosed: " << (contour.isClosed() ? "true" : "false") << endl;
+
+					// Find self-intersections
+					auto isects = contour.findSelfIntersections();
+					cout << "  Self-intersections found: " << isects.size() << endl;
+
+					for( size_t i = 0; i < isects.size(); ++i ) {
+						const auto& si = isects[i];
+						cout << "    [" << i << "] seg1=" << si.segment1 << " seg2=" << si.segment2
+						     << " t1=" << si.t1 << " t2=" << si.t2
+						     << " point=(" << si.point.x << "," << si.point.y << ")" << endl;
+					}
+
+					// Show what removeSelfIntersections produces
+					Path2d cleaned = contour.removeSelfIntersections();
+					cout << "  After removeSelfIntersections: " << cleaned.getNumSegments() << " segments, "
+					     << cleaned.getNumPoints() << " points" << endl;
+
+					// Dump the raw contour path
+					cout << "  Raw contour path:" << endl;
+					const auto& pts = contour.getPoints();
+					size_t ptIdx = 0;
+					for( size_t s = 0; s < contour.getNumSegments(); ++s ) {
+						auto type = contour.getSegmentType( s );
+						if( type == Path2d::MOVETO ) {
+							cout << "    M " << pts[ptIdx].x << "," << pts[ptIdx].y << endl;
+							ptIdx++;
+						} else if( type == Path2d::LINETO ) {
+							cout << "    L " << pts[ptIdx].x << "," << pts[ptIdx].y << endl;
+							ptIdx++;
+						} else if( type == Path2d::QUADTO ) {
+							cout << "    Q " << pts[ptIdx].x << "," << pts[ptIdx].y
+							     << " " << pts[ptIdx+1].x << "," << pts[ptIdx+1].y << endl;
+							ptIdx += 2;
+						} else if( type == Path2d::CUBICTO ) {
+							cout << "    C " << pts[ptIdx].x << "," << pts[ptIdx].y
+							     << " " << pts[ptIdx+1].x << "," << pts[ptIdx+1].y
+							     << " " << pts[ptIdx+2].x << "," << pts[ptIdx+2].y << endl;
+							ptIdx += 3;
+						} else if( type == Path2d::CLOSE ) {
+							cout << "    Z" << endl;
+						}
+					}
+				}
+				cout << "==============================================" << endl;
+			}
+			break;
 	}
 }
 
@@ -398,10 +470,10 @@ void BezierOffsetApp::updateResult()
 
 	if( mMode == Mode::OFFSET ) {
 		if( mUseShape ) {
-			mResult = offset( mInputShape, mOffsetDistance, joinStyle, mMiterLimit, mTolerance );
+			mResult = offset( mInputShape, mOffsetDistance, joinStyle, mMiterLimit, mTolerance, mRemoveSelfIntersections );
 		}
 		else {
-			mResult = offset( mPath, mOffsetDistance, joinStyle, mMiterLimit, mTolerance );
+			mResult = offset( mPath, mOffsetDistance, joinStyle, mMiterLimit, mTolerance, mRemoveSelfIntersections );
 		}
 	}
 	else {
@@ -475,6 +547,14 @@ void BezierOffsetApp::drawImGuiControls()
 			if( ImGui::SliderFloat( "Miter Limit", &mMiterLimit, 1.0f, 10.0f, "%.1f" ) ) {
 				updateResult();
 			}
+		}
+
+		ImGui::Spacing();
+		if( ImGui::Checkbox( "Remove Self-Intersections", &mRemoveSelfIntersections ) ) {
+			updateResult();
+		}
+		if( ImGui::IsItemHovered() ) {
+			ImGui::SetTooltip( "Remove loops that occur at sharp corners\nwhen the offset distance exceeds the curve radius" );
 		}
 	}
 	else {
@@ -755,8 +835,8 @@ void BezierOffsetApp::drawContent()
 				float distance = mOffsetDistance * t;
 
 				Shape2d offsetResult = mUseShape
-					? offset( mInputShape, distance, joinStyle, mMiterLimit, mTolerance )
-					: offset( mPath, distance, joinStyle, mMiterLimit, mTolerance );
+					? offset( mInputShape, distance, joinStyle, mMiterLimit, mTolerance, mRemoveSelfIntersections )
+					: offset( mPath, distance, joinStyle, mMiterLimit, mTolerance, mRemoveSelfIntersections );
 
 				Color gradColor = mOriginalColor * (1.0f - t) + mResultColor * t;
 				float alpha = (mNumOffsetCurves > 3) ? (0.3f + 0.7f * t) : 0.7f;

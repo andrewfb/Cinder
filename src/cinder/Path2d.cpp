@@ -2242,5 +2242,591 @@ float Path2dCalcCache::calcTimeForDistance( float distance, bool wrap, float tol
 	return mPath.segmentSolveTimeForDistance( currentSegment, currentSegmentLength, distance, tolerance, maxIterations );
 }
 
+//=============================================================================
+// Self-Intersection Detection
+//=============================================================================
+
+std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float tolerance ) const
+{
+	std::vector<SelfIntersection> results;
+
+	if( mSegments.empty() )
+		return results;
+
+	// Helper to get segment control points as double precision for intersection
+	auto getSegmentPoints = [this]( size_t seg, size_t firstPt ) -> std::pair<Path2d::SegmentType, std::vector<dvec2>> {
+		SegmentType type = mSegments[seg];
+		std::vector<dvec2> pts;
+
+		switch( type ) {
+			case LINETO:
+				pts.push_back( dvec2( mPoints[firstPt] ) );
+				pts.push_back( dvec2( mPoints[firstPt + 1] ) );
+				break;
+			case QUADTO:
+				pts.push_back( dvec2( mPoints[firstPt] ) );
+				pts.push_back( dvec2( mPoints[firstPt + 1] ) );
+				pts.push_back( dvec2( mPoints[firstPt + 2] ) );
+				break;
+			case CUBICTO:
+				pts.push_back( dvec2( mPoints[firstPt] ) );
+				pts.push_back( dvec2( mPoints[firstPt + 1] ) );
+				pts.push_back( dvec2( mPoints[firstPt + 2] ) );
+				pts.push_back( dvec2( mPoints[firstPt + 3] ) );
+				break;
+			default:
+				break;
+		}
+		return { type, pts };
+	};
+
+	// Build segment info (first point index for each segment)
+	std::vector<size_t> segmentFirstPoint;
+	size_t ptIdx = 1;  // Start after MOVETO point
+	for( size_t s = 0; s < mSegments.size(); ++s ) {
+		segmentFirstPoint.push_back( ptIdx - 1 );  // Include the "from" point
+		ptIdx += sSegmentTypePointCounts[mSegments[s]];
+	}
+
+	// Check each cubic segment for self-intersection
+	ptIdx = 1;
+	for( size_t s = 0; s < mSegments.size(); ++s ) {
+		if( mSegments[s] == CUBICTO ) {
+			dvec2 c[4] = {
+				dvec2( mPoints[ptIdx - 1] ),
+				dvec2( mPoints[ptIdx] ),
+				dvec2( mPoints[ptIdx + 1] ),
+				dvec2( mPoints[ptIdx + 2] )
+			};
+
+			auto selfIsects = selfIntersectCubic( c, double( tolerance ), 0.02 );
+			for( const auto& isect : selfIsects ) {
+				SelfIntersection si;
+				si.segment1 = s;
+				si.segment2 = s;
+				si.t1 = float( s ) + float( isect.t1 );
+				si.t2 = float( s ) + float( isect.t2 );
+				si.point = vec2( evalCubicBezier( c, isect.t1 ) );
+				results.push_back( si );
+			}
+		}
+		ptIdx += sSegmentTypePointCounts[mSegments[s]];
+	}
+
+	// Find indices of first and last drawable segments (for closed path adjacency check)
+	size_t firstDrawable = 0;
+	size_t lastDrawable = 0;
+	bool foundFirst = false;
+	for( size_t s = 0; s < mSegments.size(); ++s ) {
+		if( mSegments[s] != MOVETO && mSegments[s] != CLOSE ) {
+			if( !foundFirst ) {
+				firstDrawable = s;
+				foundFirst = true;
+			}
+			lastDrawable = s;
+		}
+	}
+
+	// Check all pairs of segments (including adjacent ones that might cross in the middle)
+	for( size_t i = 0; i < mSegments.size(); ++i ) {
+		if( mSegments[i] == MOVETO || mSegments[i] == CLOSE )
+			continue;
+
+		auto [type1, pts1] = getSegmentPoints( i, segmentFirstPoint[i] );
+		if( pts1.empty() )
+			continue;
+
+		for( size_t j = i + 1; j < mSegments.size(); ++j ) {
+			if( mSegments[j] == MOVETO || mSegments[j] == CLOSE )
+				continue;
+
+			// Check adjacency: consecutive segments OR first-last for closed paths
+			bool areAdjacent = ( j == i + 1 ) ||
+			                   ( isClosed() && i == firstDrawable && j == lastDrawable );
+
+			auto [type2, pts2] = getSegmentPoints( j, segmentFirstPoint[j] );
+			if( pts2.empty() )
+				continue;
+
+			// Check intersection based on segment types
+			std::vector<CurveIntersection<double>> isects;
+
+			if( type1 == CUBICTO && type2 == CUBICTO ) {
+				// Cubic-Cubic
+				dvec2 c1[4] = { pts1[0], pts1[1], pts1[2], pts1[3] };
+				dvec2 c2[4] = { pts2[0], pts2[1], pts2[2], pts2[3] };
+				isects = intersectCubicCubic( c1, c2, double( tolerance ) );
+			}
+			else if( type1 == CUBICTO && type2 == LINETO ) {
+				// Cubic-Line
+				dvec2 c[4] = { pts1[0], pts1[1], pts1[2], pts1[3] };
+				LineIntersection<double> lineIsects[3];
+				int count = intersectLineCubic( c, pts2[0], pts2[1], lineIsects );
+				for( int k = 0; k < count; ++k ) {
+					isects.emplace_back( lineIsects[k].segmentT, lineIsects[k].lineT );
+				}
+			}
+			else if( type1 == LINETO && type2 == CUBICTO ) {
+				// Line-Cubic
+				dvec2 c[4] = { pts2[0], pts2[1], pts2[2], pts2[3] };
+				LineIntersection<double> lineIsects[3];
+				int count = intersectLineCubic( c, pts1[0], pts1[1], lineIsects );
+				for( int k = 0; k < count; ++k ) {
+					// Swap t1/t2 since we swapped the order
+					isects.emplace_back( lineIsects[k].lineT, lineIsects[k].segmentT );
+				}
+			}
+			else if( type1 == LINETO && type2 == LINETO ) {
+				// Line-Line
+				LineIntersection<double> lineIsect[1];
+				int count = intersectLineLine( pts1[0], pts1[1], pts2[0], pts2[1], lineIsect );
+				if( count > 0 ) {
+					isects.emplace_back( lineIsect[0].segmentT, lineIsect[0].lineT );
+				}
+			}
+			else if( type1 == QUADTO || type2 == QUADTO ) {
+				// Elevate quadratics to cubics
+				dvec2 c1[4], c2[4];
+
+				if( type1 == QUADTO ) {
+					dvec2 q[3] = { pts1[0], pts1[1], pts1[2] };
+					raiseQuadraticToCubic( q, c1 );
+				}
+				else if( type1 == CUBICTO ) {
+					c1[0] = pts1[0]; c1[1] = pts1[1]; c1[2] = pts1[2]; c1[3] = pts1[3];
+				}
+				else { // LINETO - elevate to cubic
+					c1[0] = pts1[0];
+					c1[1] = pts1[0] + ( pts1[1] - pts1[0] ) / 3.0;
+					c1[2] = pts1[0] + 2.0 * ( pts1[1] - pts1[0] ) / 3.0;
+					c1[3] = pts1[1];
+				}
+
+				if( type2 == QUADTO ) {
+					dvec2 q[3] = { pts2[0], pts2[1], pts2[2] };
+					raiseQuadraticToCubic( q, c2 );
+				}
+				else if( type2 == CUBICTO ) {
+					c2[0] = pts2[0]; c2[1] = pts2[1]; c2[2] = pts2[2]; c2[3] = pts2[3];
+				}
+				else { // LINETO - elevate to cubic
+					c2[0] = pts2[0];
+					c2[1] = pts2[0] + ( pts2[1] - pts2[0] ) / 3.0;
+					c2[2] = pts2[0] + 2.0 * ( pts2[1] - pts2[0] ) / 3.0;
+					c2[3] = pts2[1];
+				}
+
+				isects = intersectCubicCubic( c1, c2, double( tolerance ) );
+			}
+
+			// Add results (filtering out endpoint intersections for adjacent segments)
+			constexpr double ENDPOINT_THRESHOLD = 0.01;
+			for( const auto& isect : isects ) {
+				// For adjacent segments, skip the shared endpoint intersection
+				if( areAdjacent ) {
+					// Skip if t1 ≈ 1 and t2 ≈ 0 (shared endpoint between consecutive segments)
+					if( isect.t1 > 1.0 - ENDPOINT_THRESHOLD && isect.t2 < ENDPOINT_THRESHOLD )
+						continue;
+					// For closed path wrap-around (first-last): skip if t1 ≈ 0 and t2 ≈ 1
+					if( isClosed() && i == firstDrawable && j == lastDrawable ) {
+						if( isect.t1 < ENDPOINT_THRESHOLD && isect.t2 > 1.0 - ENDPOINT_THRESHOLD )
+							continue;
+					}
+				}
+
+				SelfIntersection si;
+				si.segment1 = i;
+				si.segment2 = j;
+				si.t1 = float( i ) + float( isect.t1 );
+				si.t2 = float( j ) + float( isect.t2 );
+
+				// Compute intersection point
+				if( type1 == CUBICTO ) {
+					dvec2 c[4] = { pts1[0], pts1[1], pts1[2], pts1[3] };
+					si.point = vec2( evalCubicBezier( c, isect.t1 ) );
+				}
+				else if( type1 == QUADTO ) {
+					dvec2 q[3] = { pts1[0], pts1[1], pts1[2] };
+					si.point = vec2( evalQuadraticBezier( q, isect.t1 ) );
+				}
+				else {
+					si.point = vec2( glm::mix( pts1[0], pts1[1], isect.t1 ) );
+				}
+
+				results.push_back( si );
+			}
+		}
+	}
+
+	return results;
+}
+
+//=============================================================================
+// Path Splitting
+//=============================================================================
+
+std::pair<Path2d, Path2d> Path2d::splitAt( float t ) const
+{
+	Path2d first, second;
+
+	if( mSegments.empty() || mPoints.empty() )
+		return { first, second };
+
+	// Clamp t to valid range
+	float maxT = static_cast<float>( mSegments.size() );
+	t = std::max( 0.0f, std::min( t, maxT ) );
+
+	// Find segment and relative t
+	size_t segment = static_cast<size_t>( t );
+	float relT = t - static_cast<float>( segment );
+
+	// Handle t at exactly the end
+	if( segment >= mSegments.size() ) {
+		segment = mSegments.size() - 1;
+		relT = 1.0f;
+	}
+
+	// Track subpath start for CLOSE segment handling
+	vec2 subPathStart = mPoints[0];
+
+	// Build first path (everything before split point)
+	size_t ptIdx = 1;  // Start after moveTo point
+	first.moveTo( mPoints[0] );
+
+	for( size_t s = 0; s < segment; ++s ) {
+		switch( mSegments[s] ) {
+			case LINETO:
+				first.lineTo( mPoints[ptIdx] );
+				ptIdx += 1;
+				break;
+			case QUADTO:
+				first.quadTo( mPoints[ptIdx], mPoints[ptIdx + 1] );
+				ptIdx += 2;
+				break;
+			case CUBICTO:
+				first.curveTo( mPoints[ptIdx], mPoints[ptIdx + 1], mPoints[ptIdx + 2] );
+				ptIdx += 3;
+				break;
+			case CLOSE:
+				first.lineTo( subPathStart );  // CLOSE is a line back to subpath start
+				break;
+			case MOVETO:
+				// Note: Path2d typically only has one moveTo at start, but handle it anyway
+				ptIdx += sSegmentTypePointCounts[mSegments[s]];
+				break;
+		}
+	}
+
+	// Now handle the split segment
+	vec2 splitPoint;
+	if( relT <= 0.0f ) {
+		// Split at start of segment - first path ends at previous point
+		splitPoint = first.getPoints().back();
+	}
+	else if( relT >= 1.0f ) {
+		// Split at end of segment - include entire segment in first path
+		switch( mSegments[segment] ) {
+			case LINETO:
+				first.lineTo( mPoints[ptIdx] );
+				splitPoint = mPoints[ptIdx];
+				ptIdx += 1;
+				break;
+			case QUADTO:
+				first.quadTo( mPoints[ptIdx], mPoints[ptIdx + 1] );
+				splitPoint = mPoints[ptIdx + 1];
+				ptIdx += 2;
+				break;
+			case CUBICTO:
+				first.curveTo( mPoints[ptIdx], mPoints[ptIdx + 1], mPoints[ptIdx + 2] );
+				splitPoint = mPoints[ptIdx + 2];
+				ptIdx += 3;
+				break;
+			case CLOSE:
+				first.lineTo( subPathStart );
+				splitPoint = subPathStart;
+				break;
+			case MOVETO:
+				splitPoint = first.getPoints().back();
+				ptIdx += sSegmentTypePointCounts[mSegments[segment]];
+				break;
+		}
+	}
+	else {
+		// Split within segment
+		vec2 startPt = ( ptIdx > 0 ) ? mPoints[ptIdx - 1] : mPoints[0];
+
+		switch( mSegments[segment] ) {
+			case LINETO: {
+				splitPoint = glm::mix( startPt, mPoints[ptIdx], relT );
+				first.lineTo( splitPoint );
+				ptIdx += 1;
+				break;
+			}
+			case QUADTO: {
+				vec2 q[3] = { startPt, mPoints[ptIdx], mPoints[ptIdx + 1] };
+				vec2 left[3];
+				subdivideQuadraticLeft( q, relT, left );
+				first.quadTo( left[1], left[2] );
+				splitPoint = left[2];
+				ptIdx += 2;
+				break;
+			}
+			case CUBICTO: {
+				vec2 c[4] = { startPt, mPoints[ptIdx], mPoints[ptIdx + 1], mPoints[ptIdx + 2] };
+				vec2 left[4];
+				subdivideCubicLeft( c, relT, left );
+				first.curveTo( left[1], left[2], left[3] );
+				splitPoint = left[3];
+				ptIdx += 3;
+				break;
+			}
+			case CLOSE: {
+				// CLOSE is an implicit line from current position to subpath start
+				splitPoint = glm::mix( startPt, subPathStart, relT );
+				first.lineTo( splitPoint );
+				break;
+			}
+			case MOVETO:
+				splitPoint = startPt;
+				ptIdx += sSegmentTypePointCounts[mSegments[segment]];
+				break;
+		}
+	}
+
+	// Build second path (everything from split point to end)
+	second.moveTo( splitPoint );
+
+	// Handle remaining part of split segment if we split within it
+	if( relT > 0.0f && relT < 1.0f ) {
+		size_t splitPtIdx = 1;  // Recalculate ptIdx for split segment
+		for( size_t s = 0; s < segment; ++s ) {
+			splitPtIdx += sSegmentTypePointCounts[mSegments[s]];
+		}
+		vec2 startPt = ( splitPtIdx > 0 ) ? mPoints[splitPtIdx - 1] : mPoints[0];
+
+		switch( mSegments[segment] ) {
+			case LINETO: {
+				second.lineTo( mPoints[splitPtIdx] );
+				break;
+			}
+			case QUADTO: {
+				vec2 q[3] = { startPt, mPoints[splitPtIdx], mPoints[splitPtIdx + 1] };
+				vec2 right[3];
+				subdivideQuadraticRight( q, relT, right );
+				second.quadTo( right[1], right[2] );
+				break;
+			}
+			case CUBICTO: {
+				vec2 c[4] = { startPt, mPoints[splitPtIdx], mPoints[splitPtIdx + 1], mPoints[splitPtIdx + 2] };
+				vec2 right[4];
+				subdivideCubicRight( c, relT, right );
+				second.curveTo( right[1], right[2], right[3] );
+				break;
+			}
+			case CLOSE: {
+				// Remaining part of CLOSE segment goes to subpath start
+				second.lineTo( subPathStart );
+				break;
+			}
+			default:
+				break;
+		}
+	}
+
+	// Add remaining segments to second path
+	size_t startSeg = ( relT > 0.0f ) ? segment + 1 : segment;
+	size_t startPtIdx = 1;
+	vec2 secondSubPathStart = splitPoint;  // Track subpath start for second path
+	for( size_t s = 0; s < startSeg; ++s ) {
+		startPtIdx += sSegmentTypePointCounts[mSegments[s]];
+	}
+
+	for( size_t s = startSeg; s < mSegments.size(); ++s ) {
+		switch( mSegments[s] ) {
+			case LINETO:
+				second.lineTo( mPoints[startPtIdx] );
+				startPtIdx += 1;
+				break;
+			case QUADTO:
+				second.quadTo( mPoints[startPtIdx], mPoints[startPtIdx + 1] );
+				startPtIdx += 2;
+				break;
+			case CUBICTO:
+				second.curveTo( mPoints[startPtIdx], mPoints[startPtIdx + 1], mPoints[startPtIdx + 2] );
+				startPtIdx += 3;
+				break;
+			case CLOSE:
+				// Add a line to the subpath start (don't actually close, as we split it)
+				second.lineTo( subPathStart );
+				break;
+			case MOVETO:
+				// Note: This shouldn't typically happen in a standard Path2d
+				// but handle it for robustness
+				startPtIdx += sSegmentTypePointCounts[mSegments[s]];
+				break;
+		}
+	}
+
+	return { first, second };
+}
+
+std::vector<Path2d> Path2d::splitAtMultiple( const std::vector<float>& tValues ) const
+{
+	std::vector<Path2d> results;
+
+	if( tValues.empty() ) {
+		results.push_back( *this );
+		return results;
+	}
+
+	// Sort and filter t values to valid range
+	std::vector<float> sortedT = tValues;
+	std::sort( sortedT.begin(), sortedT.end() );
+
+	float maxT = static_cast<float>( mSegments.size() );
+	sortedT.erase( std::remove_if( sortedT.begin(), sortedT.end(),
+		[maxT]( float t ) { return t <= 0.0f || t >= maxT; } ), sortedT.end() );
+
+	if( sortedT.empty() ) {
+		results.push_back( *this );
+		return results;
+	}
+
+	// Split iteratively
+	Path2d remaining = *this;
+	float offset = 0.0f;
+
+	for( float t : sortedT ) {
+		float adjustedT = t - offset;
+		if( adjustedT <= 0.0f )
+			continue;
+
+		auto [first, second] = remaining.splitAt( adjustedT );
+		if( !first.empty() ) {
+			results.push_back( std::move( first ) );
+		}
+		remaining = std::move( second );
+		offset = t;
+	}
+
+	// Add final segment
+	if( !remaining.empty() ) {
+		results.push_back( std::move( remaining ) );
+	}
+
+	return results;
+}
+
+//=============================================================================
+// Self-Intersection Removal
+//=============================================================================
+
+namespace {
+// Helper to append segments from one path to another
+void appendPath( Path2d& dest, const Path2d& src )
+{
+	if( src.empty() )
+		return;
+
+	for( size_t s = 0; s < src.getNumSegments(); ++s ) {
+		size_t ptIdx = 1;
+		for( size_t i = 0; i < s; ++i ) {
+			ptIdx += Path2d::sSegmentTypePointCounts[src.getSegments()[i]];
+		}
+		switch( src.getSegmentType( s ) ) {
+			case Path2d::LINETO:
+				dest.lineTo( src.getPoints()[ptIdx] );
+				break;
+			case Path2d::QUADTO:
+				dest.quadTo( src.getPoints()[ptIdx], src.getPoints()[ptIdx + 1] );
+				break;
+			case Path2d::CUBICTO:
+				dest.curveTo( src.getPoints()[ptIdx], src.getPoints()[ptIdx + 1], src.getPoints()[ptIdx + 2] );
+				break;
+			default:
+				break;
+		}
+	}
+}
+} // anonymous namespace
+
+Path2d Path2d::removeSelfIntersections( bool keepOutermost ) const
+{
+	// Find all self-intersections
+	auto intersections = findSelfIntersections();
+
+	if( intersections.empty() ) {
+		return *this;  // No intersections, return original
+	}
+
+	// For offset curves, at each self-intersection we have a loop between t1 and t2.
+	// We want to "skip" the loop by going from t1 directly to t2.
+	//
+	// The algorithm:
+	// 1. Collect skip ranges [t1, t2] from each intersection
+	// 2. Merge overlapping ranges
+	// 3. Keep segments outside of skip ranges: [0, skip1.t1], [skip1.t2, skip2.t1], etc.
+
+	// Collect and sort skip ranges
+	std::vector<std::pair<float, float>> skipRanges;
+	for( const auto& isect : intersections ) {
+		skipRanges.emplace_back( isect.t1, isect.t2 );
+	}
+	std::sort( skipRanges.begin(), skipRanges.end() );
+
+	// Merge overlapping skip ranges
+	std::vector<std::pair<float, float>> merged;
+	merged.push_back( skipRanges[0] );
+	for( size_t i = 1; i < skipRanges.size(); ++i ) {
+		if( skipRanges[i].first <= merged.back().second ) {
+			merged.back().second = std::max( merged.back().second, skipRanges[i].second );
+		}
+		else {
+			merged.push_back( skipRanges[i] );
+		}
+	}
+
+	// Determine which ranges to KEEP (inverse of skip ranges)
+	std::vector<std::pair<float, float>> keepRanges;
+	float maxT = static_cast<float>( mSegments.size() );
+	float currentT = 0.0f;
+
+	for( const auto& skip : merged ) {
+		if( currentT < skip.first ) {
+			keepRanges.emplace_back( currentT, skip.first );
+		}
+		currentT = skip.second;
+	}
+	if( currentT < maxT ) {
+		keepRanges.emplace_back( currentT, maxT );
+	}
+
+	if( keepRanges.empty() ) {
+		return Path2d();  // Everything was skipped
+	}
+
+	// Build the result by extracting and concatenating keep ranges
+	Path2d result;
+	bool first = true;
+
+	for( const auto& range : keepRanges ) {
+		// Extract the segment from range.first to range.second
+		auto [before, afterFirst] = splitAt( range.first );
+		auto [segment, afterSecond] = afterFirst.splitAt( range.second - range.first );
+
+		if( segment.empty() )
+			continue;
+
+		if( first ) {
+			result = std::move( segment );
+			first = false;
+		}
+		else {
+			appendPath( result, segment );
+		}
+	}
+
+	return result;
+}
 
 } // namespace cinder

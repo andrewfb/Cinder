@@ -2538,7 +2538,8 @@ void OffsetContext::finish()
 	mHaveFirst = false;
 }
 
-Shape2d offset( const Path2d& path, float distance, Join join, float miterLimit, float tolerance )
+Shape2d offset( const Path2d& path, float distance, Join join, float miterLimit, float tolerance,
+                bool removeSelfIntersections )
 {
 	BezPathD bezPath = toDoublePrecision( path );
 
@@ -2550,14 +2551,28 @@ Shape2d offset( const Path2d& path, float distance, Join join, float miterLimit,
 	}
 	ctx.finish();
 
-	return bezPathToShape2d( ctx.output() );
+	Shape2d result = bezPathToShape2d( ctx.output() );
+
+	if( removeSelfIntersections ) {
+		// For positive offsets (outward), keep outermost portions
+		// For negative offsets (inward), keep innermost portions
+		bool keepOutermost = ( distance >= 0.0f );
+		Shape2d cleaned;
+		for( const auto& contour : result.getContours() ) {
+			cleaned.appendContour( contour.removeSelfIntersections( keepOutermost ) );
+		}
+		return cleaned;
+	}
+
+	return result;
 }
 
-Shape2d offset( const Shape2d& shape, float distance, Join join, float miterLimit, float tolerance )
+Shape2d offset( const Shape2d& shape, float distance, Join join, float miterLimit, float tolerance,
+                bool removeSelfIntersections )
 {
 	Shape2d result;
 	for( const auto& contour : shape.getContours() ) {
-		Shape2d offsetContour = offset( contour, distance, join, miterLimit, tolerance );
+		Shape2d offsetContour = offset( contour, distance, join, miterLimit, tolerance, removeSelfIntersections );
 		result.append( offsetContour );
 	}
 	return result;

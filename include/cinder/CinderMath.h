@@ -31,6 +31,7 @@
 #include <climits>
 #include <cfloat>
 #include <functional>
+#include <vector>
 #if defined( CINDER_MSW )
 	#undef min
 	#undef max
@@ -746,6 +747,411 @@ constexpr double GAUSS_LEGENDRE_5_NODES[] = {
 	-0.9061798459386640,
 	0.9061798459386640
 };
+
+//=============================================================================
+// Line-Segment Intersection (ported from Kurbo)
+//=============================================================================
+
+//! Result of a line-segment intersection.
+//! @param segmentT Parameter on the segment being tested (in [0, 1])
+//! @param lineT Parameter on the probe line (in [0, 1])
+template<typename T>
+struct LineIntersection {
+	T segmentT;  //!< Parameter on the segment (curve or line being tested)
+	T lineT;     //!< Parameter on the probe line
+
+	LineIntersection() = default;
+	LineIntersection( T segT, T linT ) : segmentT( segT ), lineT( linT ) {}
+};
+
+//! Convert quadratic Bezier control points to polynomial coefficients.
+//! For coordinate x: x(t) = c0 + c1*t + c2*t²
+//! @param x0 First control point coordinate
+//! @param x1 Second control point coordinate (control point)
+//! @param x2 Third control point coordinate
+//! @param c0 Output constant coefficient
+//! @param c1 Output linear coefficient
+//! @param c2 Output quadratic coefficient
+template<typename T>
+inline void quadraticBezierCoeffs( T x0, T x1, T x2, T& c0, T& c1, T& c2 )
+{
+	c0 = x0;
+	c1 = T( 2 ) * x1 - T( 2 ) * x0;
+	c2 = x2 - T( 2 ) * x1 + x0;
+}
+
+//! Convert cubic Bezier control points to polynomial coefficients.
+//! For coordinate x: x(t) = c0 + c1*t + c2*t² + c3*t³
+//! @param x0 First control point coordinate
+//! @param x1 Second control point coordinate
+//! @param x2 Third control point coordinate
+//! @param x3 Fourth control point coordinate
+//! @param c0 Output constant coefficient
+//! @param c1 Output linear coefficient
+//! @param c2 Output quadratic coefficient
+//! @param c3 Output cubic coefficient
+template<typename T>
+inline void cubicBezierCoeffs( T x0, T x1, T x2, T x3, T& c0, T& c1, T& c2, T& c3 )
+{
+	c0 = x0;
+	c1 = T( 3 ) * x1 - T( 3 ) * x0;
+	c2 = T( 3 ) * x2 - T( 6 ) * x1 + T( 3 ) * x0;
+	c3 = x3 - T( 3 ) * x2 + T( 3 ) * x1 - x0;
+}
+
+//! Find intersection between two line segments.
+//! @param seg0 First endpoint of segment
+//! @param seg1 Second endpoint of segment
+//! @param line0 First endpoint of probe line
+//! @param line1 Second endpoint of probe line
+//! @param result Output array (size 1) for intersection result
+//! @return Number of intersections (0 or 1)
+template<typename T>
+inline int intersectLineLine( const glm::tvec2<T>& seg0, const glm::tvec2<T>& seg1,
+                               const glm::tvec2<T>& line0, const glm::tvec2<T>& line1,
+                               LineIntersection<T> result[1] )
+{
+	constexpr T EPSILON = T( 1e-9 );
+
+	T dx = line1.x - line0.x;
+	T dy = line1.y - line0.y;
+
+	// Determinant: (line direction) cross (segment direction)
+	T det = dx * ( seg1.y - seg0.y ) - dy * ( seg1.x - seg0.x );
+	if( std::abs( det ) < EPSILON ) {
+		// Lines are parallel or coincident
+		return 0;
+	}
+
+	// t = position on segment
+	T t = ( dx * ( line0.y - seg0.y ) - dy * ( line0.x - seg0.x ) ) / det;
+	if( t < -EPSILON || t > T( 1 ) + EPSILON ) {
+		return 0;
+	}
+
+	// u = position on probe line
+	T u = ( ( seg0.x - line0.x ) * ( seg1.y - seg0.y ) - ( seg0.y - line0.y ) * ( seg1.x - seg0.x ) ) / det;
+	if( u < -EPSILON || u > T( 1 ) + EPSILON ) {
+		return 0;
+	}
+
+	result[0] = LineIntersection<T>( std::clamp( t, T( 0 ), T( 1 ) ), std::clamp( u, T( 0 ), T( 1 ) ) );
+	return 1;
+}
+
+//! Find intersections between a quadratic Bezier and a line segment.
+//! Uses polynomial substitution: convert curve to polynomial, substitute into
+//! line equation, solve resulting quadratic.
+//! @param q Array of 3 control points for quadratic Bezier
+//! @param line0 First endpoint of probe line
+//! @param line1 Second endpoint of probe line
+//! @param result Output array (size 2) for intersection results
+//! @return Number of intersections (0, 1, or 2)
+template<typename T>
+inline int intersectLineQuadratic( const glm::tvec2<T> q[3],
+                                    const glm::tvec2<T>& line0, const glm::tvec2<T>& line1,
+                                    LineIntersection<T> result[2] )
+{
+	constexpr T EPSILON = T( 1e-9 );
+
+	T dx = line1.x - line0.x;
+	T dy = line1.y - line0.y;
+	T len2 = dx * dx + dy * dy;
+
+	// Guard against zero-length probe line
+	if( len2 < EPSILON ) {
+		return 0;
+	}
+
+	// Convert Bezier to polynomial form: P(t) = c0 + c1*t + c2*t²
+	T px0, px1, px2, py0, py1, py2;
+	quadraticBezierCoeffs( q[0].x, q[1].x, q[2].x, px0, px1, px2 );
+	quadraticBezierCoeffs( q[0].y, q[1].y, q[2].y, py0, py1, py2 );
+
+	// Substitute into line equation: dy*(x - line0.x) - dx*(y - line0.y) = 0
+	// This gives signed distance from the line, scaled by line length
+	T c0 = dy * ( px0 - line0.x ) - dx * ( py0 - line0.y );
+	T c1 = dy * px1 - dx * py1;
+	T c2 = dy * px2 - dx * py2;
+
+	// Solve quadratic c0 + c1*t + c2*t² = 0
+	T roots[2];
+	int numRoots = solveQuadraticStable( c0, c1, c2, roots );
+
+	// Filter roots to [0, 1] range and compute line parameter
+	T invLen2 = T( 1 ) / len2;
+	int count = 0;
+
+	for( int i = 0; i < numRoots; ++i ) {
+		T t = roots[i];
+		if( t >= -EPSILON && t <= T( 1 ) + EPSILON ) {
+			// Evaluate curve at t to get intersection point
+			T x = px0 + t * px1 + t * t * px2;
+			T y = py0 + t * py1 + t * t * py2;
+
+			// Compute line parameter u (projection onto line)
+			T u = ( ( x - line0.x ) * dx + ( y - line0.y ) * dy ) * invLen2;
+			if( u >= -EPSILON && u <= T( 1 ) + EPSILON ) {
+				result[count++] = LineIntersection<T>( std::clamp( t, T( 0 ), T( 1 ) ), std::clamp( u, T( 0 ), T( 1 ) ) );
+			}
+		}
+	}
+
+	return count;
+}
+
+//! Find intersections between a cubic Bezier and a line segment.
+//! Uses polynomial substitution: convert curve to polynomial, substitute into
+//! line equation, solve resulting cubic.
+//! @param c Array of 4 control points for cubic Bezier
+//! @param line0 First endpoint of probe line
+//! @param line1 Second endpoint of probe line
+//! @param result Output array (size 3) for intersection results
+//! @return Number of intersections (0, 1, 2, or 3)
+template<typename T>
+inline int intersectLineCubic( const glm::tvec2<T> c[4],
+                                const glm::tvec2<T>& line0, const glm::tvec2<T>& line1,
+                                LineIntersection<T> result[3] )
+{
+	constexpr T EPSILON = T( 1e-9 );
+
+	T dx = line1.x - line0.x;
+	T dy = line1.y - line0.y;
+	T len2 = dx * dx + dy * dy;
+
+	// Guard against zero-length probe line
+	if( len2 < EPSILON ) {
+		return 0;
+	}
+
+	// Convert Bezier to polynomial form: P(t) = c0 + c1*t + c2*t² + c3*t³
+	T px0, px1, px2, px3, py0, py1, py2, py3;
+	cubicBezierCoeffs( c[0].x, c[1].x, c[2].x, c[3].x, px0, px1, px2, px3 );
+	cubicBezierCoeffs( c[0].y, c[1].y, c[2].y, c[3].y, py0, py1, py2, py3 );
+
+	// Substitute into line equation: dy*(x - line0.x) - dx*(y - line0.y) = 0
+	T coef0 = dy * ( px0 - line0.x ) - dx * ( py0 - line0.y );
+	T coef1 = dy * px1 - dx * py1;
+	T coef2 = dy * px2 - dx * py2;
+	T coef3 = dy * px3 - dx * py3;
+
+	// Solve cubic coef0 + coef1*t + coef2*t² + coef3*t³ = 0
+	T roots[3];
+	int numRoots = solveCubicStable( coef0, coef1, coef2, coef3, roots );
+
+	// Filter roots to [0, 1] range and compute line parameter
+	T invLen2 = T( 1 ) / len2;
+	int count = 0;
+
+	for( int i = 0; i < numRoots; ++i ) {
+		T t = roots[i];
+		if( t >= -EPSILON && t <= T( 1 ) + EPSILON ) {
+			// Evaluate curve at t to get intersection point
+			T x = px0 + t * px1 + t * t * px2 + t * t * t * px3;
+			T y = py0 + t * py1 + t * t * py2 + t * t * t * py3;
+
+			// Compute line parameter u (projection onto line)
+			T u = ( ( x - line0.x ) * dx + ( y - line0.y ) * dy ) * invLen2;
+			if( u >= -EPSILON && u <= T( 1 ) + EPSILON ) {
+				result[count++] = LineIntersection<T>( std::clamp( t, T( 0 ), T( 1 ) ), std::clamp( u, T( 0 ), T( 1 ) ) );
+			}
+		}
+	}
+
+	return count;
+}
+
+//=============================================================================
+// Cubic-Cubic Bezier Intersection (recursive subdivision)
+//=============================================================================
+
+//! Result of a curve-curve intersection.
+//! @tparam T Scalar type (float or double)
+template<typename T>
+struct CurveIntersection {
+	T t1;  //!< Parameter on first curve (in [0, 1])
+	T t2;  //!< Parameter on second curve (in [0, 1])
+
+	CurveIntersection() = default;
+	CurveIntersection( T param1, T param2 ) : t1( param1 ), t2( param2 ) {}
+};
+
+namespace detail {
+
+//! Compute axis-aligned bounding box from cubic Bezier control points.
+//! Uses the convex hull property: curve is contained within control point hull.
+template<typename T>
+inline void cubicBoundingBox( const glm::tvec2<T> c[4],
+                               glm::tvec2<T>& minPt, glm::tvec2<T>& maxPt )
+{
+	minPt = glm::min( glm::min( c[0], c[1] ), glm::min( c[2], c[3] ) );
+	maxPt = glm::max( glm::max( c[0], c[1] ), glm::max( c[2], c[3] ) );
+}
+
+//! Check if two axis-aligned bounding boxes overlap
+template<typename T>
+inline bool boxesOverlap( const glm::tvec2<T>& min1, const glm::tvec2<T>& max1,
+                           const glm::tvec2<T>& min2, const glm::tvec2<T>& max2 )
+{
+	return !( max1.x < min2.x || min1.x > max2.x ||
+	          max1.y < min2.y || min1.y > max2.y );
+}
+
+//! Compute the diagonal length of a bounding box (for convergence test)
+template<typename T>
+inline T boxDiagonal( const glm::tvec2<T>& minPt, const glm::tvec2<T>& maxPt )
+{
+	return glm::length( maxPt - minPt );
+}
+
+//! Recursive helper for cubic-cubic intersection
+template<typename T>
+void intersectCubicCubicRecursive(
+	const glm::tvec2<T> c1[4], T t1Min, T t1Max,
+	const glm::tvec2<T> c2[4], T t2Min, T t2Max,
+	T tolerance,
+	std::vector<CurveIntersection<T>>& results,
+	int depth )
+{
+	constexpr int MAX_DEPTH = 50;  // Prevent infinite recursion
+
+	// Compute bounding boxes
+	glm::tvec2<T> min1, max1, min2, max2;
+	cubicBoundingBox( c1, min1, max1 );
+	cubicBoundingBox( c2, min2, max2 );
+
+	// No intersection if boxes don't overlap
+	if( !boxesOverlap( min1, max1, min2, max2 ) ) {
+		return;
+	}
+
+	// Check convergence: both curves are small enough
+	T diag1 = boxDiagonal( min1, max1 );
+	T diag2 = boxDiagonal( min2, max2 );
+
+	if( ( diag1 < tolerance && diag2 < tolerance ) || depth >= MAX_DEPTH ) {
+		// Found intersection - report midpoint of parameter ranges
+		T t1Mid = ( t1Min + t1Max ) * T( 0.5 );
+		T t2Mid = ( t2Min + t2Max ) * T( 0.5 );
+		results.emplace_back( t1Mid, t2Mid );
+		return;
+	}
+
+	// Subdivide the larger curve (or both if similar size)
+	T t1Mid = ( t1Min + t1Max ) * T( 0.5 );
+	T t2Mid = ( t2Min + t2Max ) * T( 0.5 );
+
+	glm::tvec2<T> c1Left[4], c1Right[4];
+	glm::tvec2<T> c2Left[4], c2Right[4];
+
+	subdivideCubicLeft( c1, T( 0.5 ), c1Left );
+	subdivideCubicRight( c1, T( 0.5 ), c1Right );
+	subdivideCubicLeft( c2, T( 0.5 ), c2Left );
+	subdivideCubicRight( c2, T( 0.5 ), c2Right );
+
+	// Recursively check all 4 combinations
+	intersectCubicCubicRecursive( c1Left, t1Min, t1Mid, c2Left, t2Min, t2Mid, tolerance, results, depth + 1 );
+	intersectCubicCubicRecursive( c1Left, t1Min, t1Mid, c2Right, t2Mid, t2Max, tolerance, results, depth + 1 );
+	intersectCubicCubicRecursive( c1Right, t1Mid, t1Max, c2Left, t2Min, t2Mid, tolerance, results, depth + 1 );
+	intersectCubicCubicRecursive( c1Right, t1Mid, t1Max, c2Right, t2Mid, t2Max, tolerance, results, depth + 1 );
+}
+
+} // namespace detail
+
+//! Find intersections between two cubic Bezier curves using recursive subdivision.
+//! @param c1 Array of 4 control points for first cubic Bezier
+//! @param c2 Array of 4 control points for second cubic Bezier
+//! @param tolerance Approximation tolerance (smaller = more accurate)
+//! @return Vector of intersection results (t1, t2 parameter pairs)
+template<typename T>
+inline std::vector<CurveIntersection<T>> intersectCubicCubic(
+	const glm::tvec2<T> c1[4],
+	const glm::tvec2<T> c2[4],
+	T tolerance = T( 1e-6 ) )
+{
+	std::vector<CurveIntersection<T>> rawResults;
+	detail::intersectCubicCubicRecursive( c1, T( 0 ), T( 1 ), c2, T( 0 ), T( 1 ), tolerance, rawResults, 0 );
+
+	// Deduplicate: merge results that are very close together
+	std::vector<CurveIntersection<T>> results;
+	constexpr T MERGE_THRESHOLD = T( 0.001 );  // Merge if t values are within this distance
+
+	for( const auto& r : rawResults ) {
+		bool isDuplicate = false;
+		for( auto& existing : results ) {
+			if( std::abs( existing.t1 - r.t1 ) < MERGE_THRESHOLD &&
+			    std::abs( existing.t2 - r.t2 ) < MERGE_THRESHOLD ) {
+				// Average the values for better accuracy
+				existing.t1 = ( existing.t1 + r.t1 ) * T( 0.5 );
+				existing.t2 = ( existing.t2 + r.t2 ) * T( 0.5 );
+				isDuplicate = true;
+				break;
+			}
+		}
+		if( !isDuplicate ) {
+			results.push_back( r );
+		}
+	}
+
+	return results;
+}
+
+//! Find self-intersections within a single cubic Bezier curve.
+//! Uses recursive subdivision to find where the curve crosses itself.
+//! @param c Array of 4 control points for cubic Bezier
+//! @param tolerance Approximation tolerance
+//! @param minSeparation Minimum t-separation to report (to avoid false positives at subdivision boundaries)
+//! @return Vector of intersection results (t1, t2 are parameters on the original curve, t1 < t2)
+template<typename T>
+inline std::vector<CurveIntersection<T>> selfIntersectCubic(
+	const glm::tvec2<T> c[4],
+	T tolerance = T( 1e-6 ),
+	T minSeparation = T( 0.01 ) )
+{
+	std::vector<CurveIntersection<T>> rawResults;
+
+	// Subdivide at midpoint and check left vs right halves for crossings.
+	// The recursive subdivision will find all intersections between [0,0.5] and [0.5,1].
+	glm::tvec2<T> left[4], right[4];
+	subdivideCubicLeft( c, T( 0.5 ), left );
+	subdivideCubicRight( c, T( 0.5 ), right );
+
+	detail::intersectCubicCubicRecursive( left, T( 0 ), T( 0.5 ), right, T( 0.5 ), T( 1 ), tolerance, rawResults, 0 );
+
+	// Deduplicate and filter
+	std::vector<CurveIntersection<T>> results;
+	constexpr T MERGE_THRESHOLD = T( 0.001 );
+
+	for( const auto& r : rawResults ) {
+		// Skip if t values are too close (shared endpoint or numerical noise)
+		if( std::abs( r.t1 - r.t2 ) < minSeparation ) {
+			continue;
+		}
+
+		// Check for duplicate
+		bool isDuplicate = false;
+		for( auto& existing : results ) {
+			if( std::abs( existing.t1 - r.t1 ) < MERGE_THRESHOLD &&
+			    std::abs( existing.t2 - r.t2 ) < MERGE_THRESHOLD ) {
+				existing.t1 = ( existing.t1 + r.t1 ) * T( 0.5 );
+				existing.t2 = ( existing.t2 + r.t2 ) * T( 0.5 );
+				isDuplicate = true;
+				break;
+			}
+		}
+		if( !isDuplicate ) {
+			// Ensure t1 < t2
+			if( r.t1 < r.t2 ) {
+				results.push_back( r );
+			}
+			else {
+				results.emplace_back( r.t2, r.t1 );
+			}
+		}
+	}
+
+	return results;
+}
 
 union half_float
 {

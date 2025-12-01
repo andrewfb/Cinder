@@ -204,6 +204,38 @@ class CI_API Path2d {
 	//! Calculates a t-value corresponding to arc length \a distance. If \a wrap then the t-value loops inside the 0-1 range as \a distance exceeds the arc length. Consider a Path2dCalcCache if using frequently.
 	float	calcTimeForDistance( float distance, bool wrap = true, float tolerance = 1.0e-03f, int maxIterations = 16 ) const;
 
+	//! Result of a self-intersection search
+	struct SelfIntersection {
+		float t1;           //!< First parameter value on the path (in range [0, numSegments])
+		float t2;           //!< Second parameter value on the path (in range [0, numSegments], t2 > t1)
+		vec2  point;        //!< The intersection point
+		size_t segment1;    //!< First segment index
+		size_t segment2;    //!< Second segment index
+	};
+
+	//! Find all points where the path crosses itself.
+	//! @param tolerance Approximation tolerance for intersection detection
+	//! @return Vector of self-intersection results, each containing the two t-values and the intersection point
+	std::vector<SelfIntersection>	findSelfIntersections( float tolerance = 1e-4f ) const;
+
+	//! Split the path at parameter \a t, where the integer part is the segment index
+	//! and the fractional part is the position within that segment [0,1).
+	//! @param t Parameter value where to split (e.g., 1.5 means middle of segment 1)
+	//! @return Pair of Path2d objects: first contains path up to split point,
+	//!         second contains path from split point to end
+	std::pair<Path2d, Path2d>	splitAt( float t ) const;
+
+	//! Split the path at multiple parameter values.
+	//! @param tValues Sorted array of parameter values where to split
+	//! @return Vector of Path2d segments between split points
+	std::vector<Path2d>	splitAtMultiple( const std::vector<float>& tValues ) const;
+
+	//! Remove self-intersecting loops from the path.
+	//! For offset curves, this removes the "inner" loops that occur at sharp corners.
+	//! @param keepOutermost If true, keep outermost portions (for positive offsets);
+	//!                      if false, keep innermost portions (for negative offsets)
+	//! @return A new path with self-intersections removed
+	Path2d	removeSelfIntersections( bool keepOutermost = true ) const;
 
 	static int	calcQuadraticBezierMonotoneRegions( const vec2 p[3], float resultT[2] );
 	static vec2	calcQuadraticBezierPos( const vec2 p[3], float t );

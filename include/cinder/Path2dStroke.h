@@ -85,13 +85,16 @@ struct CI_API StrokeStyle {
 /// @param join Join style for corners
 /// @param miterLimit Miter limit (ratio of miter length to offset distance)
 /// @param tolerance Approximation tolerance (smaller = more accurate, larger = faster)
+/// @param removeSelfIntersections If true, remove self-intersecting loops that occur at sharp corners
 /// @return Offset path as a Shape2d (may contain multiple contours for paths with cusps)
 CI_API Shape2d offset( const Path2d& path, float distance, Join join,
-                       float miterLimit, float tolerance = 0.25f );
+                       float miterLimit, float tolerance = 0.25f,
+                       bool removeSelfIntersections = false );
 
 /// Offset a Path2d with default join style (Round)
-CI_API inline Shape2d offset( const Path2d& path, float distance, float tolerance = 0.25f ) {
-	return offset( path, distance, Join::Round, 4.0f, tolerance );
+CI_API inline Shape2d offset( const Path2d& path, float distance, float tolerance = 0.25f,
+                               bool removeSelfIntersections = false ) {
+	return offset( path, distance, Join::Round, 4.0f, tolerance, removeSelfIntersections );
 }
 
 /// Offset a Shape2d by a signed distance.
@@ -100,13 +103,16 @@ CI_API inline Shape2d offset( const Path2d& path, float distance, float toleranc
 /// @param join Join style for corners
 /// @param miterLimit Miter limit (ratio of miter length to offset distance)
 /// @param tolerance Approximation tolerance
+/// @param removeSelfIntersections If true, remove self-intersecting loops that occur at sharp corners
 /// @return Offset shape
 CI_API Shape2d offset( const Shape2d& shape, float distance, Join join,
-                       float miterLimit, float tolerance = 0.25f );
+                       float miterLimit, float tolerance = 0.25f,
+                       bool removeSelfIntersections = false );
 
 /// Offset a Shape2d with default join style (Round)
-CI_API inline Shape2d offset( const Shape2d& shape, float distance, float tolerance = 0.25f ) {
-	return offset( shape, distance, Join::Round, 4.0f, tolerance );
+CI_API inline Shape2d offset( const Shape2d& shape, float distance, float tolerance = 0.25f,
+                               bool removeSelfIntersections = false ) {
+	return offset( shape, distance, Join::Round, 4.0f, tolerance, removeSelfIntersections );
 }
 
 //=============================================================================
