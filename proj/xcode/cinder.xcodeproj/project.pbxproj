@@ -67,6 +67,10 @@
 		001E3561115D5EFA000C228C /* Xml.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 001E355E115D5EFA000C228C /* Xml.cpp */; };
 		001E3565115D5F14000C228C /* Xml.h in Headers */ = {isa = PBXBuildFile; fileRef = 001E3562115D5F14000C228C /* Xml.h */; };
 		001F520A0FCF99A10021731E /* Path2d.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 001F52090FCF99A10021731E /* Path2d.cpp */; };
+		999848A92BCB474DB0C9EB3C /* Path2dStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 441247F6342B4A1C9912B40E /* Path2dStroke.cpp */; };
+		C352ECCC529940A7B935AC3D /* Path2dStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 441247F6342B4A1C9912B40E /* Path2dStroke.cpp */; };
+		88D2B86E792344A08EF029B9 /* Path2dStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 441247F6342B4A1C9912B40E /* Path2dStroke.cpp */; };
+		F57433EE59BE4280BC77AC98 /* Path2dStroke.h in Headers */ = {isa = PBXBuildFile; fileRef = BE5688266CE44F0BA2637D8D /* Path2dStroke.h */; };
 		0023064523FE06F5002FB696 /* Filesystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0023064423FE06F5002FB696 /* Filesystem.cpp */; };
 		0023064623FE06F5002FB696 /* Filesystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0023064423FE06F5002FB696 /* Filesystem.cpp */; };
 		0023064723FE06F5002FB696 /* Filesystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0023064423FE06F5002FB696 /* Filesystem.cpp */; };
@@ -1678,6 +1682,8 @@
 		001E355E115D5EFA000C228C /* Xml.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Xml.cpp; sourceTree = "<group>"; };
 		001E3562115D5F14000C228C /* Xml.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Xml.h; sourceTree = "<group>"; };
 		001F52090FCF99A10021731E /* Path2d.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Path2d.cpp; sourceTree = "<group>"; };
+		441247F6342B4A1C9912B40E /* Path2dStroke.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Path2dStroke.cpp; sourceTree = "<group>"; };
+		BE5688266CE44F0BA2637D8D /* Path2dStroke.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Path2dStroke.h; sourceTree = "<group>"; };
 		0023064423FE06F5002FB696 /* Filesystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Filesystem.cpp; sourceTree = "<group>"; };
 		002419CD0E8035D3004D34EB /* App.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = App.h; path = app/App.h; sourceTree = "<group>"; };
 		00241A0C0E80375A004D34EB /* Cinder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Cinder.h; sourceTree = "<group>"; };
@@ -2717,6 +2723,7 @@
 				CCEA2460CD2F4C1C93972D5F /* CanvasUi.h */,
 				002DFD530FA5602900E45AE0 /* ObjLoader.h */,
 				00CFE37B113B85F60091E310 /* Path2d.h */,
+				BE5688266CE44F0BA2637D8D /* Path2dStroke.h */,
 				00D2F1150F8D825C00A7189A /* Perlin.h */,
 				0014407E14CDB8D900D99000 /* Plane.h */,
 				009EE46D0F7A9F6700F17CB1 /* PolyLine.h */,
@@ -2803,6 +2810,7 @@
 				003CE47E242A9823007BE072 /* MediaTime.cpp */,
 				002DFD500FA5600900E45AE0 /* ObjLoader.cpp */,
 				001F52090FCF99A10021731E /* Path2d.cpp */,
+				441247F6342B4A1C9912B40E /* Path2dStroke.cpp */,
 				00D2F1850F8D8ACD00A7189A /* Perlin.cpp */,
 				0041730214C9BE8E0070C0D1 /* Plane.cpp */,
 				009EE4710F7A9FAC00F17CB1 /* PolyLine.cpp */,
@@ -4538,6 +4546,7 @@
 				0076581C11226084005547DF /* CinderResources.h in Headers */,
 				B3EA3F3A1DD0EEA900E34348 /* ftmodule.h in Headers */,
 				00CFE37D113B85F60091E310 /* Path2d.h in Headers */,
+				F57433EE59BE4280BC77AC98 /* Path2dStroke.h in Headers */,
 				00CFE37E113B85F60091E310 /* Thread.h in Headers */,
 				B3EA403C1DD0EEA900E34348 /* ttunpat.h in Headers */,
 				B3EA3FC41DD0EEA900E34348 /* ftdebug.h in Headers */,
@@ -4835,6 +4844,7 @@
 				27C1003F1BD16D4800AF387F /* Biquad.cpp in Sources */,
 				27C100401BD16D4800AF387F /* ObjLoader.cpp in Sources */,
 				27C100411BD16D4800AF387F /* Path2d.cpp in Sources */,
+				C352ECCC529940A7B935AC3D /* Path2dStroke.cpp in Sources */,
 				27C100421BD16D4800AF387F /* System.cpp in Sources */,
 				27C100431BD16D4800AF387F /* Buffer.cpp in Sources */,
 				27C100441BD16D4800AF387F /* Exception.cpp in Sources */,
@@ -5090,6 +5100,7 @@
 				27C1FEE91BD0AE3400AF387F /* Biquad.cpp in Sources */,
 				27C1FEEA1BD0AE3400AF387F /* ObjLoader.cpp in Sources */,
 				27C1FEEB1BD0AE3400AF387F /* Path2d.cpp in Sources */,
+				88D2B86E792344A08EF029B9 /* Path2dStroke.cpp in Sources */,
 				27C1FEEC1BD0AE3400AF387F /* System.cpp in Sources */,
 				27C1FEED1BD0AE3400AF387F /* Buffer.cpp in Sources */,
 				27C1FEEE1BD0AE3400AF387F /* Exception.cpp in Sources */,
@@ -5373,6 +5384,7 @@
 				B3EA40CD1DD0F05D00E34348 /* ftbzip2.c in Sources */,
 				111A600D191F72AE005C3166 /* Utilities.cpp in Sources */,
 				001F520A0FCF99A10021731E /* Path2d.cpp in Sources */,
+				999848A92BCB474DB0C9EB3C /* Path2dStroke.cpp in Sources */,
 				00C071B00FF16244004801EA /* Font.cpp in Sources */,
 				000529200FFBF4C200F19492 /* Text.cpp in Sources */,
 				111A5FBC191F72AE005C3166 /* DelayNode.cpp in Sources */,
