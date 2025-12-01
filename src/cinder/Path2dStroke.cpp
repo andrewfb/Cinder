@@ -491,41 +491,33 @@ inline double quadInvArclen( const glm::dvec2 q[3], double targetLen, double acc
 }
 
 //=============================================================================
-// Internal Path Element Types
+// Internal Path Element (double precision, uses Path2d::SegmentType)
 //=============================================================================
 
-enum class PathElType {
-	MoveTo,
-	LineTo,
-	QuadTo,
-	CurveTo,
-	Close
-};
-
 struct PathEl {
-	PathElType type;
+	Path2d::SegmentType type;
 	glm::dvec2 p1;
 	glm::dvec2 p2;
 	glm::dvec2 p3;
 
 	static PathEl moveTo( const glm::dvec2& p ) {
-		return { PathElType::MoveTo, p, {}, {} };
+		return { Path2d::MOVETO, p, {}, {} };
 	}
 
 	static PathEl lineTo( const glm::dvec2& p ) {
-		return { PathElType::LineTo, p, {}, {} };
+		return { Path2d::LINETO, p, {}, {} };
 	}
 
 	static PathEl quadTo( const glm::dvec2& ctrl, const glm::dvec2& end ) {
-		return { PathElType::QuadTo, ctrl, end, {} };
+		return { Path2d::QUADTO, ctrl, end, {} };
 	}
 
 	static PathEl curveTo( const glm::dvec2& c1, const glm::dvec2& c2, const glm::dvec2& end ) {
-		return { PathElType::CurveTo, c1, c2, end };
+		return { Path2d::CUBICTO, c1, c2, end };
 	}
 
 	static PathEl close() {
-		return { PathElType::Close, {}, {}, {} };
+		return { Path2d::CLOSE, {}, {}, {} };
 	}
 };
 
@@ -700,7 +692,7 @@ inline Shape2d bezPathToShape2d( const BezPathD& bezPath )
 
 	for( const auto& el : bezPath ) {
 		switch( el.type ) {
-			case PathElType::MoveTo:
+			case Path2d::MOVETO:
 				if( hasMoveTo && !currentContour.empty() ) {
 					result.appendContour( currentContour );
 					currentContour.clear();
@@ -709,19 +701,19 @@ inline Shape2d bezPathToShape2d( const BezPathD& bezPath )
 				hasMoveTo = true;
 				break;
 
-			case PathElType::LineTo:
+			case Path2d::LINETO:
 				currentContour.lineTo( glm::vec2( el.p1 ) );
 				break;
 
-			case PathElType::QuadTo:
+			case Path2d::QUADTO:
 				currentContour.quadTo( glm::vec2( el.p1 ), glm::vec2( el.p2 ) );
 				break;
 
-			case PathElType::CurveTo:
+			case Path2d::CUBICTO:
 				currentContour.curveTo( glm::vec2( el.p1 ), glm::vec2( el.p2 ), glm::vec2( el.p3 ) );
 				break;
 
-			case PathElType::Close:
+			case Path2d::CLOSE:
 				currentContour.close();
 				break;
 		}
@@ -1501,14 +1493,14 @@ void extendReversed( BezPathD& out, const BezPathD& elements )
 	for( size_t i = els.size(); i > 1; --i ) {
 		glm::dvec2 end;
 		switch( els[i - 2].type ) {
-			case PathElType::MoveTo:
-			case PathElType::LineTo:
+			case Path2d::MOVETO:
+			case Path2d::LINETO:
 				end = els[i - 2].p1;
 				break;
-			case PathElType::QuadTo:
+			case Path2d::QUADTO:
 				end = els[i - 2].p2;
 				break;
-			case PathElType::CurveTo:
+			case Path2d::CUBICTO:
 				end = els[i - 2].p3;
 				break;
 			default:
@@ -1516,13 +1508,13 @@ void extendReversed( BezPathD& out, const BezPathD& elements )
 		}
 
 		switch( els[i - 1].type ) {
-			case PathElType::LineTo:
+			case Path2d::LINETO:
 				out.lineTo( end );
 				break;
-			case PathElType::QuadTo:
+			case Path2d::QUADTO:
 				out.quadTo( els[i - 1].p1, end );
 				break;
-			case PathElType::CurveTo:
+			case Path2d::CUBICTO:
 				out.curveTo( els[i - 1].p2, els[i - 1].p1, end );
 				break;
 			default:
@@ -1649,11 +1641,11 @@ void StrokeContext::finish( const InternalStrokeStyle& style )
 
 	for( const auto& el : mForwardPath ) {
 		switch( el.type ) {
-			case PathElType::MoveTo: mOutput.moveTo( el.p1 ); break;
-			case PathElType::LineTo: mOutput.lineTo( el.p1 ); break;
-			case PathElType::QuadTo: mOutput.quadTo( el.p1, el.p2 ); break;
-			case PathElType::CurveTo: mOutput.curveTo( el.p1, el.p2, el.p3 ); break;
-			case PathElType::Close: mOutput.closePath(); break;
+			case Path2d::MOVETO: mOutput.moveTo( el.p1 ); break;
+			case Path2d::LINETO: mOutput.lineTo( el.p1 ); break;
+			case Path2d::QUADTO: mOutput.quadTo( el.p1, el.p2 ); break;
+			case Path2d::CUBICTO: mOutput.curveTo( el.p1, el.p2, el.p3 ); break;
+			case Path2d::CLOSE: mOutput.closePath(); break;
 		}
 	}
 
@@ -1663,14 +1655,14 @@ void StrokeContext::finish( const InternalStrokeStyle& style )
 	glm::dvec2 returnP;
 	const auto& lastEl = backEls.back();
 	switch( lastEl.type ) {
-		case PathElType::MoveTo:
-		case PathElType::LineTo:
+		case Path2d::MOVETO:
+		case Path2d::LINETO:
 			returnP = lastEl.p1;
 			break;
-		case PathElType::QuadTo:
+		case Path2d::QUADTO:
 			returnP = lastEl.p2;
 			break;
-		case PathElType::CurveTo:
+		case Path2d::CUBICTO:
 			returnP = lastEl.p3;
 			break;
 		default:
@@ -1717,11 +1709,11 @@ void StrokeContext::finishClosed( const InternalStrokeStyle& style )
 
 	for( const auto& el : mForwardPath ) {
 		switch( el.type ) {
-			case PathElType::MoveTo: mOutput.moveTo( el.p1 ); break;
-			case PathElType::LineTo: mOutput.lineTo( el.p1 ); break;
-			case PathElType::QuadTo: mOutput.quadTo( el.p1, el.p2 ); break;
-			case PathElType::CurveTo: mOutput.curveTo( el.p1, el.p2, el.p3 ); break;
-			case PathElType::Close: mOutput.closePath(); break;
+			case Path2d::MOVETO: mOutput.moveTo( el.p1 ); break;
+			case Path2d::LINETO: mOutput.lineTo( el.p1 ); break;
+			case Path2d::QUADTO: mOutput.quadTo( el.p1, el.p2 ); break;
+			case Path2d::CUBICTO: mOutput.curveTo( el.p1, el.p2, el.p3 ); break;
+			case Path2d::CLOSE: mOutput.closePath(); break;
 		}
 	}
 	mOutput.closePath();
@@ -1736,14 +1728,14 @@ void StrokeContext::finishClosed( const InternalStrokeStyle& style )
 	glm::dvec2 lastPt;
 	const auto& lastEl = backEls.back();
 	switch( lastEl.type ) {
-		case PathElType::MoveTo:
-		case PathElType::LineTo:
+		case Path2d::MOVETO:
+		case Path2d::LINETO:
 			lastPt = lastEl.p1;
 			break;
-		case PathElType::QuadTo:
+		case Path2d::QUADTO:
 			lastPt = lastEl.p2;
 			break;
-		case PathElType::CurveTo:
+		case Path2d::CUBICTO:
 			lastPt = lastEl.p3;
 			break;
 		default:
@@ -1883,13 +1875,13 @@ void StrokeContext::doCubic( const InternalStrokeStyle& style, const CubicBezD& 
 
 	bool first = true;
 	for( const auto& el : mResultPath ) {
-		if( first && el.type == PathElType::MoveTo ) {
+		if( first && el.type == Path2d::MOVETO ) {
 			first = false;
 			continue;
 		}
 		switch( el.type ) {
-			case PathElType::LineTo: mForwardPath.lineTo( el.p1 ); break;
-			case PathElType::CurveTo: mForwardPath.curveTo( el.p1, el.p2, el.p3 ); break;
+			case Path2d::LINETO: mForwardPath.lineTo( el.p1 ); break;
+			case Path2d::CUBICTO: mForwardPath.curveTo( el.p1, el.p2, el.p3 ); break;
 			default: break;
 		}
 	}
@@ -1899,13 +1891,13 @@ void StrokeContext::doCubic( const InternalStrokeStyle& style, const CubicBezD& 
 
 	first = true;
 	for( const auto& el : mResultPath ) {
-		if( first && el.type == PathElType::MoveTo ) {
+		if( first && el.type == Path2d::MOVETO ) {
 			first = false;
 			continue;
 		}
 		switch( el.type ) {
-			case PathElType::LineTo: mBackwardPath.lineTo( el.p1 ); break;
-			case PathElType::CurveTo: mBackwardPath.curveTo( el.p1, el.p2, el.p3 ); break;
+			case Path2d::LINETO: mBackwardPath.lineTo( el.p1 ); break;
+			case Path2d::CUBICTO: mBackwardPath.curveTo( el.p1, el.p2, el.p3 ); break;
 			default: break;
 		}
 	}
@@ -1957,13 +1949,13 @@ void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle&
 	glm::dvec2 p0 = mLastPt;
 
 	switch( el.type ) {
-		case PathElType::MoveTo:
+		case Path2d::MOVETO:
 			finish( style );
 			mStartPt = el.p1;
 			mLastPt = el.p1;
 			break;
 
-		case PathElType::LineTo:
+		case Path2d::LINETO:
 			if( el.p1 != p0 ) {
 				glm::dvec2 tangent = el.p1 - p0;
 				doJoin( style, tangent );
@@ -1972,7 +1964,7 @@ void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle&
 			}
 			break;
 
-		case PathElType::QuadTo:
+		case Path2d::QUADTO:
 			if( el.p1 != p0 || el.p2 != p0 ) {
 				glm::dvec2 q[3] = { p0, el.p1, el.p2 };
 				glm::dvec2 cubic[4];
@@ -1987,7 +1979,7 @@ void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle&
 			}
 			break;
 
-		case PathElType::CurveTo:
+		case Path2d::CUBICTO:
 			if( el.p1 != p0 || el.p2 != p0 || el.p3 != p0 ) {
 				CubicBezD c( p0, el.p1, el.p2, el.p3 );
 				glm::dvec2 tan0 = startTangent( c );
@@ -1998,7 +1990,7 @@ void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle&
 			}
 			break;
 
-		case PathElType::Close:
+		case Path2d::CLOSE:
 			if( p0 != mStartPt ) {
 				glm::dvec2 tangent = mStartPt - p0;
 				doJoin( style, tangent );
@@ -2017,19 +2009,19 @@ void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle&
 double elementArclen( const PathEl& el, const glm::dvec2& prevPt )
 {
 	switch( el.type ) {
-		case PathElType::MoveTo:
+		case Path2d::MOVETO:
 			return 0.0;
-		case PathElType::LineTo:
+		case Path2d::LINETO:
 			return lineArclen( prevPt, el.p1 );
-		case PathElType::QuadTo: {
+		case Path2d::QUADTO: {
 			glm::dvec2 q[3] = { prevPt, el.p1, el.p2 };
 			return quadArclenGauss( q );
 		}
-		case PathElType::CurveTo: {
+		case Path2d::CUBICTO: {
 			glm::dvec2 p[4] = { prevPt, el.p1, el.p2, el.p3 };
 			return cubicArclenGauss( p );
 		}
-		case PathElType::Close:
+		case Path2d::CLOSE:
 			return 0.0;
 	}
 	return 0.0;
@@ -2040,28 +2032,28 @@ void splitElementLeft( const PathEl& el, const glm::dvec2& prevPt, double t, Bez
 	if( t <= 0.0 ) return;
 	if( t >= 1.0 ) {
 		switch( el.type ) {
-			case PathElType::LineTo: out.lineTo( el.p1 ); break;
-			case PathElType::QuadTo: out.quadTo( el.p1, el.p2 ); break;
-			case PathElType::CurveTo: out.curveTo( el.p1, el.p2, el.p3 ); break;
+			case Path2d::LINETO: out.lineTo( el.p1 ); break;
+			case Path2d::QUADTO: out.quadTo( el.p1, el.p2 ); break;
+			case Path2d::CUBICTO: out.curveTo( el.p1, el.p2, el.p3 ); break;
 			default: break;
 		}
 		return;
 	}
 
 	switch( el.type ) {
-		case PathElType::LineTo: {
+		case Path2d::LINETO: {
 			glm::dvec2 pt = prevPt + t * ( el.p1 - prevPt );
 			out.lineTo( pt );
 			break;
 		}
-		case PathElType::QuadTo: {
+		case Path2d::QUADTO: {
 			glm::dvec2 q[3] = { prevPt, el.p1, el.p2 };
 			glm::dvec2 result[3];
 			quadSubsegmentLeft( q, t, result );
 			out.quadTo( result[1], result[2] );
 			break;
 		}
-		case PathElType::CurveTo: {
+		case Path2d::CUBICTO: {
 			glm::dvec2 p[4] = { prevPt, el.p1, el.p2, el.p3 };
 			glm::dvec2 result[4];
 			cubicSubsegmentLeft( p, t, result );
@@ -2083,11 +2075,11 @@ PathEl splitElementRight( const PathEl& el, const glm::dvec2& prevPt, double t )
 	}
 
 	switch( el.type ) {
-		case PathElType::LineTo: {
+		case Path2d::LINETO: {
 			result.p1 = prevPt + t * ( el.p1 - prevPt );
 			break;
 		}
-		case PathElType::QuadTo: {
+		case Path2d::QUADTO: {
 			glm::dvec2 q[3] = { prevPt, el.p1, el.p2 };
 			glm::dvec2 rightQ[3];
 			quadSubsegmentRight( q, t, rightQ );
@@ -2095,7 +2087,7 @@ PathEl splitElementRight( const PathEl& el, const glm::dvec2& prevPt, double t )
 			result.p2 = rightQ[2];
 			break;
 		}
-		case PathElType::CurveTo: {
+		case Path2d::CUBICTO: {
 			glm::dvec2 p[4] = { prevPt, el.p1, el.p2, el.p3 };
 			glm::dvec2 rightP[4];
 			cubicSubsegmentRight( p, t, rightP );
@@ -2113,12 +2105,12 @@ PathEl splitElementRight( const PathEl& el, const glm::dvec2& prevPt, double t )
 glm::dvec2 elementEndPoint( const PathEl& el )
 {
 	switch( el.type ) {
-		case PathElType::MoveTo:
-		case PathElType::LineTo:
+		case Path2d::MOVETO:
+		case Path2d::LINETO:
 			return el.p1;
-		case PathElType::QuadTo:
+		case Path2d::QUADTO:
 			return el.p2;
-		case PathElType::CurveTo:
+		case Path2d::CUBICTO:
 			return el.p3;
 		default:
 			return glm::dvec2( 0.0 );
@@ -2128,15 +2120,15 @@ glm::dvec2 elementEndPoint( const PathEl& el )
 double elementInvArclen( const PathEl& el, const glm::dvec2& prevPt, double targetLen )
 {
 	switch( el.type ) {
-		case PathElType::LineTo: {
+		case Path2d::LINETO: {
 			double totalLen = lineArclen( prevPt, el.p1 );
 			return ( totalLen > 0.0 ) ? std::clamp( targetLen / totalLen, 0.0, 1.0 ) : 0.0;
 		}
-		case PathElType::QuadTo: {
+		case Path2d::QUADTO: {
 			glm::dvec2 q[3] = { prevPt, el.p1, el.p2 };
 			return quadInvArclen( q, targetLen, DASH_ACCURACY );
 		}
-		case PathElType::CurveTo: {
+		case Path2d::CUBICTO: {
 			glm::dvec2 p[4] = { prevPt, el.p1, el.p2, el.p3 };
 			return cubicInvArclen( p, targetLen, DASH_ACCURACY );
 		}
@@ -2183,7 +2175,7 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 	dashRemaining -= remainingOffset;
 
 	for( const auto& el : path ) {
-		if( el.type == PathElType::MoveTo ) {
+		if( el.type == Path2d::MOVETO ) {
 			dashIdx = 0;
 			dashRemaining = dashPattern[0];
 			isActive = true;
@@ -2203,10 +2195,10 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 			continue;
 		}
 
-		if( el.type == PathElType::Close ) {
+		if( el.type == Path2d::CLOSE ) {
 			if( currentPt != startPt ) {
 				PathEl lineEl;
-				lineEl.type = PathElType::LineTo;
+				lineEl.type = Path2d::LINETO;
 				lineEl.p1 = startPt;
 
 				glm::dvec2 prevPt = currentPt;
@@ -2266,15 +2258,15 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 
 				glm::dvec2 splitPt;
 				switch( remainingEl.type ) {
-					case PathElType::LineTo:
+					case Path2d::LINETO:
 						splitPt = prevPt + t * ( remainingEl.p1 - prevPt );
 						break;
-					case PathElType::QuadTo: {
+					case Path2d::QUADTO: {
 						glm::dvec2 q[3] = { prevPt, remainingEl.p1, remainingEl.p2 };
 						splitPt = evalQuad( q, t );
 						break;
 					}
-					case PathElType::CurveTo: {
+					case Path2d::CUBICTO: {
 						glm::dvec2 p[4] = { prevPt, remainingEl.p1, remainingEl.p2, remainingEl.p3 };
 						splitPt = evalCubic( p, t );
 						break;
@@ -2299,13 +2291,13 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 						needMoveTo = false;
 					}
 					switch( remainingEl.type ) {
-						case PathElType::LineTo:
+						case Path2d::LINETO:
 							result.lineTo( remainingEl.p1 );
 							break;
-						case PathElType::QuadTo:
+						case Path2d::QUADTO:
 							result.quadTo( remainingEl.p1, remainingEl.p2 );
 							break;
-						case PathElType::CurveTo:
+						case Path2d::CUBICTO:
 							result.curveTo( remainingEl.p1, remainingEl.p2, remainingEl.p3 );
 							break;
 						default:
@@ -2362,19 +2354,19 @@ Shape2d offset( const Path2d& path, float distance, float tolerance )
 
 	for( const auto& el : bezPath ) {
 		switch( el.type ) {
-			case PathElType::MoveTo:
+			case Path2d::MOVETO:
 				lastPt = el.p1;
 				startPt = el.p1;
 				result.moveTo( el.p1 );
 				break;
 
-			case PathElType::LineTo: {
+			case Path2d::LINETO: {
 				glm::dvec2 tangent = el.p1 - lastPt;
 				double len = glm::length( tangent );
 				if( len > 1e-9 ) {
 					glm::dvec2 norm( -tangent.y / len, tangent.x / len );
 					double d = static_cast<double>( distance );
-					if( result.empty() || result.elements().back().type == PathElType::MoveTo ) {
+					if( result.empty() || result.elements().back().type == Path2d::MOVETO ) {
 						result.moveTo( lastPt + d * norm );
 					}
 					result.lineTo( el.p1 + d * norm );
@@ -2383,7 +2375,7 @@ Shape2d offset( const Path2d& path, float distance, float tolerance )
 				break;
 			}
 
-			case PathElType::QuadTo: {
+			case Path2d::QUADTO: {
 				glm::dvec2 q[3] = { lastPt, el.p1, el.p2 };
 				glm::dvec2 c[4];
 				raiseQuadToCubic( q, c );
@@ -2394,16 +2386,16 @@ Shape2d offset( const Path2d& path, float distance, float tolerance )
 
 				bool first = true;
 				for( const auto& oel : offsetResult ) {
-					if( first && oel.type == PathElType::MoveTo ) {
-						if( result.empty() || result.elements().back().type == PathElType::MoveTo ) {
+					if( first && oel.type == Path2d::MOVETO ) {
+						if( result.empty() || result.elements().back().type == Path2d::MOVETO ) {
 							result.moveTo( oel.p1 );
 						}
 						first = false;
 						continue;
 					}
 					switch( oel.type ) {
-						case PathElType::LineTo: result.lineTo( oel.p1 ); break;
-						case PathElType::CurveTo: result.curveTo( oel.p1, oel.p2, oel.p3 ); break;
+						case Path2d::LINETO: result.lineTo( oel.p1 ); break;
+						case Path2d::CUBICTO: result.curveTo( oel.p1, oel.p2, oel.p3 ); break;
 						default: break;
 					}
 				}
@@ -2411,7 +2403,7 @@ Shape2d offset( const Path2d& path, float distance, float tolerance )
 				break;
 			}
 
-			case PathElType::CurveTo: {
+			case Path2d::CUBICTO: {
 				CubicBezD cubic( lastPt, el.p1, el.p2, el.p3 );
 
 				BezPathD offsetResult;
@@ -2419,16 +2411,16 @@ Shape2d offset( const Path2d& path, float distance, float tolerance )
 
 				bool first = true;
 				for( const auto& oel : offsetResult ) {
-					if( first && oel.type == PathElType::MoveTo ) {
-						if( result.empty() || result.elements().back().type == PathElType::MoveTo ) {
+					if( first && oel.type == Path2d::MOVETO ) {
+						if( result.empty() || result.elements().back().type == Path2d::MOVETO ) {
 							result.moveTo( oel.p1 );
 						}
 						first = false;
 						continue;
 					}
 					switch( oel.type ) {
-						case PathElType::LineTo: result.lineTo( oel.p1 ); break;
-						case PathElType::CurveTo: result.curveTo( oel.p1, oel.p2, oel.p3 ); break;
+						case Path2d::LINETO: result.lineTo( oel.p1 ); break;
+						case Path2d::CUBICTO: result.curveTo( oel.p1, oel.p2, oel.p3 ); break;
 						default: break;
 					}
 				}
@@ -2436,7 +2428,7 @@ Shape2d offset( const Path2d& path, float distance, float tolerance )
 				break;
 			}
 
-			case PathElType::Close:
+			case Path2d::CLOSE:
 				result.closePath();
 				lastPt = startPt;
 				break;
