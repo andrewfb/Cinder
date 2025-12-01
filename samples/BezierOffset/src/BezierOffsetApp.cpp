@@ -9,6 +9,7 @@
 #include "cinder/Path2d.h"
 #include "cinder/Shape2d.h"
 #include "cinder/Path2dStroke.h"
+#include "cinder/CanvasUi.h"
 #include "cinder/CinderImGui.h"
 #include "cinder/Log.h"
 
@@ -42,7 +43,9 @@ private:
 	void drawImGuiControls();
 	void updateResult();
 	void loadPresetShape( PresetShape shape );
+	void drawContent();
 
+	CanvasUi    mCanvas;
 	Path2d      mPath;
 	Shape2d     mResult;
 	int         mTrackedPoint;
@@ -91,6 +94,15 @@ void BezierOffsetApp::setup()
 
 	ImGui::Initialize();
 
+	// Setup canvas for pan/zoom - unbounded for drawing anywhere
+	mCanvas.connect( getWindow() );
+	mCanvas.setZoomLimits( 0.1f, 10.0f );
+	// Use Alt+Left or Middle mouse for pan so Left mouse is free for drawing
+	mCanvas.setPanMouseButtons( {
+		{ MouseEvent::LEFT_DOWN, MouseEvent::ALT_DOWN },
+		{ MouseEvent::MIDDLE_DOWN, 0 }
+	} );
+
 	// Start with an S-curve
 	loadPresetShape( PresetShape::OPEN_S_CURVE );
 
@@ -99,14 +111,14 @@ void BezierOffsetApp::setup()
 
 void BezierOffsetApp::mouseDown( MouseEvent event )
 {
-	if( event.isLeftDown() && !ImGui::GetIO().WantCaptureMouse ) {
+	if( event.isLeftDown() && !event.isAltDown() && !ImGui::GetIO().WantCaptureMouse ) {
 		if( mHoveredPoint >= 0 ) {
 			mTrackedPoint = mHoveredPoint;
 			mDraggingPoint = true;
 			return;
 		}
 
-		vec2 pos = event.getPos();
+		vec2 pos = mCanvas.toContent( event.getPos() );
 		if( mPath.empty() ) {
 			mPath.moveTo( pos );
 			mTrackedPoint = 0;
@@ -123,7 +135,11 @@ void BezierOffsetApp::mouseDrag( MouseEvent event )
 	if( ImGui::GetIO().WantCaptureMouse )
 		return;
 
-	vec2 pos = event.getPos();
+	// Let CanvasUi handle pan if Alt is held
+	if( event.isAltDown() )
+		return;
+
+	vec2 pos = mCanvas.toContent( event.getPos() );
 
 	if( mDraggingPoint && mTrackedPoint >= 0 ) {
 		mPath.setPoint( mTrackedPoint, pos );
@@ -180,8 +196,9 @@ void BezierOffsetApp::mouseMove( MouseEvent event )
 		return;
 	}
 
-	vec2 pos = event.getPos();
-	float hoverRadius = 8.0f;
+	vec2 pos = mCanvas.toContent( event.getPos() );
+	// Scale hover radius by zoom so it feels consistent at different zoom levels
+	float hoverRadius = 8.0f / mCanvas.getZoom();
 	float closestDist = hoverRadius;
 	int closestPoint = -1;
 
@@ -574,6 +591,12 @@ void BezierOffsetApp::drawImGuiControls()
 	ImGui::BulletText( "Shift+Drag for quadratic" );
 	ImGui::BulletText( "Drag points to edit" );
 	ImGui::BulletText( "'X' to clear, 'C' to close" );
+	ImGui::Spacing();
+	ImGui::TextColored( ImVec4( 0.8f, 0.8f, 0.8f, 1.0f ), "Navigation" );
+	ImGui::Separator();
+	ImGui::BulletText( "Alt+Drag or Middle-Drag to pan" );
+	ImGui::BulletText( "Scroll wheel to zoom" );
+	ImGui::BulletText( "Cmd+0 to reset view" );
 
 	ImGui::End();
 }
@@ -582,6 +605,20 @@ void BezierOffsetApp::draw()
 {
 	gl::clear( Color( 0.1f, 0.1f, 0.15f ) );
 	gl::enableAlphaBlending();
+
+	// Apply canvas transform and draw content
+	{
+		gl::ScopedModelMatrix scpMatrix( mCanvas.getModelMatrix() );
+		drawContent();
+	}
+
+	drawImGuiControls();
+}
+
+void BezierOffsetApp::drawContent()
+{
+	// Scale point sizes by inverse zoom so they appear constant on screen
+	float pointScale = 1.0f / mCanvas.getZoom();
 
 	// Draw result
 	if( mShowResult && !mResult.empty() ) {
@@ -627,7 +664,7 @@ void BezierOffsetApp::draw()
 				gl::color( ColorA( mResultColor, 0.6f ) );
 				for( const auto& contour : mResult.getContours() ) {
 					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
-						gl::drawSolidCircle( contour.getPoint( i ), 2.0f );
+						gl::drawSolidCircle( contour.getPoint( i ), 2.0f * pointScale );
 					}
 				}
 			}
@@ -648,19 +685,17 @@ void BezierOffsetApp::draw()
 
 				if( isHovered ) {
 					gl::color( Color( 1, 1, 1 ) );
-					gl::drawSolidCircle( mPath.getPoint( i ), 6.0f );
+					gl::drawSolidCircle( mPath.getPoint( i ), 6.0f * pointScale );
 					gl::color( Color( 0.2f, 1.0f, 0.2f ) );
-					gl::drawSolidCircle( mPath.getPoint( i ), 4.5f );
+					gl::drawSolidCircle( mPath.getPoint( i ), 4.5f * pointScale );
 				}
 				else {
 					gl::color( Color( 1, 1, 0 ) );
-					gl::drawSolidCircle( mPath.getPoint( i ), 3.5f );
+					gl::drawSolidCircle( mPath.getPoint( i ), 3.5f * pointScale );
 				}
 			}
 		}
 	}
-
-	drawImGuiControls();
 }
 
 CINDER_APP( BezierOffsetApp, RendererGl( RendererGl::Options().msaa( 8 ) ), []( App::Settings *settings ) {

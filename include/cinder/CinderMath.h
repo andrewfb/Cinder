@@ -388,10 +388,6 @@ glm::tvec2<T, glm::defaultp>		getClosestPointCubic( const glm::tvec2<T, glm::def
 	return getClosestPointCubic<T>( controlPoints, testPoint );
 }
 
-//=============================================================================
-// 2D Vector Utilities
-//=============================================================================
-
 //! 2D cross product (returns scalar z-component of 3D cross product)
 template<typename T>
 inline T cross2d( const glm::tvec2<T>& a, const glm::tvec2<T>& b )
@@ -406,9 +402,7 @@ inline glm::tvec2<T> perp( const glm::tvec2<T>& v )
 	return glm::tvec2<T>( -v.y, v.x );
 }
 
-//=============================================================================
 // Numerically Stable Polynomial Solvers
-//=============================================================================
 //
 // These "Stable" variants complement the existing solveQuadratic() and solveCubic()
 // functions with improved numerical stability for edge cases:
@@ -432,7 +426,6 @@ inline glm::tvec2<T> perp( const glm::tvec2<T>& v )
 //
 // Note: Coefficient order differs - stable versions use c0 + c1*x + c2*x² form
 //       (constant term first), while the original uses ax² + bx + c form.
-//=============================================================================
 
 //! Solve quadratic c0 + c1*x + c2*x² = 0 using numerically stable "citardauq" formula.
 //! Avoids catastrophic cancellation that can occur with the classic quadratic formula.
@@ -536,10 +529,6 @@ inline int solveCubicStable( T c0, T c1, T c2, T c3, T result[3] )
 	}
 }
 
-//=============================================================================
-// Root Finding Algorithms
-//=============================================================================
-
 //! ITP (Interpolate-Truncate-Project) root finding method.
 //! A hybrid algorithm combining bisection with the regula falsi method,
 //! guaranteeing worst-case performance of bisection while achieving
@@ -590,10 +579,6 @@ inline T solveItp( F&& f, T a, T b, T epsilon, int n0, T k1, T ya, T yb )
 	}
 	return T( 0.5 ) * ( a + b );
 }
-
-//=============================================================================
-// Bezier Curve Evaluation (GLM vec2/dvec2)
-//=============================================================================
 
 //! Evaluate quadratic Bezier at parameter t using de Casteljau's algorithm
 //! @tparam T Scalar type (float or double), determines vec2 vs dvec2
@@ -648,12 +633,7 @@ inline void raiseQuadraticToCubic( const glm::tvec2<T> q[3], glm::tvec2<T> c[4] 
 	c[3] = q[2];
 }
 
-//=============================================================================
-// Bezier Curve Subdivision (GLM vec2/dvec2)
-//=============================================================================
-// These functions use de Casteljau's algorithm to split Bezier curves at a
-// parameter value t. The algorithm computes intermediate control points by
-// linear interpolation, which is numerically stable.
+// Bezier subdivision using de Casteljau's algorithm
 // https://en.wikipedia.org/wiki/De_Casteljau%27s_algorithm
 
 //! Subdivide quadratic Bezier at parameter t, return left half [0, t]
@@ -745,20 +725,9 @@ inline void subdivideCubicRange( const glm::tvec2<T> p[4], T t0, T t1, glm::tvec
 	result[3] = f0;
 }
 
-//=============================================================================
-// Gauss-Legendre Quadrature Coefficients
-//=============================================================================
-// Gauss-Legendre quadrature approximates definite integrals using weighted
-// sums of function values at specific nodes. For integrating f(x) over [-1,1]:
-//   ∫f(x)dx ≈ Σ w[i] * f(x[i])
-//
-// For arbitrary intervals [a,b], transform: t = (b-a)/2 * x + (a+b)/2
-//   ∫f(t)dt ≈ (b-a)/2 * Σ w[i] * f((b-a)/2 * x[i] + (a+b)/2)
-//
-// 5-point quadrature is exact for polynomials up to degree 9 and provides
-// good accuracy for smooth functions like Bezier curve arc lengths.
+// Gauss-Legendre quadrature coefficients for numerical integration
 // https://en.wikipedia.org/wiki/Gauss%E2%80%93Legendre_quadrature
-// https://pomax.github.io/bezierinfo/legendre-gauss.html (coefficient tables)
+// https://pomax.github.io/bezierinfo/legendre-gauss.html
 
 //! 5-point Gauss-Legendre quadrature weights
 constexpr double GAUSS_LEGENDRE_5_WEIGHTS[] = {
