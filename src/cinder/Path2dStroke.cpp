@@ -2124,7 +2124,8 @@ BezPathD strokeInternal( const BezPathD& path, const InternalStrokeStyle& style,
 // we defer emission until we know the join type, then emit correctly.
 class OffsetContext {
 public:
-	OffsetContext( double dist, double tol ) : mDistance( dist ), mTolerance( tol ) {}
+	OffsetContext( double dist, Join join, double miterLimit, double tol )
+		: mDistance( dist ), mJoin( join ), mMiterLimit( miterLimit ), mTolerance( tol ) {}
 
 	void processElement( const PathEl& el );
 	void finish();
@@ -2143,14 +2144,16 @@ private:
 	// For closed paths, pass the first segment's tangent to handle closing join
 	void flushPending( const glm::dvec2& nextTan );
 
-	// Emit arc join for convex corner
-	void emitArc( const glm::dvec2& corner, const glm::dvec2& prevTan,
-	              const glm::dvec2& nextTan, double angle );
+	// Emit join geometry for convex corner based on join style
+	void emitJoin( const glm::dvec2& corner, const glm::dvec2& prevTan,
+	               const glm::dvec2& nextTan, double angle );
 
 	// Close the current subpath, handling the closing join
 	void closeSubpath();
 
 	double mDistance = 0.0;
+	Join mJoin = Join::Round;
+	double mMiterLimit = 4.0;
 	double mTolerance = 0.25;
 
 	BezPathD mOutput;
@@ -2164,18 +2167,12 @@ private:
 	bool mHaveFirst = false;
 
 	// Pending segment (not yet emitted)
-	enum class PendingType { None, Line, Cubic };
-	PendingType mPendingType = PendingType::None;
-
-	// For lines: the corner point and tangent
-	glm::dvec2 mPendingCorner{ 0.0 };    // Start corner on original path
+	// For lines: mPendingCubicOffset is empty
+	// For cubics: mPendingCubicOffset contains offset geometry
+	bool mHasPending = false;
 	glm::dvec2 mPendingEndPt{ 0.0 };     // End point on original path
-	glm::dvec2 mPendingTan{ 0.0 };       // Tangent direction
-
-	// For cubics: store the offset geometry and tangents
-	BezPathD mPendingCubicOffset;
-	glm::dvec2 mPendingCubicStartTan{ 0.0 };
-	glm::dvec2 mPendingCubicEndTan{ 0.0 };
+	glm::dvec2 mPendingTan{ 0.0 };       // End tangent direction
+	BezPathD mPendingCubicOffset;        // Empty for lines, populated for cubics
 };
 
 glm::dvec2 OffsetContext::offsetPoint( const glm::dvec2& pt, const glm::dvec2& tan ) const
@@ -2217,25 +2214,59 @@ glm::dvec2 OffsetContext::computeIntersection( const glm::dvec2& corner,
 	return offset1 + t * prevTanNorm;
 }
 
-void OffsetContext::emitArc( const glm::dvec2& corner, const glm::dvec2& prevTan,
-                              const glm::dvec2& nextTan, double angle )
+void OffsetContext::emitJoin( const glm::dvec2& corner, const glm::dvec2& prevTan,
+                               const glm::dvec2& nextTan, double angle )
 {
+	double prevLen = glm::length( prevTan );
 	double nextLen = glm::length( nextTan );
-	if( nextLen < 1e-9 ) return;
+	if( prevLen < 1e-9 || nextLen < 1e-9 ) return;
 
-	glm::dvec2 norm0 = (mDistance / nextLen) * glm::dvec2( -nextTan.y, nextTan.x );
-	glm::dvec2 arcNorm = -norm0;
+	switch( mJoin ) {
+		case Join::Round: {
+			glm::dvec2 norm0 = (mDistance / nextLen) * glm::dvec2( -nextTan.y, nextTan.x );
+			glm::dvec2 arcNorm = -norm0;
+			if( mDistance > 0 ) {
+				roundJoinRev( mOutput, mTolerance, corner, arcNorm, -angle );
+			} else {
+				roundJoin( mOutput, mTolerance, corner, arcNorm, angle );
+			}
+			break;
+		}
+		case Join::Bevel: {
+			// Line from current position to start of next segment
+			glm::dvec2 nextStart = offsetPoint( corner, nextTan );
+			mOutput.lineTo( nextStart );
+			break;
+		}
+		case Join::Miter: {
+			// Compute miter point (intersection of offset lines)
+			glm::dvec2 miterPt = computeIntersection( corner, prevTan, nextTan );
 
-	if( mDistance > 0 ) {
-		roundJoinRev( mOutput, mTolerance, corner, arcNorm, -angle );
-	} else {
-		roundJoin( mOutput, mTolerance, corner, arcNorm, angle );
+			// Check miter limit: ratio of miter length to offset distance
+			glm::dvec2 prevEnd = offsetPoint( corner, prevTan );
+			double miterLen = glm::length( miterPt - prevEnd );
+			double miterRatio = miterLen / std::abs( mDistance );
+
+			if( miterRatio <= mMiterLimit ) {
+				// Within limit: draw to miter point, then to next segment start
+				mOutput.lineTo( miterPt );
+				glm::dvec2 nextStart = offsetPoint( corner, nextTan );
+				mOutput.lineTo( nextStart );
+			} else {
+				// Exceeds limit: fall back to bevel
+				glm::dvec2 nextStart = offsetPoint( corner, nextTan );
+				mOutput.lineTo( nextStart );
+			}
+			break;
+		}
 	}
 }
 
 void OffsetContext::flushPending( const glm::dvec2& nextTan )
 {
-	if( mPendingType == PendingType::None ) return;
+	if( !mHasPending ) return;
+
+	bool isLine = mPendingCubicOffset.empty();
 
 	// Compute join parameters
 	double prevLen = glm::length( mPendingTan );
@@ -2243,9 +2274,9 @@ void OffsetContext::flushPending( const glm::dvec2& nextTan )
 
 	if( prevLen < 1e-9 || nextLen < 1e-9 ) {
 		// Degenerate tangent - just emit to natural endpoint
-		if( mPendingType == PendingType::Line ) {
+		if( isLine ) {
 			mOutput.lineTo( offsetPoint( mPendingEndPt, mPendingTan ) );
-		} else if( mPendingType == PendingType::Cubic ) {
+		} else {
 			// Emit cubic offset (skip initial moveTo)
 			bool first = true;
 			for( const auto& el : mPendingCubicOffset ) {
@@ -2273,7 +2304,7 @@ void OffsetContext::flushPending( const glm::dvec2& nextTan )
 	bool isConvex = cross * mDistance < 0;
 	double angle = std::atan2( cross, dot );
 
-	if( mPendingType == PendingType::Line ) {
+	if( isLine ) {
 		if( parallel || isConvex ) {
 			// Emit line to natural endpoint
 			mOutput.lineTo( offsetPoint( mPendingEndPt, mPendingTan ) );
@@ -2282,7 +2313,7 @@ void OffsetContext::flushPending( const glm::dvec2& nextTan )
 			glm::dvec2 intersection = computeIntersection( mPendingEndPt, mPendingTan, nextTan );
 			mOutput.lineTo( intersection );
 		}
-	} else if( mPendingType == PendingType::Cubic ) {
+	} else {
 		// For cubics, emit the offset geometry
 		// Note: For concave corners, we'd ideally trim the cubic at the intersection,
 		// but for simplicity we emit as-is (endpoint adjustment is imperfect for curves)
@@ -2297,17 +2328,17 @@ void OffsetContext::flushPending( const glm::dvec2& nextTan )
 		}
 	}
 
-	// Emit arc for convex corner (after the line/curve, before next segment)
+	// Emit join for convex corner (after the line/curve, before next segment)
 	if( !parallel && isConvex ) {
-		emitArc( mPendingEndPt, mPendingTan, nextTan, angle );
+		emitJoin( mPendingEndPt, mPendingTan, nextTan, angle );
 	}
 }
 
 void OffsetContext::closeSubpath()
 {
-	if( !mHaveFirst || mPendingType == PendingType::None ) {
+	if( !mHaveFirst || !mHasPending ) {
 		mOutput.closePath();
-		mPendingType = PendingType::None;
+		mHasPending = false;
 		mHaveFirst = false;
 		return;
 	}
@@ -2318,9 +2349,9 @@ void OffsetContext::closeSubpath()
 		// Flush pending with closing segment's tangent
 		flushPending( closingTan );
 
-		// Now the closing segment becomes pending
-		mPendingType = PendingType::Line;
-		mPendingCorner = mCurrentPt;
+		// Now the closing segment becomes pending (as a line)
+		mHasPending = true;
+		mPendingCubicOffset.clear();
 		mPendingEndPt = mSubpathStart;
 		mPendingTan = closingTan;
 	}
@@ -2328,41 +2359,29 @@ void OffsetContext::closeSubpath()
 	// Final join: flush closing segment with first segment's tangent
 	flushPending( mFirstTan );
 
-	// Now we need to compute where the path actually starts (accounting for opening join)
-	// Check if the opening join (from closing segment to first segment) is concave
-	double closingLen = glm::length( mPendingTan );
-	double firstLen = glm::length( mFirstTan );
+	// Update the initial MOVETO to match where we ended up
+	// This ensures closePath() connects correctly
+	auto& els = mOutput.elements();
 
-	if( closingLen > 1e-9 && firstLen > 1e-9 ) {
-		glm::dvec2 closingTanNorm = mPendingTan / closingLen;
-		glm::dvec2 firstTanNorm = mFirstTan / firstLen;
-		double cross = closingTanNorm.x * firstTanNorm.y - closingTanNorm.y * firstTanNorm.x;
-		bool isConvex = cross * mDistance < 0;
+	// Get the current endpoint
+	glm::dvec2 currentPt{ 0.0 };
+	for( auto it = els.rbegin(); it != els.rend(); ++it ) {
+		if( it->type == Path2d::LINETO ) { currentPt = it->p1; break; }
+		else if( it->type == Path2d::QUADTO ) { currentPt = it->p2; break; }
+		else if( it->type == Path2d::CUBICTO ) { currentPt = it->p3; break; }
+		else if( it->type == Path2d::MOVETO ) { currentPt = it->p1; break; }
+	}
 
-		// Find and update the initial MOVETO to match where we ended up
-		// This ensures closePath() connects correctly
-		auto& els = mOutput.elements();
-
-		// Get the current endpoint
-		glm::dvec2 currentPt{ 0.0 };
-		for( auto it = els.rbegin(); it != els.rend(); ++it ) {
-			if( it->type == Path2d::LINETO ) { currentPt = it->p1; break; }
-			else if( it->type == Path2d::QUADTO ) { currentPt = it->p2; break; }
-			else if( it->type == Path2d::CUBICTO ) { currentPt = it->p3; break; }
-			else if( it->type == Path2d::MOVETO ) { currentPt = it->p1; break; }
-		}
-
-		// Update the moveTo
-		for( auto& el : els ) {
-			if( el.type == Path2d::MOVETO ) {
-				el.p1 = currentPt;
-				break;
-			}
+	// Update the moveTo
+	for( auto& el : els ) {
+		if( el.type == Path2d::MOVETO ) {
+			el.p1 = currentPt;
+			break;
 		}
 	}
 
 	mOutput.closePath();
-	mPendingType = PendingType::None;
+	mHasPending = false;
 	mHaveFirst = false;
 }
 
@@ -2373,7 +2392,7 @@ void OffsetContext::processElement( const PathEl& el )
 			finish();
 			mSubpathStart = el.p1;
 			mCurrentPt = el.p1;
-			mPendingType = PendingType::None;
+			mHasPending = false;
 			mHaveFirst = false;
 			break;
 
@@ -2392,8 +2411,8 @@ void OffsetContext::processElement( const PathEl& el )
 			}
 
 			// Store this line as pending
-			mPendingType = PendingType::Line;
-			mPendingCorner = mCurrentPt;
+			mHasPending = true;
+			mPendingCubicOffset.clear();
 			mPendingEndPt = el.p1;
 			mPendingTan = tangent;
 			mCurrentPt = el.p1;
@@ -2436,12 +2455,9 @@ void OffsetContext::processElement( const PathEl& el )
 			mPendingCubicOffset.clear();
 			offsetCubic( cubic, mDistance, mTolerance, mPendingCubicOffset );
 
-			mPendingType = PendingType::Cubic;
-			mPendingCorner = mCurrentPt;
+			mHasPending = true;
 			mPendingEndPt = el.p2;
 			mPendingTan = endTan;
-			mPendingCubicStartTan = tan0;
-			mPendingCubicEndTan = endTan;
 			mCurrentPt = el.p2;
 			break;
 		}
@@ -2479,12 +2495,9 @@ void OffsetContext::processElement( const PathEl& el )
 			mPendingCubicOffset.clear();
 			offsetCubic( cubic, mDistance, mTolerance, mPendingCubicOffset );
 
-			mPendingType = PendingType::Cubic;
-			mPendingCorner = mCurrentPt;
+			mHasPending = true;
 			mPendingEndPt = el.p3;
 			mPendingTan = endTan;
-			mPendingCubicStartTan = tan0;
-			mPendingCubicEndTan = endTan;
 			mCurrentPt = el.p3;
 			break;
 		}
@@ -2498,9 +2511,13 @@ void OffsetContext::processElement( const PathEl& el )
 void OffsetContext::finish()
 {
 	// For open paths, just emit the pending segment to its natural endpoint
-	if( mPendingType == PendingType::Line ) {
+	if( !mHasPending ) return;
+
+	if( mPendingCubicOffset.empty() ) {
+		// Line
 		mOutput.lineTo( offsetPoint( mPendingEndPt, mPendingTan ) );
-	} else if( mPendingType == PendingType::Cubic ) {
+	} else {
+		// Cubic
 		bool first = true;
 		for( const auto& el : mPendingCubicOffset ) {
 			if( first && el.type == Path2d::MOVETO ) { first = false; continue; }
@@ -2511,15 +2528,16 @@ void OffsetContext::finish()
 			}
 		}
 	}
-	mPendingType = PendingType::None;
+	mHasPending = false;
 	mHaveFirst = false;
 }
 
-Shape2d offset( const Path2d& path, float distance, float tolerance )
+Shape2d offset( const Path2d& path, float distance, Join join, float miterLimit, float tolerance )
 {
 	BezPathD bezPath = toDoublePrecision( path );
 
-	OffsetContext ctx( static_cast<double>( distance ), static_cast<double>( tolerance ) );
+	OffsetContext ctx( static_cast<double>( distance ), join,
+	                   static_cast<double>( miterLimit ), static_cast<double>( tolerance ) );
 
 	for( const auto& el : bezPath ) {
 		ctx.processElement( el );
@@ -2529,11 +2547,11 @@ Shape2d offset( const Path2d& path, float distance, float tolerance )
 	return bezPathToShape2d( ctx.output() );
 }
 
-Shape2d offset( const Shape2d& shape, float distance, float tolerance )
+Shape2d offset( const Shape2d& shape, float distance, Join join, float miterLimit, float tolerance )
 {
 	Shape2d result;
 	for( const auto& contour : shape.getContours() ) {
-		Shape2d offsetContour = offset( contour, distance, tolerance );
+		Shape2d offsetContour = offset( contour, distance, join, miterLimit, tolerance );
 		result.append( offsetContour );
 	}
 	return result;

@@ -398,10 +398,10 @@ void BezierOffsetApp::updateResult()
 
 	if( mMode == Mode::OFFSET ) {
 		if( mUseShape ) {
-			mResult = offset( mInputShape, mOffsetDistance, mTolerance );
+			mResult = offset( mInputShape, mOffsetDistance, joinStyle, mMiterLimit, mTolerance );
 		}
 		else {
-			mResult = offset( mPath, mOffsetDistance, mTolerance );
+			mResult = offset( mPath, mOffsetDistance, joinStyle, mMiterLimit, mTolerance );
 		}
 	}
 	else {
@@ -461,6 +461,21 @@ void BezierOffsetApp::drawImGuiControls()
 		}
 
 		ImGui::SliderInt( "Num Curves", &mNumOffsetCurves, 1, 10 );
+
+		ImGui::Spacing();
+		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Join Style" );
+		ImGui::Separator();
+
+		const char* joinStyles[] = { "Bevel", "Miter", "Round" };
+		if( ImGui::Combo( "##offsetjoin", &mJoinStyle, joinStyles, 3 ) ) {
+			updateResult();
+		}
+
+		if( mJoinStyle == 1 ) {
+			if( ImGui::SliderFloat( "Miter Limit", &mMiterLimit, 1.0f, 10.0f, "%.1f" ) ) {
+				updateResult();
+			}
+		}
 	}
 	else {
 		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Stroke Parameters" );
@@ -728,13 +743,20 @@ void BezierOffsetApp::drawContent()
 	if( mShowResult && !mResult.empty() ) {
 		if( mMode == Mode::OFFSET && mNumOffsetCurves > 1 ) {
 			// Draw multiple offset curves
+			Join joinStyle;
+			switch( mJoinStyle ) {
+				case 0: joinStyle = Join::Bevel; break;
+				case 1: joinStyle = Join::Miter; break;
+				default: joinStyle = Join::Round; break;
+			}
+
 			for( int i = 0; i < mNumOffsetCurves; ++i ) {
 				float t = (float)(i + 1) / (float)mNumOffsetCurves;
 				float distance = mOffsetDistance * t;
 
 				Shape2d offsetResult = mUseShape
-					? offset( mInputShape, distance, mTolerance )
-					: offset( mPath, distance, mTolerance );
+					? offset( mInputShape, distance, joinStyle, mMiterLimit, mTolerance )
+					: offset( mPath, distance, joinStyle, mMiterLimit, mTolerance );
 
 				Color gradColor = mOriginalColor * (1.0f - t) + mResultColor * t;
 				float alpha = (mNumOffsetCurves > 3) ? (0.3f + 0.7f * t) : 0.7f;

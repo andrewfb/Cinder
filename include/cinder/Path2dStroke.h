@@ -28,41 +28,45 @@
 namespace cinder {
 
 //=============================================================================
-// Stroke Style Parameters
+// Style Parameters
 //=============================================================================
 
-/// Join style for stroke corners
-enum class StrokeJoin {
+/// Join style for corners (used by both stroke and offset)
+enum class Join {
 	Bevel,  ///< Straight line connecting segments
 	Miter,  ///< Extend segments to natural intersection
 	Round   ///< Arc between segments
 };
 
 /// Cap style for stroke endpoints
-enum class StrokeCap {
+enum class Cap {
 	Butt,   ///< Flat cap
 	Square, ///< Square cap extending half stroke width
 	Round   ///< Rounded cap with radius = half stroke width
 };
 
+// Backwards compatibility aliases
+using StrokeJoin = Join;
+using StrokeCap = Cap;
+
 /// Visual style for a stroke
 struct CI_API StrokeStyle {
 	float width = 1.0f;
-	StrokeJoin join = StrokeJoin::Round;
+	Join join = Join::Round;
 	float miterLimit = 4.0f;
-	StrokeCap startCap = StrokeCap::Round;
-	StrokeCap endCap = StrokeCap::Round;
+	Cap startCap = Cap::Round;
+	Cap endCap = Cap::Round;
 	std::vector<float> dashPattern;
 	float dashOffset = 0.0f;
 
 	StrokeStyle() = default;
 	explicit StrokeStyle( float w ) : width( w ) {}
 
-	StrokeStyle& withJoin( StrokeJoin j ) { join = j; return *this; }
+	StrokeStyle& withJoin( Join j ) { join = j; return *this; }
 	StrokeStyle& withMiterLimit( float limit ) { miterLimit = limit; return *this; }
-	StrokeStyle& withStartCap( StrokeCap c ) { startCap = c; return *this; }
-	StrokeStyle& withEndCap( StrokeCap c ) { endCap = c; return *this; }
-	StrokeStyle& withCaps( StrokeCap c ) { startCap = endCap = c; return *this; }
+	StrokeStyle& withStartCap( Cap c ) { startCap = c; return *this; }
+	StrokeStyle& withEndCap( Cap c ) { endCap = c; return *this; }
+	StrokeStyle& withCaps( Cap c ) { startCap = endCap = c; return *this; }
 	StrokeStyle& withDashes( float offset, const std::vector<float>& pattern ) {
 		dashOffset = offset;
 		dashPattern = pattern;
@@ -78,16 +82,32 @@ struct CI_API StrokeStyle {
 /// when traversing the path), negative values offset inward.
 /// @param path Input path to offset
 /// @param distance Signed offset distance
+/// @param join Join style for corners
+/// @param miterLimit Miter limit (ratio of miter length to offset distance)
 /// @param tolerance Approximation tolerance (smaller = more accurate, larger = faster)
 /// @return Offset path as a Shape2d (may contain multiple contours for paths with cusps)
-CI_API Shape2d offset( const Path2d& path, float distance, float tolerance = 0.25f );
+CI_API Shape2d offset( const Path2d& path, float distance, Join join,
+                       float miterLimit, float tolerance = 0.25f );
+
+/// Offset a Path2d with default join style (Round)
+CI_API inline Shape2d offset( const Path2d& path, float distance, float tolerance = 0.25f ) {
+	return offset( path, distance, Join::Round, 4.0f, tolerance );
+}
 
 /// Offset a Shape2d by a signed distance.
 /// @param shape Input shape to offset
 /// @param distance Signed offset distance
+/// @param join Join style for corners
+/// @param miterLimit Miter limit (ratio of miter length to offset distance)
 /// @param tolerance Approximation tolerance
 /// @return Offset shape
-CI_API Shape2d offset( const Shape2d& shape, float distance, float tolerance = 0.25f );
+CI_API Shape2d offset( const Shape2d& shape, float distance, Join join,
+                       float miterLimit, float tolerance = 0.25f );
+
+/// Offset a Shape2d with default join style (Round)
+CI_API inline Shape2d offset( const Shape2d& shape, float distance, float tolerance = 0.25f ) {
+	return offset( shape, distance, Join::Round, 4.0f, tolerance );
+}
 
 //=============================================================================
 // Path Stroking
