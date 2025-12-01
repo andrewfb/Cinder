@@ -388,6 +388,396 @@ glm::tvec2<T, glm::defaultp>		getClosestPointCubic( const glm::tvec2<T, glm::def
 	return getClosestPointCubic<T>( controlPoints, testPoint );
 }
 
+//=============================================================================
+// 2D Vector Utilities
+//=============================================================================
+
+//! 2D cross product (returns scalar z-component of 3D cross product)
+template<typename T>
+inline T cross2d( const glm::tvec2<T>& a, const glm::tvec2<T>& b )
+{
+	return a.x * b.y - a.y * b.x;
+}
+
+//! Perpendicular vector (90 degree counter-clockwise rotation)
+template<typename T>
+inline glm::tvec2<T> perp( const glm::tvec2<T>& v )
+{
+	return glm::tvec2<T>( -v.y, v.x );
+}
+
+//=============================================================================
+// Numerically Stable Polynomial Solvers
+//=============================================================================
+//
+// These "Stable" variants complement the existing solveQuadratic() and solveCubic()
+// functions with improved numerical stability for edge cases:
+//
+// solveQuadratic(a,b,c):  Solves ax² + bx + c = 0 using the classic quadratic formula.
+//                         Simple and fast, but can suffer from catastrophic cancellation
+//                         when -b and √(b²-4ac) are nearly equal.
+//
+// solveQuadraticStable(): Uses the "citardauq" formula which avoids cancellation by
+//                         computing one root via the standard formula and the other via
+//                         Vieta's formula (c/q). Uses copysign() to always add terms of
+//                         the same sign in the discriminant.
+//                         Reference: Press et al., "Numerical Recipes" §5.6
+//                         https://numerical.recipes/book.html
+//
+// solveCubicStable():     Uses Jim Blinn's method which is more numerically robust than
+//                         Cardano's formula, especially for the "three real roots" case
+//                         where it uses trigonometric identities instead of complex cube roots.
+//                         Reference: Blinn, "How to Solve a Cubic Equation" (IEEE CG&A 2006-2007)
+//                         https://courses.cs.washington.edu/courses/cse590b/13au/lecture_notes/solvecubic_p5.pdf
+//
+// Note: Coefficient order differs - stable versions use c0 + c1*x + c2*x² form
+//       (constant term first), while the original uses ax² + bx + c form.
+//=============================================================================
+
+//! Solve quadratic c0 + c1*x + c2*x² = 0 using numerically stable "citardauq" formula.
+//! Avoids catastrophic cancellation that can occur with the classic quadratic formula.
+//! Returns number of real roots (0, 1, or 2). Results sorted in ascending order.
+//! @see solveQuadratic() for the classic formula (faster but less stable)
+template<typename T>
+inline int solveQuadraticStable( T c0, T c1, T c2, T result[2] )
+{
+	constexpr T epsilon = T( 1e-12 );
+
+	if( std::abs( c2 ) < epsilon ) {
+		if( std::abs( c1 ) < epsilon ) {
+			return 0;
+		}
+		result[0] = -c0 / c1;
+		return 1;
+	}
+
+	T disc = c1 * c1 - T( 4 ) * c2 * c0;
+	if( disc < 0 ) {
+		return 0;
+	}
+
+	if( disc == 0 ) {
+		result[0] = -c1 / ( T( 2 ) * c2 );
+		return 1;
+	}
+
+	// Citardauq formula: q = -0.5 * (c1 + sign(c1)*sqrt(disc))
+	// Then roots are q/c2 and c0/q (Vieta's formula)
+	T q = T( -0.5 ) * ( c1 + std::copysign( std::sqrt( disc ), c1 ) );
+	result[0] = q / c2;
+	result[1] = c0 / q;
+
+	if( result[0] > result[1] ) {
+		std::swap( result[0], result[1] );
+	}
+
+	return 2;
+}
+
+//! Solve cubic c0 + c1*x + c2*x² + c3*x³ = 0 using Blinn's method.
+//! More numerically stable than Cardano's formula, especially for three real roots.
+//! Returns number of real roots (1, 2, or 3). Results sorted in ascending order.
+//! Based on Jim Blinn's "How to Solve a Cubic Equation" (IEEE CG&A 2006-2007).
+//! @see solveCubic() for the classic Cardano formula
+template<typename T>
+inline int solveCubicStable( T c0, T c1, T c2, T c3, T result[3] )
+{
+	constexpr T ONETHIRD = T( 1.0 / 3.0 );
+
+	T c3_recip = T( 1.0 ) / c3;
+	T scaled_c2 = c2 * ( ONETHIRD * c3_recip );
+	T scaled_c1 = c1 * ( ONETHIRD * c3_recip );
+	T scaled_c0 = c0 * c3_recip;
+
+	if( !std::isfinite( scaled_c0 ) || !std::isfinite( scaled_c1 ) || !std::isfinite( scaled_c2 ) ) {
+		return solveQuadraticStable( c0, c1, c2, result );
+	}
+
+	// Blinn's d-form coefficients
+	T d0 = -scaled_c2 * scaled_c2 + scaled_c1;
+	T d1 = -scaled_c1 * scaled_c2 + scaled_c0;
+	T d2 = scaled_c2 * scaled_c0 - scaled_c1 * scaled_c1;
+
+	T d = T( 4.0 ) * d0 * d2 - d1 * d1;  // Discriminant
+	T de = T( -2.0 ) * scaled_c2 * d0 + d1;
+
+	if( d < 0 ) {
+		// One real root - use Cardano-like formula
+		T sq = std::sqrt( T( -0.25 ) * d );
+		T r = T( -0.5 ) * de;
+		T t1 = std::cbrt( r + sq ) + std::cbrt( r - sq );
+		result[0] = t1 - scaled_c2;
+		return 1;
+	}
+	else if( d == 0 ) {
+		// Two real roots (one repeated)
+		T t1 = std::copysign( std::sqrt( -d0 ), de );
+		result[0] = t1 - scaled_c2;
+		result[1] = T( -2.0 ) * t1 - scaled_c2;
+		if( result[0] > result[1] ) std::swap( result[0], result[1] );
+		return 2;
+	}
+	else {
+		// Three real roots - use trigonometric method to avoid complex arithmetic
+		T th = std::atan2( std::sqrt( d ), -de ) * ONETHIRD;
+		T th_cos = std::cos( th );
+		T th_sin = std::sin( th );
+		T ss3 = th_sin * std::sqrt( T( 3.0 ) );
+		T t = T( 2.0 ) * std::sqrt( -d0 );
+
+		result[0] = t * th_cos - scaled_c2;
+		result[1] = t * T( 0.5 ) * ( -th_cos + ss3 ) - scaled_c2;
+		result[2] = t * T( 0.5 ) * ( -th_cos - ss3 ) - scaled_c2;
+
+		if( result[0] > result[1] ) std::swap( result[0], result[1] );
+		if( result[1] > result[2] ) std::swap( result[1], result[2] );
+		if( result[0] > result[1] ) std::swap( result[0], result[1] );
+		return 3;
+	}
+}
+
+//=============================================================================
+// Root Finding Algorithms
+//=============================================================================
+
+//! ITP (Interpolate-Truncate-Project) root finding method.
+//! A hybrid algorithm combining bisection with the regula falsi method,
+//! guaranteeing worst-case performance of bisection while achieving
+//! superlinear convergence for smooth functions.
+//! https://en.wikipedia.org/wiki/ITP_method
+//!
+//! Finds x in [a,b] where f(x) = 0. Requires ya = f(a) < 0 and yb = f(b) > 0.
+//! @param f Function to find root of (callable taking T, returning T)
+//! @param a Lower bound of bracket
+//! @param b Upper bound of bracket
+//! @param epsilon Tolerance for result (stops when interval < 2*epsilon)
+//! @param n0 Slack parameter for iteration count (typically 0 or 1)
+//! @param k1 Tuning parameter controlling truncation (typically 0.2 / (b - a))
+//! @param ya Value of f(a), must be negative
+//! @param yb Value of f(b), must be positive
+template<typename T, typename F>
+inline T solveItp( F&& f, T a, T b, T epsilon, int n0, T k1, T ya, T yb )
+{
+	T n1_2 = std::max( T( 0 ), std::ceil( std::log2( ( b - a ) / epsilon ) ) - T( 1 ) );
+	int nmax = n0 + static_cast<int>( n1_2 );
+	T scaledEpsilon = epsilon * static_cast<T>( 1ull << nmax );
+
+	while( b - a > T( 2 ) * epsilon ) {
+		T x1_2 = T( 0.5 ) * ( a + b );
+		T r = scaledEpsilon - T( 0.5 ) * ( b - a );
+		T xf = ( yb * a - ya * b ) / ( yb - ya );
+		T sigma = x1_2 - xf;
+		T delta = k1 * ( b - a ) * ( b - a );
+		T xt = ( delta <= std::abs( x1_2 - xf ) )
+			? xf + std::copysign( delta, sigma )
+			: x1_2;
+		T xitp = ( std::abs( xt - x1_2 ) <= r )
+			? xt
+			: x1_2 - std::copysign( r, sigma );
+		T yitp = f( xitp );
+		if( yitp > 0 ) {
+			b = xitp;
+			yb = yitp;
+		}
+		else if( yitp < 0 ) {
+			a = xitp;
+			ya = yitp;
+		}
+		else {
+			return xitp;
+		}
+		scaledEpsilon *= T( 0.5 );
+	}
+	return T( 0.5 ) * ( a + b );
+}
+
+//=============================================================================
+// Bezier Curve Evaluation (GLM vec2/dvec2)
+//=============================================================================
+
+//! Evaluate quadratic Bezier at parameter t using de Casteljau's algorithm
+//! @tparam T Scalar type (float or double), determines vec2 vs dvec2
+template<typename T>
+inline glm::tvec2<T> evalQuadraticBezier( const glm::tvec2<T> p[3], T t )
+{
+	T mt = T( 1 ) - t;
+	return mt * mt * p[0] + T( 2 ) * mt * t * p[1] + t * t * p[2];
+}
+
+//! Evaluate quadratic Bezier derivative at parameter t
+//! Returns the tangent vector (not normalized)
+template<typename T>
+inline glm::tvec2<T> evalQuadraticBezierDeriv( const glm::tvec2<T> p[3], T t )
+{
+	T mt = T( 1 ) - t;
+	return T( 2 ) * ( mt * ( p[1] - p[0] ) + t * ( p[2] - p[1] ) );
+}
+
+//! Evaluate cubic Bezier at parameter t using Bernstein basis
+template<typename T>
+inline glm::tvec2<T> evalCubicBezier( const glm::tvec2<T> p[4], T t )
+{
+	T t2 = t * t;
+	T t3 = t2 * t;
+	T mt = T( 1 ) - t;
+	T mt2 = mt * mt;
+	T mt3 = mt2 * mt;
+	return mt3 * p[0] + T( 3 ) * mt2 * t * p[1] + T( 3 ) * mt * t2 * p[2] + t3 * p[3];
+}
+
+//! Evaluate cubic Bezier derivative at parameter t
+//! Returns the tangent vector (not normalized). The derivative of a cubic is a quadratic.
+template<typename T>
+inline glm::tvec2<T> evalCubicBezierDeriv( const glm::tvec2<T> p[4], T t )
+{
+	T mt = T( 1 ) - t;
+	glm::tvec2<T> q0 = T( 3 ) * ( p[1] - p[0] );
+	glm::tvec2<T> q1 = T( 3 ) * ( p[2] - p[1] );
+	glm::tvec2<T> q2 = T( 3 ) * ( p[3] - p[2] );
+	return mt * mt * q0 + T( 2 ) * mt * t * q1 + t * t * q2;
+}
+
+//! Degree elevation: convert quadratic Bezier to equivalent cubic Bezier
+//! The cubic curve passes through identical points as the quadratic.
+template<typename T>
+inline void raiseQuadraticToCubic( const glm::tvec2<T> q[3], glm::tvec2<T> c[4] )
+{
+	c[0] = q[0];
+	c[1] = q[0] + T( 2.0 / 3.0 ) * ( q[1] - q[0] );
+	c[2] = q[2] + T( 2.0 / 3.0 ) * ( q[1] - q[2] );
+	c[3] = q[2];
+}
+
+//=============================================================================
+// Bezier Curve Subdivision (GLM vec2/dvec2)
+//=============================================================================
+// These functions use de Casteljau's algorithm to split Bezier curves at a
+// parameter value t. The algorithm computes intermediate control points by
+// linear interpolation, which is numerically stable.
+// https://en.wikipedia.org/wiki/De_Casteljau%27s_algorithm
+
+//! Subdivide quadratic Bezier at parameter t, return left half [0, t]
+template<typename T>
+inline void subdivideQuadraticLeft( const glm::tvec2<T> q[3], T t, glm::tvec2<T> result[3] )
+{
+	glm::tvec2<T> a0 = q[0] + t * ( q[1] - q[0] );
+	glm::tvec2<T> a1 = q[1] + t * ( q[2] - q[1] );
+	glm::tvec2<T> b0 = a0 + t * ( a1 - a0 );
+
+	result[0] = q[0];
+	result[1] = a0;
+	result[2] = b0;
+}
+
+//! Subdivide quadratic Bezier at parameter t, return right half [t, 1]
+template<typename T>
+inline void subdivideQuadraticRight( const glm::tvec2<T> q[3], T t, glm::tvec2<T> result[3] )
+{
+	glm::tvec2<T> a0 = q[0] + t * ( q[1] - q[0] );
+	glm::tvec2<T> a1 = q[1] + t * ( q[2] - q[1] );
+	glm::tvec2<T> b0 = a0 + t * ( a1 - a0 );
+
+	result[0] = b0;
+	result[1] = a1;
+	result[2] = q[2];
+}
+
+//! Subdivide cubic Bezier at parameter t, return left half [0, t]
+template<typename T>
+inline void subdivideCubicLeft( const glm::tvec2<T> p[4], T t, glm::tvec2<T> result[4] )
+{
+	glm::tvec2<T> a0 = p[0] + t * ( p[1] - p[0] );
+	glm::tvec2<T> a1 = p[1] + t * ( p[2] - p[1] );
+	glm::tvec2<T> a2 = p[2] + t * ( p[3] - p[2] );
+	glm::tvec2<T> b0 = a0 + t * ( a1 - a0 );
+	glm::tvec2<T> b1 = a1 + t * ( a2 - a1 );
+	glm::tvec2<T> c0 = b0 + t * ( b1 - b0 );
+
+	result[0] = p[0];
+	result[1] = a0;
+	result[2] = b0;
+	result[3] = c0;
+}
+
+//! Subdivide cubic Bezier at parameter t, return right half [t, 1]
+template<typename T>
+inline void subdivideCubicRight( const glm::tvec2<T> p[4], T t, glm::tvec2<T> result[4] )
+{
+	glm::tvec2<T> a0 = p[0] + t * ( p[1] - p[0] );
+	glm::tvec2<T> a1 = p[1] + t * ( p[2] - p[1] );
+	glm::tvec2<T> a2 = p[2] + t * ( p[3] - p[2] );
+	glm::tvec2<T> b0 = a0 + t * ( a1 - a0 );
+	glm::tvec2<T> b1 = a1 + t * ( a2 - a1 );
+	glm::tvec2<T> c0 = b0 + t * ( b1 - b0 );
+
+	result[0] = c0;
+	result[1] = b1;
+	result[2] = a2;
+	result[3] = p[3];
+}
+
+//! Extract subsegment [t0, t1] from cubic Bezier
+//! Useful for trimming curves or extracting dash segments
+template<typename T>
+inline void subdivideCubicRange( const glm::tvec2<T> p[4], T t0, T t1, glm::tvec2<T> result[4] )
+{
+	// First split at t0 to get right half
+	glm::tvec2<T> a0 = p[0] + t0 * ( p[1] - p[0] );
+	glm::tvec2<T> a1 = p[1] + t0 * ( p[2] - p[1] );
+	glm::tvec2<T> a2 = p[2] + t0 * ( p[3] - p[2] );
+	glm::tvec2<T> b0 = a0 + t0 * ( a1 - a0 );
+	glm::tvec2<T> b1 = a1 + t0 * ( a2 - a1 );
+	glm::tvec2<T> c0 = b0 + t0 * ( b1 - b0 );
+
+	// Then split the right half at adjusted parameter
+	T s = ( t1 - t0 ) / ( T( 1 ) - t0 );
+
+	glm::tvec2<T> d0 = c0 + s * ( b1 - c0 );
+	glm::tvec2<T> d1 = b1 + s * ( a2 - b1 );
+	glm::tvec2<T> d2 = a2 + s * ( p[3] - a2 );
+	glm::tvec2<T> e0 = d0 + s * ( d1 - d0 );
+	glm::tvec2<T> e1 = d1 + s * ( d2 - d1 );
+	glm::tvec2<T> f0 = e0 + s * ( e1 - e0 );
+
+	result[0] = c0;
+	result[1] = d0;
+	result[2] = e0;
+	result[3] = f0;
+}
+
+//=============================================================================
+// Gauss-Legendre Quadrature Coefficients
+//=============================================================================
+// Gauss-Legendre quadrature approximates definite integrals using weighted
+// sums of function values at specific nodes. For integrating f(x) over [-1,1]:
+//   ∫f(x)dx ≈ Σ w[i] * f(x[i])
+//
+// For arbitrary intervals [a,b], transform: t = (b-a)/2 * x + (a+b)/2
+//   ∫f(t)dt ≈ (b-a)/2 * Σ w[i] * f((b-a)/2 * x[i] + (a+b)/2)
+//
+// 5-point quadrature is exact for polynomials up to degree 9 and provides
+// good accuracy for smooth functions like Bezier curve arc lengths.
+// https://en.wikipedia.org/wiki/Gauss%E2%80%93Legendre_quadrature
+// https://pomax.github.io/bezierinfo/legendre-gauss.html (coefficient tables)
+
+//! 5-point Gauss-Legendre quadrature weights
+constexpr double GAUSS_LEGENDRE_5_WEIGHTS[] = {
+	0.5688888888888889,
+	0.4786286704993665,
+	0.4786286704993665,
+	0.2369268850561891,
+	0.2369268850561891
+};
+
+//! 5-point Gauss-Legendre quadrature nodes (in [-1, 1])
+constexpr double GAUSS_LEGENDRE_5_NODES[] = {
+	0.0,
+	-0.5384693101056831,
+	0.5384693101056831,
+	-0.9061798459386640,
+	0.9061798459386640
+};
+
 union half_float
 {
 	uint16_t u;

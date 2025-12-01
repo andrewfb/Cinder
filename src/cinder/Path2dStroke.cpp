@@ -23,6 +23,7 @@
 // Based on algorithms from Kurbo (https://github.com/linebender/kurbo)
 
 #include "cinder/Path2dStroke.h"
+#include "cinder/CinderMath.h"
 #include "cinder/CinderGlm.h"
 #include <cmath>
 #include <algorithm>
@@ -53,278 +54,53 @@ constexpr double SUBDIVIDE_THRESH = 0.1;
 constexpr double DIM_TUNE = 0.25;
 constexpr double DASH_ACCURACY = 1e-6;
 
-// Gauss-Legendre 5-point quadrature coefficients
-constexpr double GAUSS_LEGENDRE_5_WEIGHTS[] = {
-	0.5688888888888889,
-	0.4786286704993665,
-	0.4786286704993665,
-	0.2369268850561891,
-	0.2369268850561891
-};
-
-constexpr double GAUSS_LEGENDRE_5_NODES[] = {
-	0.0,
-	-0.5384693101056831,
-	0.5384693101056831,
-	-0.9061798459386640,
-	0.9061798459386640
-};
-
 //=============================================================================
-// Vector Utilities
-//=============================================================================
-
-template<typename T>
-inline T cross2d( const glm::tvec2<T>& a, const glm::tvec2<T>& b )
-{
-	return a.x * b.y - a.y * b.x;
-}
-
-template<typename T>
-inline glm::tvec2<T> perp( const glm::tvec2<T>& v )
-{
-	return glm::tvec2<T>( -v.y, v.x );
-}
-
-//=============================================================================
-// Polynomial Solvers
-//=============================================================================
-
-template<typename T>
-int solveQuadraticStable( T c0, T c1, T c2, T result[2] )
-{
-	constexpr T epsilon = T( 1e-12 );
-
-	if( std::abs( c2 ) < epsilon ) {
-		if( std::abs( c1 ) < epsilon ) {
-			return 0;
-		}
-		result[0] = -c0 / c1;
-		return 1;
-	}
-
-	T disc = c1 * c1 - T( 4 ) * c2 * c0;
-	if( disc < 0 ) {
-		return 0;
-	}
-
-	if( disc == 0 ) {
-		result[0] = -c1 / ( T( 2 ) * c2 );
-		return 1;
-	}
-
-	T q = T( -0.5 ) * ( c1 + std::copysign( std::sqrt( disc ), c1 ) );
-	result[0] = q / c2;
-	result[1] = c0 / q;
-
-	if( result[0] > result[1] ) {
-		std::swap( result[0], result[1] );
-	}
-
-	return 2;
-}
-
-// Blinn's method for cubic root solving
-template<typename T>
-int solveCubicStable( T c0, T c1, T c2, T c3, T result[3] )
-{
-	constexpr T ONETHIRD = T( 1.0 / 3.0 );
-
-	T c3_recip = T( 1.0 ) / c3;
-	T scaled_c2 = c2 * ( ONETHIRD * c3_recip );
-	T scaled_c1 = c1 * ( ONETHIRD * c3_recip );
-	T scaled_c0 = c0 * c3_recip;
-
-	if( !std::isfinite( scaled_c0 ) || !std::isfinite( scaled_c1 ) || !std::isfinite( scaled_c2 ) ) {
-		return solveQuadraticStable( c0, c1, c2, result );
-	}
-
-	T d0 = -scaled_c2 * scaled_c2 + scaled_c1;
-	T d1 = -scaled_c1 * scaled_c2 + scaled_c0;
-	T d2 = scaled_c2 * scaled_c0 - scaled_c1 * scaled_c1;
-
-	T d = T( 4.0 ) * d0 * d2 - d1 * d1;
-	T de = T( -2.0 ) * scaled_c2 * d0 + d1;
-
-	if( d < 0 ) {
-		T sq = std::sqrt( T( -0.25 ) * d );
-		T r = T( -0.5 ) * de;
-		T t1 = std::cbrt( r + sq ) + std::cbrt( r - sq );
-		result[0] = t1 - scaled_c2;
-		return 1;
-	}
-	else if( d == 0 ) {
-		T t1 = std::copysign( std::sqrt( -d0 ), de );
-		result[0] = t1 - scaled_c2;
-		result[1] = T( -2.0 ) * t1 - scaled_c2;
-		if( result[0] > result[1] ) std::swap( result[0], result[1] );
-		return 2;
-	}
-	else {
-		T th = std::atan2( std::sqrt( d ), -de ) * ONETHIRD;
-		T th_cos = std::cos( th );
-		T th_sin = std::sin( th );
-		T ss3 = th_sin * std::sqrt( T( 3.0 ) );
-		T t = T( 2.0 ) * std::sqrt( -d0 );
-
-		result[0] = t * th_cos - scaled_c2;
-		result[1] = t * T( 0.5 ) * ( -th_cos + ss3 ) - scaled_c2;
-		result[2] = t * T( 0.5 ) * ( -th_cos - ss3 ) - scaled_c2;
-		if( result[0] > result[1] ) std::swap( result[0], result[1] );
-		if( result[1] > result[2] ) std::swap( result[1], result[2] );
-		if( result[0] > result[1] ) std::swap( result[0], result[1] );
-		return 3;
-	}
-}
-
-// ITP root-finding method
-template<typename T, typename F>
-T solveItp( F&& f, T a, T b, T epsilon, int n0, T k1, T ya, T yb )
-{
-	T n1_2 = std::max( T( 0 ), std::ceil( std::log2( ( b - a ) / epsilon ) ) - T( 1 ) );
-	int nmax = n0 + static_cast<int>( n1_2 );
-	T scaledEpsilon = epsilon * static_cast<T>( 1ull << nmax );
-
-	while( b - a > T( 2 ) * epsilon ) {
-		T x1_2 = T( 0.5 ) * ( a + b );
-		T r = scaledEpsilon - T( 0.5 ) * ( b - a );
-		T xf = ( yb * a - ya * b ) / ( yb - ya );
-		T sigma = x1_2 - xf;
-		T delta = k1 * ( b - a ) * ( b - a );
-		T xt = ( delta <= std::abs( x1_2 - xf ) )
-			? xf + std::copysign( delta, sigma )
-			: x1_2;
-		T xitp = ( std::abs( xt - x1_2 ) <= r )
-			? xt
-			: x1_2 - std::copysign( r, sigma );
-		T yitp = f( xitp );
-		if( yitp > 0 ) {
-			b = xitp;
-			yb = yitp;
-		}
-		else if( yitp < 0 ) {
-			a = xitp;
-			ya = yitp;
-		}
-		else {
-			return xitp;
-		}
-		scaledEpsilon *= T( 0.5 );
-	}
-	return T( 0.5 ) * ( a + b );
-}
-
-//=============================================================================
-// Bezier Evaluation Utilities
+// Bezier Evaluation Wrappers (using CinderMath templates)
 //=============================================================================
 
 inline glm::dvec2 evalCubic( const glm::dvec2 p[4], double t )
 {
-	double t2 = t * t;
-	double t3 = t2 * t;
-	double mt = 1.0 - t;
-	double mt2 = mt * mt;
-	double mt3 = mt2 * mt;
-	return mt3 * p[0] + 3.0 * mt2 * t * p[1] + 3.0 * mt * t2 * p[2] + t3 * p[3];
+	return evalCubicBezier( p, t );
 }
 
 inline glm::dvec2 evalCubicDeriv( const glm::dvec2 p[4], double t )
 {
-	glm::dvec2 q0 = 3.0 * ( p[1] - p[0] );
-	glm::dvec2 q1 = 3.0 * ( p[2] - p[1] );
-	glm::dvec2 q2 = 3.0 * ( p[3] - p[2] );
-	double mt = 1.0 - t;
-	return mt * mt * q0 + 2.0 * mt * t * q1 + t * t * q2;
+	return evalCubicBezierDeriv( p, t );
 }
 
 inline glm::dvec2 evalQuad( const glm::dvec2 p[3], double t )
 {
-	double mt = 1.0 - t;
-	return mt * mt * p[0] + 2.0 * mt * t * p[1] + t * t * p[2];
+	return evalQuadraticBezier( p, t );
 }
 
 inline void raiseQuadToCubic( const glm::dvec2 q[3], glm::dvec2 c[4] )
 {
-	c[0] = q[0];
-	c[1] = q[0] + ( 2.0 / 3.0 ) * ( q[1] - q[0] );
-	c[2] = q[2] + ( 2.0 / 3.0 ) * ( q[1] - q[2] );
-	c[3] = q[2];
+	raiseQuadraticToCubic( q, c );
 }
 
 inline void cubicSubsegment( const glm::dvec2 p[4], double t0, double t1, glm::dvec2 result[4] )
 {
-	glm::dvec2 a0 = p[0] + t0 * ( p[1] - p[0] );
-	glm::dvec2 a1 = p[1] + t0 * ( p[2] - p[1] );
-	glm::dvec2 a2 = p[2] + t0 * ( p[3] - p[2] );
-	glm::dvec2 b0 = a0 + t0 * ( a1 - a0 );
-	glm::dvec2 b1 = a1 + t0 * ( a2 - a1 );
-	glm::dvec2 c0 = b0 + t0 * ( b1 - b0 );
-
-	double s = ( t1 - t0 ) / ( 1.0 - t0 );
-
-	glm::dvec2 d0 = c0 + s * ( b1 - c0 );
-	glm::dvec2 d1 = b1 + s * ( a2 - b1 );
-	glm::dvec2 d2 = a2 + s * ( p[3] - a2 );
-	glm::dvec2 e0 = d0 + s * ( d1 - d0 );
-	glm::dvec2 e1 = d1 + s * ( d2 - d1 );
-	glm::dvec2 f0 = e0 + s * ( e1 - e0 );
-
-	result[0] = c0;
-	result[1] = d0;
-	result[2] = e0;
-	result[3] = f0;
+	subdivideCubicRange( p, t0, t1, result );
 }
 
 inline void cubicSubsegmentLeft( const glm::dvec2 p[4], double t, glm::dvec2 result[4] )
 {
-	glm::dvec2 a0 = p[0] + t * ( p[1] - p[0] );
-	glm::dvec2 a1 = p[1] + t * ( p[2] - p[1] );
-	glm::dvec2 a2 = p[2] + t * ( p[3] - p[2] );
-	glm::dvec2 b0 = a0 + t * ( a1 - a0 );
-	glm::dvec2 b1 = a1 + t * ( a2 - a1 );
-	glm::dvec2 c0 = b0 + t * ( b1 - b0 );
-
-	result[0] = p[0];
-	result[1] = a0;
-	result[2] = b0;
-	result[3] = c0;
+	subdivideCubicLeft( p, t, result );
 }
 
 inline void cubicSubsegmentRight( const glm::dvec2 p[4], double t, glm::dvec2 result[4] )
 {
-	glm::dvec2 a0 = p[0] + t * ( p[1] - p[0] );
-	glm::dvec2 a1 = p[1] + t * ( p[2] - p[1] );
-	glm::dvec2 a2 = p[2] + t * ( p[3] - p[2] );
-	glm::dvec2 b0 = a0 + t * ( a1 - a0 );
-	glm::dvec2 b1 = a1 + t * ( a2 - a1 );
-	glm::dvec2 c0 = b0 + t * ( b1 - b0 );
-
-	result[0] = c0;
-	result[1] = b1;
-	result[2] = a2;
-	result[3] = p[3];
+	subdivideCubicRight( p, t, result );
 }
 
 inline void quadSubsegmentLeft( const glm::dvec2 q[3], double t, glm::dvec2 result[3] )
 {
-	glm::dvec2 a0 = q[0] + t * ( q[1] - q[0] );
-	glm::dvec2 a1 = q[1] + t * ( q[2] - q[1] );
-	glm::dvec2 b0 = a0 + t * ( a1 - a0 );
-
-	result[0] = q[0];
-	result[1] = a0;
-	result[2] = b0;
+	subdivideQuadraticLeft( q, t, result );
 }
 
 inline void quadSubsegmentRight( const glm::dvec2 q[3], double t, glm::dvec2 result[3] )
 {
-	glm::dvec2 a0 = q[0] + t * ( q[1] - q[0] );
-	glm::dvec2 a1 = q[1] + t * ( q[2] - q[1] );
-	glm::dvec2 b0 = a0 + t * ( a1 - a0 );
-
-	result[0] = b0;
-	result[1] = a1;
-	result[2] = q[2];
+	subdivideQuadraticRight( q, t, result );
 }
 
 //=============================================================================
@@ -2328,13 +2104,18 @@ BezPathD strokeInternal( const BezPathD& path, const InternalStrokeStyle& style,
 		for( const auto& el : path ) {
 			ctx.processElement( el, style, tolerance );
 		}
+		ctx.finish( style );
 	} else {
+		// For dashed strokes, each dash uses startCap/endCap from the style
+		InternalStrokeStyle dashStyle = style;
+		dashStyle.dashPattern.clear();  // Don't re-apply dashing
+
 		BezPathD dashedPath = dashInternal( path, style.dashOffset, style.dashPattern );
 		for( const auto& el : dashedPath ) {
-			ctx.processElement( el, style, tolerance );
+			ctx.processElement( el, dashStyle, tolerance );
 		}
+		ctx.finish( dashStyle );
 	}
-	ctx.finish( style );
 	return ctx.output();
 }
 

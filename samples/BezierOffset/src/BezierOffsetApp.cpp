@@ -60,9 +60,10 @@ private:
 
 	// Stroke parameters
 	float       mStrokeWidth = 40.0f;
-	int         mJoinStyle = 2;    // 0=Bevel, 1=Miter, 2=Round
+	int         mJoinStyle = 2;      // 0=Bevel, 1=Miter, 2=Round
 	float       mMiterLimit = 4.0f;
-	int         mCapStyle = 2;     // 0=Butt, 1=Square, 2=Round
+	int         mStartCapStyle = 2;  // 0=Butt, 1=Square, 2=Round
+	int         mEndCapStyle = 2;    // 0=Butt, 1=Square, 2=Round
 
 	// Dash pattern parameters
 	bool        mEnableDashing = false;
@@ -76,7 +77,8 @@ private:
 	// Visualization options
 	bool        mShowOriginal = true;
 	bool        mShowResult = true;
-	bool        mShowControlPoints = true;
+	bool        mShowOriginalControlPoints = true;
+	bool        mShowResultControlPoints = false;
 	bool        mShowFilled = true;
 	bool        mShowOutline = true;
 	Color       mOriginalColor = Color( 1.0f, 0.5f, 0.25f );
@@ -295,11 +297,16 @@ void BezierOffsetApp::updateResult()
 		default: joinStyle = StrokeJoin::Round; break;
 	}
 
-	StrokeCap capStyle;
-	switch( mCapStyle ) {
-		case 0: capStyle = StrokeCap::Butt; break;
-		case 1: capStyle = StrokeCap::Square; break;
-		default: capStyle = StrokeCap::Round; break;
+	StrokeCap startCap, endCap;
+	switch( mStartCapStyle ) {
+		case 0: startCap = StrokeCap::Butt; break;
+		case 1: startCap = StrokeCap::Square; break;
+		default: startCap = StrokeCap::Round; break;
+	}
+	switch( mEndCapStyle ) {
+		case 0: endCap = StrokeCap::Butt; break;
+		case 1: endCap = StrokeCap::Square; break;
+		default: endCap = StrokeCap::Round; break;
 	}
 
 	if( mMode == Mode::OFFSET ) {
@@ -307,7 +314,8 @@ void BezierOffsetApp::updateResult()
 	}
 	else {
 		StrokeStyle style( mStrokeWidth );
-		style.withJoin( joinStyle ).withMiterLimit( mMiterLimit ).withCaps( capStyle );
+		style.withJoin( joinStyle ).withMiterLimit( mMiterLimit );
+		style.withStartCap( startCap ).withEndCap( endCap );
 
 		if( mEnableDashing ) {
 			vector<float> pattern;
@@ -384,12 +392,16 @@ void BezierOffsetApp::drawImGuiControls()
 			}
 		}
 
+		// Cap Style - applies to both strokes and each dash segment
 		ImGui::Spacing();
 		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Cap Style" );
 		ImGui::Separator();
 
 		const char* capStyles[] = { "Butt", "Square", "Round" };
-		if( ImGui::Combo( "##cap", &mCapStyle, capStyles, 3 ) ) {
+		if( ImGui::Combo( "Start Cap", &mStartCapStyle, capStyles, 3 ) ) {
+			updateResult();
+		}
+		if( ImGui::Combo( "End Cap", &mEndCapStyle, capStyles, 3 ) ) {
 			updateResult();
 		}
 
@@ -521,7 +533,8 @@ void BezierOffsetApp::drawImGuiControls()
 		ImGui::ColorEdit3( "##resultcolor", &mResultColor[0], ImGuiColorEditFlags_NoInputs );
 	}
 
-	ImGui::Checkbox( "Control Points", &mShowControlPoints );
+	ImGui::Checkbox( "Original Control Points", &mShowOriginalControlPoints );
+	ImGui::Checkbox( "Result Control Points", &mShowResultControlPoints );
 	ImGui::Checkbox( "Filled", &mShowFilled );
 	ImGui::Checkbox( "Outline", &mShowOutline );
 
@@ -608,6 +621,16 @@ void BezierOffsetApp::draw()
 					gl::draw( contour );
 				}
 			}
+
+			// Result control points
+			if( mShowResultControlPoints ) {
+				gl::color( ColorA( mResultColor, 0.6f ) );
+				for( const auto& contour : mResult.getContours() ) {
+					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
+						gl::drawSolidCircle( contour.getPoint( i ), 2.0f );
+					}
+				}
+			}
 		}
 	}
 
@@ -618,8 +641,8 @@ void BezierOffsetApp::draw()
 		gl::draw( mPath );
 		gl::lineWidth( 1.0f );
 
-		// Control points
-		if( mShowControlPoints ) {
+		// Original control points
+		if( mShowOriginalControlPoints ) {
 			for( size_t i = 0; i < mPath.getNumPoints(); ++i ) {
 				bool isHovered = ((int)i == mHoveredPoint);
 
