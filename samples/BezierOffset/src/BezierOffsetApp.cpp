@@ -732,7 +732,9 @@ void BezierOffsetApp::drawContent()
 				float t = (float)(i + 1) / (float)mNumOffsetCurves;
 				float distance = mOffsetDistance * t;
 
-				Shape2d offsetResult = offset( mPath, distance, mTolerance );
+				Shape2d offsetResult = mUseShape
+					? offset( mInputShape, distance, mTolerance )
+					: offset( mPath, distance, mTolerance );
 
 				Color gradColor = mOriginalColor * (1.0f - t) + mResultColor * t;
 				float alpha = (mNumOffsetCurves > 3) ? (0.3f + 0.7f * t) : 0.7f;
