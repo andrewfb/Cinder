@@ -2119,98 +2119,307 @@ BezPathD strokeInternal( const BezPathD& path, const InternalStrokeStyle& style,
 // Public API Implementation
 //=============================================================================
 
+// Context for path offsetting - similar to stroke but one-sided
+class OffsetContext {
+public:
+	OffsetContext( double dist, double tol ) : mDistance( dist ), mTolerance( tol ) {}
+
+	void processElement( const PathEl& el );
+	void finish();
+	void finishClosed();
+	BezPathD& output() { return mOutput; }
+
+private:
+	void doJoin( const glm::dvec2& tan0 );
+	void doLine( const glm::dvec2& tangent, const glm::dvec2& p1 );
+	void doCubic( const CubicBezD& cubic );
+	void rewriteCurrentPoint( const glm::dvec2& p );
+
+	double mDistance = 0.0;
+	double mTolerance = 0.25;
+
+	BezPathD mOutput;
+	glm::dvec2 mStartPt{ 0.0 };
+	glm::dvec2 mStartTan{ 0.0 };
+	glm::dvec2 mLastPt{ 0.0 };
+	glm::dvec2 mLastTan{ 0.0 };
+	bool mHasSegment = false;
+};
+
+void OffsetContext::doJoin( const glm::dvec2& tan0 )
+{
+	if( !mHasSegment ) {
+		// First segment - just record start tangent
+		double len = glm::length( tan0 );
+		if( len > 1e-9 ) {
+			glm::dvec2 norm( -tan0.y / len, tan0.x / len );
+			mOutput.moveTo( mLastPt + mDistance * norm );
+			mStartTan = tan0;
+			mHasSegment = true;
+		}
+		return;
+	}
+
+	// Compute angle between previous tangent and new tangent
+	double lastLen = glm::length( mLastTan );
+	double tan0Len = glm::length( tan0 );
+	if( lastLen < 1e-9 || tan0Len < 1e-9 ) return;
+
+	glm::dvec2 lastTanNorm = mLastTan / lastLen;
+	glm::dvec2 tan0Norm = tan0 / tan0Len;
+
+	// Cross product gives sin of angle, dot gives cos
+	double cross = lastTanNorm.x * tan0Norm.y - lastTanNorm.y * tan0Norm.x;
+	double dot = glm::dot( lastTanNorm, tan0Norm );
+
+	// Skip join if tangents are nearly parallel
+	if( std::abs( cross ) < 1e-6 && dot > 0 ) return;
+
+	// Compute normals scaled by distance (pointing to offset side)
+	glm::dvec2 lastNorm = (mDistance / lastLen) * glm::dvec2( -mLastTan.y, mLastTan.x );
+	glm::dvec2 norm0 = (mDistance / tan0Len) * glm::dvec2( -tan0.y, tan0.x );
+
+	glm::dvec2 p0 = mLastPt;
+
+	// Determine if this is a convex or concave corner
+	// Convex on the offset side means the turn goes AWAY from the offset direction
+	// cross > 0 means turning left, cross < 0 means turning right
+	// For positive distance (offset left), right turn (cross < 0) is convex
+	// For negative distance (offset right), left turn (cross > 0) is convex
+	bool isConvex = cross * mDistance < 0;
+
+	double angle = std::atan2( cross, dot );
+
+	if( isConvex ) {
+		// Convex corner: add an arc from previous offset point to next offset point
+		// Use norm0 (current segment's normal) for the arc, flipped for roundJoin convention
+		glm::dvec2 arcNorm = -norm0;
+		if( mDistance > 0 ) {
+			// Left-side offset, convex when turning right
+			roundJoinRev( mOutput, mTolerance, p0, arcNorm, -angle );
+		} else {
+			// Right-side offset, convex when turning left
+			roundJoin( mOutput, mTolerance, p0, arcNorm, angle );
+		}
+	} else {
+		// Concave corner: find intersection of offset lines
+		// Line 1: from (p0 + lastNorm) in direction lastTanNorm
+		// Line 2: from (p0 + norm0) in direction tan0Norm
+		glm::dvec2 offset1 = p0 + lastNorm;
+		glm::dvec2 offset2 = p0 + norm0;
+		glm::dvec2 joinPt = offset2;
+
+		// Solve for intersection using parametric form
+		double denom = lastTanNorm.x * tan0Norm.y - lastTanNorm.y * tan0Norm.x;
+		if( std::abs( denom ) > 1e-9 ) {
+			glm::dvec2 diff = offset2 - offset1;
+			double t = (diff.x * tan0Norm.y - diff.y * tan0Norm.x) / denom;
+			joinPt = offset1 + t * lastTanNorm;
+		}
+		// Trim the previous segment to the intersection instead of drawing overhang geometry
+		rewriteCurrentPoint( joinPt );
+	}
+}
+
+void OffsetContext::rewriteCurrentPoint( const glm::dvec2& p )
+{
+	auto& els = mOutput.elements();
+	for( auto it = els.rbegin(); it != els.rend(); ++it ) {
+		switch( it->type ) {
+			case Path2d::LINETO:
+			case Path2d::MOVETO:
+				it->p1 = p;
+				return;
+			case Path2d::QUADTO:
+				it->p2 = p;
+				return;
+			case Path2d::CUBICTO:
+				it->p3 = p;
+				return;
+			default:
+				break;
+		}
+	}
+}
+
+void OffsetContext::doLine( const glm::dvec2& tangent, const glm::dvec2& p1 )
+{
+	double len = glm::length( tangent );
+	if( len < 1e-9 ) return;
+
+	glm::dvec2 norm( -tangent.y / len, tangent.x / len );
+	mOutput.lineTo( p1 + mDistance * norm );
+	mLastPt = p1;
+	mLastTan = tangent;
+}
+
+void OffsetContext::doCubic( const CubicBezD& cubic )
+{
+	BezPathD offsetResult;
+	offsetCubic( cubic, mDistance, mTolerance, offsetResult );
+
+	bool first = true;
+	for( const auto& oel : offsetResult ) {
+		if( first && oel.type == Path2d::MOVETO ) {
+			first = false;
+			continue;  // Skip moveto, we're already positioned from the join
+		}
+		switch( oel.type ) {
+			case Path2d::LINETO: mOutput.lineTo( oel.p1 ); break;
+			case Path2d::CUBICTO: mOutput.curveTo( oel.p1, oel.p2, oel.p3 ); break;
+			default: break;
+		}
+	}
+
+	// Update last point and tangent from the cubic end
+	mLastPt = cubic.p3;
+	// End tangent of cubic
+	glm::dvec2 endTan = cubic.p3 - cubic.p2;
+	if( glm::length( endTan ) < 1e-9 ) {
+		endTan = cubic.p3 - cubic.p1;
+		if( glm::length( endTan ) < 1e-9 ) {
+			endTan = cubic.p3 - cubic.p0;
+		}
+	}
+	mLastTan = endTan;
+}
+
+void OffsetContext::processElement( const PathEl& el )
+{
+	switch( el.type ) {
+		case Path2d::MOVETO:
+			finish();
+			mStartPt = el.p1;
+			mLastPt = el.p1;
+			mHasSegment = false;
+			break;
+
+		case Path2d::LINETO: {
+			glm::dvec2 tangent = el.p1 - mLastPt;
+			if( glm::length( tangent ) > 1e-9 ) {
+				doJoin( tangent );
+				mLastTan = tangent;
+				doLine( tangent, el.p1 );
+			}
+			break;
+		}
+
+		case Path2d::QUADTO: {
+			glm::dvec2 q[3] = { mLastPt, el.p1, el.p2 };
+			glm::dvec2 c[4];
+			raiseQuadToCubic( q, c );
+			CubicBezD cubic( c[0], c[1], c[2], c[3] );
+
+			// Start tangent of the quadratic/cubic
+			glm::dvec2 tan0 = c[1] - c[0];
+			if( glm::length( tan0 ) < 1e-9 ) {
+				tan0 = c[2] - c[0];
+				if( glm::length( tan0 ) < 1e-9 ) {
+					tan0 = c[3] - c[0];
+				}
+			}
+
+			doJoin( tan0 );
+			doCubic( cubic );
+			break;
+		}
+
+		case Path2d::CUBICTO: {
+			CubicBezD cubic( mLastPt, el.p1, el.p2, el.p3 );
+
+			// Start tangent
+			glm::dvec2 tan0 = el.p1 - mLastPt;
+			if( glm::length( tan0 ) < 1e-9 ) {
+				tan0 = el.p2 - mLastPt;
+				if( glm::length( tan0 ) < 1e-9 ) {
+					tan0 = el.p3 - mLastPt;
+				}
+			}
+
+			doJoin( tan0 );
+			doCubic( cubic );
+			break;
+		}
+
+		case Path2d::CLOSE:
+			if( glm::length( mLastPt - mStartPt ) > 1e-9 ) {
+				glm::dvec2 tangent = mStartPt - mLastPt;
+				doJoin( tangent );
+				mLastTan = tangent;
+				doLine( tangent, mStartPt );
+			}
+			finishClosed();
+			break;
+	}
+}
+
+void OffsetContext::finish()
+{
+	// Open path - nothing special to do, path ends where it ends
+	mHasSegment = false;
+}
+
+void OffsetContext::finishClosed()
+{
+	if( !mHasSegment ) return;
+
+	// Join back to the start tangent - need to handle concave closing corner specially
+	// For concave, doJoin rewrites the last segment endpoint, but we also need to
+	// rewrite the initial moveTo to match (otherwise closePath creates a stray line)
+
+	// Compute the closing join
+	double lastLen = glm::length( mLastTan );
+	double tan0Len = glm::length( mStartTan );
+	if( lastLen > 1e-9 && tan0Len > 1e-9 ) {
+		glm::dvec2 lastTanNorm = mLastTan / lastLen;
+		glm::dvec2 tan0Norm = mStartTan / tan0Len;
+		double cross = lastTanNorm.x * tan0Norm.y - lastTanNorm.y * tan0Norm.x;
+
+		// Check if concave (same logic as doJoin)
+		bool isConvex = cross * mDistance < 0;
+
+		doJoin( mStartTan );
+
+		if( !isConvex ) {
+			// Concave closing corner - need to also rewrite the initial moveTo
+			// to match the final join point (which is now the last segment's endpoint)
+			// Find and update the first MOVETO in the output
+			auto& els = mOutput.elements();
+			for( auto& el : els ) {
+				if( el.type == Path2d::MOVETO ) {
+					// Get the current endpoint (where we are after the concave join rewrite)
+					glm::dvec2 currentPt;
+					for( auto it = els.rbegin(); it != els.rend(); ++it ) {
+						if( it->type == Path2d::LINETO ) { currentPt = it->p1; break; }
+						else if( it->type == Path2d::QUADTO ) { currentPt = it->p2; break; }
+						else if( it->type == Path2d::CUBICTO ) { currentPt = it->p3; break; }
+						else if( it->type == Path2d::MOVETO ) { currentPt = it->p1; break; }
+					}
+					el.p1 = currentPt;
+					break;
+				}
+			}
+		}
+	} else {
+		doJoin( mStartTan );
+	}
+
+	mOutput.closePath();
+	mHasSegment = false;
+}
+
 Shape2d offset( const Path2d& path, float distance, float tolerance )
 {
 	BezPathD bezPath = toDoublePrecision( path );
 
-	BezPathD result;
-	glm::dvec2 lastPt( 0.0 );
-	glm::dvec2 startPt( 0.0 );
+	OffsetContext ctx( static_cast<double>( distance ), static_cast<double>( tolerance ) );
 
 	for( const auto& el : bezPath ) {
-		switch( el.type ) {
-			case Path2d::MOVETO:
-				lastPt = el.p1;
-				startPt = el.p1;
-				result.moveTo( el.p1 );
-				break;
-
-			case Path2d::LINETO: {
-				glm::dvec2 tangent = el.p1 - lastPt;
-				double len = glm::length( tangent );
-				if( len > 1e-9 ) {
-					glm::dvec2 norm( -tangent.y / len, tangent.x / len );
-					double d = static_cast<double>( distance );
-					if( result.empty() || result.elements().back().type == Path2d::MOVETO ) {
-						result.moveTo( lastPt + d * norm );
-					}
-					result.lineTo( el.p1 + d * norm );
-				}
-				lastPt = el.p1;
-				break;
-			}
-
-			case Path2d::QUADTO: {
-				glm::dvec2 q[3] = { lastPt, el.p1, el.p2 };
-				glm::dvec2 c[4];
-				raiseQuadToCubic( q, c );
-				CubicBezD cubic( c[0], c[1], c[2], c[3] );
-
-				BezPathD offsetResult;
-				offsetCubic( cubic, static_cast<double>( distance ), static_cast<double>( tolerance ), offsetResult );
-
-				bool first = true;
-				for( const auto& oel : offsetResult ) {
-					if( first && oel.type == Path2d::MOVETO ) {
-						if( result.empty() || result.elements().back().type == Path2d::MOVETO ) {
-							result.moveTo( oel.p1 );
-						}
-						first = false;
-						continue;
-					}
-					switch( oel.type ) {
-						case Path2d::LINETO: result.lineTo( oel.p1 ); break;
-						case Path2d::CUBICTO: result.curveTo( oel.p1, oel.p2, oel.p3 ); break;
-						default: break;
-					}
-				}
-				lastPt = el.p2;
-				break;
-			}
-
-			case Path2d::CUBICTO: {
-				CubicBezD cubic( lastPt, el.p1, el.p2, el.p3 );
-
-				BezPathD offsetResult;
-				offsetCubic( cubic, static_cast<double>( distance ), static_cast<double>( tolerance ), offsetResult );
-
-				bool first = true;
-				for( const auto& oel : offsetResult ) {
-					if( first && oel.type == Path2d::MOVETO ) {
-						if( result.empty() || result.elements().back().type == Path2d::MOVETO ) {
-							result.moveTo( oel.p1 );
-						}
-						first = false;
-						continue;
-					}
-					switch( oel.type ) {
-						case Path2d::LINETO: result.lineTo( oel.p1 ); break;
-						case Path2d::CUBICTO: result.curveTo( oel.p1, oel.p2, oel.p3 ); break;
-						default: break;
-					}
-				}
-				lastPt = el.p3;
-				break;
-			}
-
-			case Path2d::CLOSE:
-				result.closePath();
-				lastPt = startPt;
-				break;
-		}
+		ctx.processElement( el );
 	}
+	ctx.finish();
 
-	return bezPathToShape2d( result );
+	return bezPathToShape2d( ctx.output() );
 }
 
 Shape2d offset( const Shape2d& shape, float distance, float tolerance )

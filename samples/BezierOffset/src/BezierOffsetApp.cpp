@@ -11,6 +11,7 @@
 #include "cinder/Path2dStroke.h"
 #include "cinder/CanvasUi.h"
 #include "cinder/CinderImGui.h"
+#include "cinder/Font.h"
 #include "cinder/Log.h"
 
 using namespace ci;
@@ -24,7 +25,8 @@ enum class PresetShape {
 	CLOSED_RECT,
 	CLOSED_CIRCLE,
 	CLOSED_STAR,
-	SHARP_ZIGZAG
+	SHARP_ZIGZAG,
+	GLYPH_A
 };
 
 class BezierOffsetApp : public App {
@@ -47,6 +49,8 @@ private:
 
 	CanvasUi    mCanvas;
 	Path2d      mPath;
+	Shape2d     mInputShape;   // For multi-contour inputs like glyphs
+	bool        mUseShape = false;
 	Shape2d     mResult;
 	int         mTrackedPoint;
 	int         mHoveredPoint = -1;
@@ -227,12 +231,63 @@ void BezierOffsetApp::keyDown( KeyEvent event )
 				updateResult();
 			}
 			break;
+		case 'd':
+		case 'D':
+			// Dump input and output to console as JSON for comparison
+			{
+				auto dumpPath = []( const Path2d& path, const string& label ) {
+					cout << label << endl;
+					const auto& pts = path.getPoints();
+					size_t ptIdx = 0;
+					cout << "[";
+					for( size_t i = 0; i < path.getNumSegments(); ++i ) {
+						if( i > 0 ) cout << ",";
+						auto type = path.getSegmentType( i );
+						if( type == Path2d::MOVETO ) {
+							cout << "\n  {\"type\":\"M\",\"p\":[" << pts[ptIdx].x << "," << pts[ptIdx].y << "]}";
+							ptIdx++;
+						} else if( type == Path2d::LINETO ) {
+							cout << "\n  {\"type\":\"L\",\"p\":[" << pts[ptIdx].x << "," << pts[ptIdx].y << "]}";
+							ptIdx++;
+						} else if( type == Path2d::QUADTO ) {
+							cout << "\n  {\"type\":\"Q\",\"c\":[" << pts[ptIdx].x << "," << pts[ptIdx].y
+								 << "],\"p\":[" << pts[ptIdx+1].x << "," << pts[ptIdx+1].y << "]}";
+							ptIdx += 2;
+						} else if( type == Path2d::CUBICTO ) {
+							cout << "\n  {\"type\":\"C\",\"c1\":[" << pts[ptIdx].x << "," << pts[ptIdx].y
+								 << "],\"c2\":[" << pts[ptIdx+1].x << "," << pts[ptIdx+1].y
+								 << "],\"p\":[" << pts[ptIdx+2].x << "," << pts[ptIdx+2].y << "]}";
+							ptIdx += 3;
+						} else if( type == Path2d::CLOSE ) {
+							cout << ",\n  {\"type\":\"Z\"}";
+						}
+					}
+					if( path.isClosed() && (path.getNumSegments() == 0 || path.getSegmentType( path.getNumSegments()-1 ) != Path2d::CLOSE) ) {
+						cout << ",\n  {\"type\":\"Z\"}";
+					}
+					cout << "\n]" << endl;
+				};
+
+				dumpPath( mPath, "=== INPUT PATH ===" );
+
+				cout << "\n=== OFFSET PARAMS ===" << endl;
+				float dist = (mMode == Mode::OFFSET) ? mOffsetDistance : mStrokeWidth / 2.0f;
+				cout << "{\"distance\":" << dist << ",\"tolerance\":" << mTolerance << "}" << endl;
+
+				cout << "\n=== OUTPUT SHAPE (" << mResult.getNumContours() << " contours) ===" << endl;
+				for( size_t c = 0; c < mResult.getNumContours(); ++c ) {
+					dumpPath( mResult.getContour( c ), "Contour " + to_string( c ) + ":" );
+				}
+			}
+			break;
 	}
 }
 
 void BezierOffsetApp::loadPresetShape( PresetShape shape )
 {
 	mPath.clear();
+	mInputShape.clear();
+	mUseShape = false;
 	vec2 center = getWindowCenter();
 
 	switch( shape ) {
@@ -295,6 +350,20 @@ void BezierOffsetApp::loadPresetShape( PresetShape shape )
 			mPath.lineTo( center + vec2( 100, 50 ) );
 			mPath.lineTo( center + vec2( 150, -50 ) );
 			break;
+
+		case PresetShape::GLYPH_A: {
+			Font arial( "Arial", 400.0f );
+			auto glyphs = arial.getGlyphs( "a" );
+			if( !glyphs.empty() ) {
+				mInputShape = arial.getGlyphShape( glyphs[0] );
+				// Center the glyph
+				Rectf bounds = mInputShape.calcBoundingBox();
+				mat3 xform = glm::translate( mat3(), center - bounds.getCenter() );
+				mInputShape.transform( xform );
+				mUseShape = true;
+			}
+			break;
+		}
 	}
 
 	updateResult();
@@ -302,7 +371,8 @@ void BezierOffsetApp::loadPresetShape( PresetShape shape )
 
 void BezierOffsetApp::updateResult()
 {
-	if( mPath.empty() || mPath.getNumSegments() == 0 ) {
+	bool hasInput = mUseShape ? !mInputShape.empty() : (!mPath.empty() && mPath.getNumSegments() > 0);
+	if( !hasInput ) {
 		mResult.clear();
 		return;
 	}
@@ -327,7 +397,12 @@ void BezierOffsetApp::updateResult()
 	}
 
 	if( mMode == Mode::OFFSET ) {
-		mResult = offset( mPath, mOffsetDistance, mTolerance );
+		if( mUseShape ) {
+			mResult = offset( mInputShape, mOffsetDistance, mTolerance );
+		}
+		else {
+			mResult = offset( mPath, mOffsetDistance, mTolerance );
+		}
 	}
 	else {
 		StrokeStyle style( mStrokeWidth );
@@ -346,7 +421,12 @@ void BezierOffsetApp::updateResult()
 			style.withDashes( mDashOffset, pattern );
 		}
 
-		mResult = stroke( mPath, style, mTolerance );
+		if( mUseShape ) {
+			mResult = stroke( mInputShape, style, mTolerance );
+		}
+		else {
+			mResult = stroke( mPath, style, mTolerance );
+		}
 	}
 }
 
@@ -531,6 +611,10 @@ void BezierOffsetApp::drawImGuiControls()
 	if( ImGui::Button( "Zigzag (Join Test)" ) ) {
 		loadPresetShape( PresetShape::SHARP_ZIGZAG );
 	}
+	ImGui::SameLine();
+	if( ImGui::Button( "Glyph 'a'" ) ) {
+		loadPresetShape( PresetShape::GLYPH_A );
+	}
 
 	// Visualization
 	ImGui::Spacing();
@@ -556,23 +640,43 @@ void BezierOffsetApp::drawImGuiControls()
 	ImGui::Checkbox( "Outline", &mShowOutline );
 
 	// Path info
-	if( !mPath.empty() ) {
+	bool hasInput = mUseShape ? !mInputShape.empty() : !mPath.empty();
+	if( hasInput ) {
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::TextColored( ImVec4( 0.2f, 1.0f, 0.2f, 1.0f ), "Path Info" );
 		ImGui::Separator();
 
-		int lineCount = 0, quadCount = 0, cubicCount = 0;
-		for( size_t i = 0; i < mPath.getNumSegments(); ++i ) {
-			auto type = mPath.getSegmentType( i );
-			if( type == Path2d::LINETO ) lineCount++;
-			else if( type == Path2d::QUADTO ) quadCount++;
-			else if( type == Path2d::CUBICTO ) cubicCount++;
+		if( mUseShape ) {
+			size_t totalSegs = 0, totalPts = 0;
+			int lineCount = 0, quadCount = 0, cubicCount = 0;
+			for( const auto& contour : mInputShape.getContours() ) {
+				totalSegs += contour.getNumSegments();
+				totalPts += contour.getNumPoints();
+				for( size_t i = 0; i < contour.getNumSegments(); ++i ) {
+					auto type = contour.getSegmentType( i );
+					if( type == Path2d::LINETO ) lineCount++;
+					else if( type == Path2d::QUADTO ) quadCount++;
+					else if( type == Path2d::CUBICTO ) cubicCount++;
+				}
+			}
+			ImGui::Text( "Original: %zu contours, %zu segments, %zu points",
+				mInputShape.getNumContours(), totalSegs, totalPts );
+			ImGui::Text( "  Lines: %d, Quads: %d, Cubics: %d", lineCount, quadCount, cubicCount );
 		}
+		else {
+			int lineCount = 0, quadCount = 0, cubicCount = 0;
+			for( size_t i = 0; i < mPath.getNumSegments(); ++i ) {
+				auto type = mPath.getSegmentType( i );
+				if( type == Path2d::LINETO ) lineCount++;
+				else if( type == Path2d::QUADTO ) quadCount++;
+				else if( type == Path2d::CUBICTO ) cubicCount++;
+			}
 
-		ImGui::Text( "Original: %zu segments, %zu points", mPath.getNumSegments(), mPath.getNumPoints() );
-		ImGui::Text( "  Lines: %d, Quads: %d, Cubics: %d", lineCount, quadCount, cubicCount );
-		ImGui::Text( "  Closed: %s", mPath.isClosed() ? "Yes" : "No" );
+			ImGui::Text( "Original: %zu segments, %zu points", mPath.getNumSegments(), mPath.getNumPoints() );
+			ImGui::Text( "  Lines: %d, Quads: %d, Cubics: %d", lineCount, quadCount, cubicCount );
+			ImGui::Text( "  Closed: %s", mPath.isClosed() ? "Yes" : "No" );
+		}
 
 		ImGui::Spacing();
 		ImGui::Text( "Result: %zu contours", mResult.getNumContours() );
@@ -671,27 +775,47 @@ void BezierOffsetApp::drawContent()
 		}
 	}
 
-	// Draw original path
-	if( mShowOriginal && !mPath.empty() ) {
-		gl::color( mOriginalColor );
-		gl::lineWidth( 2.0f );
-		gl::draw( mPath );
-		gl::lineWidth( 1.0f );
+	// Draw original path or shape
+	if( mShowOriginal ) {
+		if( mUseShape && !mInputShape.empty() ) {
+			gl::color( mOriginalColor );
+			gl::lineWidth( 2.0f );
+			for( const auto& contour : mInputShape.getContours() ) {
+				gl::draw( contour );
+			}
+			gl::lineWidth( 1.0f );
 
-		// Original control points
-		if( mShowOriginalControlPoints ) {
-			for( size_t i = 0; i < mPath.getNumPoints(); ++i ) {
-				bool isHovered = ((int)i == mHoveredPoint);
-
-				if( isHovered ) {
-					gl::color( Color( 1, 1, 1 ) );
-					gl::drawSolidCircle( mPath.getPoint( i ), 6.0f * pointScale );
-					gl::color( Color( 0.2f, 1.0f, 0.2f ) );
-					gl::drawSolidCircle( mPath.getPoint( i ), 4.5f * pointScale );
+			// Original control points for shape
+			if( mShowOriginalControlPoints ) {
+				for( const auto& contour : mInputShape.getContours() ) {
+					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
+						gl::color( Color( 1, 1, 0 ) );
+						gl::drawSolidCircle( contour.getPoint( i ), 3.5f * pointScale );
+					}
 				}
-				else {
-					gl::color( Color( 1, 1, 0 ) );
-					gl::drawSolidCircle( mPath.getPoint( i ), 3.5f * pointScale );
+			}
+		}
+		else if( !mPath.empty() ) {
+			gl::color( mOriginalColor );
+			gl::lineWidth( 2.0f );
+			gl::draw( mPath );
+			gl::lineWidth( 1.0f );
+
+			// Original control points
+			if( mShowOriginalControlPoints ) {
+				for( size_t i = 0; i < mPath.getNumPoints(); ++i ) {
+					bool isHovered = ((int)i == mHoveredPoint);
+
+					if( isHovered ) {
+						gl::color( Color( 1, 1, 1 ) );
+						gl::drawSolidCircle( mPath.getPoint( i ), 6.0f * pointScale );
+						gl::color( Color( 0.2f, 1.0f, 0.2f ) );
+						gl::drawSolidCircle( mPath.getPoint( i ), 4.5f * pointScale );
+					}
+					else {
+						gl::color( Color( 1, 1, 0 ) );
+						gl::drawSolidCircle( mPath.getPoint( i ), 3.5f * pointScale );
+					}
 				}
 			}
 		}
