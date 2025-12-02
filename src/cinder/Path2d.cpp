@@ -3162,101 +3162,119 @@ Shape2d Path2d::removeSelfIntersections( bool keepOutermost ) const
 
 
 	// =========================================================================
-	// Phase 5: Handle OPEN vs CLOSED paths differently
+	// =========================================================================
+	// T-value based loop skipping (works for both OPEN and CLOSED paths)
+	// For each self-intersection (t1, t2) where t1 < t2, the "loop" is the
+	// portion between t1 and t2. We skip those ranges and stitch the remaining
+	// portions together at the intersection points.
 	// =========================================================================
 
 	bool pathIsClosed = isClosed();
+	// maxT already defined above
 
-	if( !pathIsClosed ) {
-		// =========================================================================
-		// OPEN PATH: T-value based loop skipping
-		// For each self-intersection (t1, t2) where t1 < t2, the "loop" is the
-		// portion between t1 and t2. We skip those ranges and stitch the remaining
-		// portions together at the intersection points.
-		// =========================================================================
+	// Build list of "skip ranges" from the original intersections
+	// Each intersection (t1, t2) where t1 < t2 defines a skip range
+	// For closed paths, if the direct range [t1,t2] is > half the path,
+	// the loop wraps around, so skip [t2,maxT] + [0,t1] instead.
+	std::vector<std::pair<float, float>> skipRanges;
+	float halfPath = maxT / 2.0f;
 
-		float maxT = static_cast<float>( getNumSegments() );
+	for( const auto& isect : intersections ) {
+		float tMin = std::min( isect.t1, isect.t2 );
+		float tMax = std::max( isect.t1, isect.t2 );
+		float directRange = tMax - tMin;
 
-		// Build list of "skip ranges" from the original intersections
-		// Each intersection (t1, t2) where t1 < t2 defines a skip range
-		std::vector<std::pair<float, float>> skipRanges;
-		for( const auto& isect : intersections ) {
-			float tMin = std::min( isect.t1, isect.t2 );
-			float tMax = std::max( isect.t1, isect.t2 );
+		if( pathIsClosed && directRange > halfPath ) {
+			// Loop wraps around the closure - skip the complement
+			// Skip [tMax, maxT] and [0, tMin]
+			if( tMax < maxT - 0.001f ) {
+				skipRanges.push_back( { tMax, maxT } );
+			}
+			if( tMin > 0.001f ) {
+				skipRanges.push_back( { 0.0f, tMin } );
+			}
+		} else {
+			// Normal case - skip [tMin, tMax]
 			skipRanges.push_back( { tMin, tMax } );
 		}
+	}
 
-		// Sort by start t-value
-		std::sort( skipRanges.begin(), skipRanges.end() );
+	// Sort by start t-value
+	std::sort( skipRanges.begin(), skipRanges.end() );
 
-		// Merge overlapping skip ranges
-		std::vector<std::pair<float, float>> mergedSkips;
-		for( const auto& sr : skipRanges ) {
-			if( mergedSkips.empty() || sr.first > mergedSkips.back().second + 0.001f ) {
-				mergedSkips.push_back( sr );
-			} else {
-				// Extend existing range
-				mergedSkips.back().second = std::max( mergedSkips.back().second, sr.second );
-			}
-		}
-
-		// Build "keep ranges" - the portions we want to keep
-		std::vector<std::pair<float, float>> keepRanges;
-		float currentT = 0.0f;
-		for( const auto& skip : mergedSkips ) {
-			if( skip.first > currentT + 0.001f ) {
-				keepRanges.push_back( { currentT, skip.first } );
-			}
-			currentT = skip.second;
-		}
-		if( currentT < maxT - 0.001f ) {
-			keepRanges.push_back( { currentT, maxT } );
-		}
-
-		// If no keep ranges, something went wrong - return original
-		if( keepRanges.empty() ) {
-			result.appendContour( *this );
-			return result;
-		}
-
-		// Build output path by extracting and stitching keep ranges
-		Path2d outputPath;
-		bool firstRange = true;
-
-		for( const auto& range : keepRanges ) {
-			// Extract the portion from range.first to range.second
-			// NOTE: getSubPath expects normalized t ∈ [0,1], but our t-values are
-			// segment-indexed (e.g., t=5.44 means segment 5, position 0.44)
-			// Convert to normalized: t_normalized = t_segment / numSegments
-			float normalizedStart = range.first / maxT;
-			float normalizedEnd = range.second / maxT;
-			Path2d portion = getSubPath( normalizedStart, normalizedEnd );
-
-			if( portion.empty() )
-				continue;
-
-			if( firstRange ) {
-				outputPath = std::move( portion );
-				firstRange = false;
-			} else {
-				// The end of previous range and start of this range should be at
-				// the same intersection point. Just append the new portion.
-				appendPath( outputPath, portion );
-			}
-		}
-
-		if( !outputPath.empty() ) {
-			result.appendContour( std::move( outputPath ) );
+	// Merge overlapping skip ranges
+	std::vector<std::pair<float, float>> mergedSkips;
+	for( const auto& sr : skipRanges ) {
+		if( mergedSkips.empty() || sr.first > mergedSkips.back().second + 0.001f ) {
+			mergedSkips.push_back( sr );
 		} else {
-			result.appendContour( *this );
+			// Extend existing range
+			mergedSkips.back().second = std::max( mergedSkips.back().second, sr.second );
 		}
+	}
 
+	// Build "keep ranges" - the portions we want to keep
+	std::vector<std::pair<float, float>> keepRanges;
+	float currentT = 0.0f;
+	for( const auto& skip : mergedSkips ) {
+		if( skip.first > currentT + 0.001f ) {
+			keepRanges.push_back( { currentT, skip.first } );
+		}
+		currentT = skip.second;
+	}
+	if( currentT < maxT - 0.001f ) {
+		keepRanges.push_back( { currentT, maxT } );
+	}
+
+	// If no keep ranges, something went wrong - return original
+	if( keepRanges.empty() ) {
+		result.appendContour( *this );
 		return result;
 	}
 
+	// Build output path by extracting and stitching keep ranges
+	Path2d outputPath;
+	bool firstRange = true;
+
+	for( const auto& range : keepRanges ) {
+		// Extract the portion from range.first to range.second
+		// NOTE: getSubPath expects normalized t ∈ [0,1], but our t-values are
+		// segment-indexed (e.g., t=5.44 means segment 5, position 0.44)
+		// Convert to normalized: t_normalized = t_segment / numSegments
+		float normalizedStart = range.first / maxT;
+		float normalizedEnd = range.second / maxT;
+		Path2d portion = getSubPath( normalizedStart, normalizedEnd );
+
+		if( portion.empty() )
+			continue;
+
+		if( firstRange ) {
+			outputPath = std::move( portion );
+			firstRange = false;
+		} else {
+			// The end of previous range and start of this range should be at
+			// the same intersection point. Just append the new portion.
+			appendPath( outputPath, portion );
+		}
+	}
+
+	// For closed paths, close the output path
+	if( pathIsClosed && !outputPath.empty() ) {
+		outputPath.close();
+	}
+
+	if( !outputPath.empty() ) {
+		result.appendContour( std::move( outputPath ) );
+	} else {
+		result.appendContour( *this );
+	}
+
+	return result;
+
 	// =========================================================================
-	// CLOSED PATH: Extract all faces via leftmost turn traversal
+	// LEGACY CLOSED PATH CODE (no longer used - kept for reference)
 	// =========================================================================
+	#if 0
 
 	std::vector<std::pair<std::vector<size_t>, float>> cycles;  // cycle, signed area
 
@@ -3331,6 +3349,7 @@ Shape2d Path2d::removeSelfIntersections( bool keepOutermost ) const
 	}
 
 	return result;
+	#endif // legacy code
 }
 
 } // namespace cinder
