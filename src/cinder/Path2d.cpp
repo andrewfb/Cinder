@@ -2292,6 +2292,28 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 		ptIdx += sSegmentTypePointCounts[mSegments[s]];
 	}
 
+	// Pre-compute bounding boxes for all segments (for early rejection)
+	// Uses control polygon convex hull property: curve is contained within control point bounds
+	std::vector<Rectf> segmentBounds( mSegments.size() );
+	ptIdx = 1;
+	for( size_t s = 0; s < mSegments.size(); ++s ) {
+		if( mSegments[s] == CUBICTO || mSegments[s] == QUADTO ) {
+			Rectf bounds( mPoints[ptIdx - 1], mPoints[ptIdx - 1] );
+			size_t numPts = sSegmentTypePointCounts[mSegments[s]];
+			for( size_t p = 0; p <= numPts; ++p ) {  // <= to include endpoint
+				bounds.include( mPoints[ptIdx - 1 + p] );
+			}
+			segmentBounds[s] = bounds;
+		}
+		else if( mSegments[s] == LINETO ) {
+			// Use include() to ensure canonical bounds (x1 <= x2, y1 <= y2)
+			Rectf bounds( mPoints[ptIdx - 1], mPoints[ptIdx - 1] );
+			bounds.include( mPoints[ptIdx] );
+			segmentBounds[s] = bounds;
+		}
+		ptIdx += sSegmentTypePointCounts[mSegments[s]];
+	}
+
 	// Check each cubic segment for self-intersection
 	ptIdx = 1;
 	for( size_t s = 0; s < mSegments.size(); ++s ) {
@@ -2347,6 +2369,11 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 			// Check adjacency: consecutive segments OR first-last for closed paths
 			bool areAdjacent = ( j == i + 1 ) ||
 			                   ( isClosed() && i == firstDrawable && j == lastDrawable );
+
+			// Early rejection: skip intersection tests if bounding boxes don't overlap
+			if( !segmentBounds[i].intersects( segmentBounds[j] ) ) {
+				continue;
+			}
 
 			auto [type2, pts2] = getSegmentPoints( j, segmentFirstPoint[j] );
 			if( pts2.empty() )

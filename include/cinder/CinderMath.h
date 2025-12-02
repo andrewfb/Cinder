@@ -530,21 +530,8 @@ inline int solveCubicStable( T c0, T c1, T c2, T c3, T result[3] )
 	}
 }
 
-//! ITP (Interpolate-Truncate-Project) root finding method.
-//! A hybrid algorithm combining bisection with the regula falsi method,
-//! guaranteeing worst-case performance of bisection while achieving
-//! superlinear convergence for smooth functions.
-//! https://en.wikipedia.org/wiki/ITP_method
-//!
-//! Finds x in [a,b] where f(x) = 0. Requires ya = f(a) < 0 and yb = f(b) > 0.
-//! @param f Function to find root of (callable taking T, returning T)
-//! @param a Lower bound of bracket
-//! @param b Upper bound of bracket
-//! @param epsilon Tolerance for result (stops when interval < 2*epsilon)
-//! @param n0 Slack parameter for iteration count (typically 0 or 1)
-//! @param k1 Tuning parameter controlling truncation (typically 0.2 / (b - a))
-//! @param ya Value of f(a), must be negative
-//! @param yb Value of f(b), must be positive
+//! ITP (Interpolate-Truncate-Project) root finding. Finds x in [\a a, \a b] where f(x) = 0.
+//! Hybrid bisection/regula-falsi with guaranteed worst-case convergence. Requires \a ya = f(a) < 0 and \a yb = f(b) > 0.
 template<typename T, typename F>
 inline T solveItp( F&& f, T a, T b, T epsilon, int n0, T k1, T ya, T yb )
 {
@@ -588,15 +575,6 @@ inline glm::tvec2<T> evalQuadraticBezier( const glm::tvec2<T> p[3], T t )
 {
 	T mt = T( 1 ) - t;
 	return mt * mt * p[0] + T( 2 ) * mt * t * p[1] + t * t * p[2];
-}
-
-//! Evaluate quadratic Bezier derivative at parameter t
-//! Returns the tangent vector (not normalized)
-template<typename T>
-inline glm::tvec2<T> evalQuadraticBezierDeriv( const glm::tvec2<T> p[3], T t )
-{
-	T mt = T( 1 ) - t;
-	return T( 2 ) * ( mt * ( p[1] - p[0] ) + t * ( p[2] - p[1] ) );
 }
 
 //! Evaluate cubic Bezier at parameter t using Bernstein basis
@@ -752,9 +730,7 @@ constexpr double GAUSS_LEGENDRE_5_NODES[] = {
 // Line-Segment Intersection (ported from Kurbo)
 //=============================================================================
 
-//! Result of a line-segment intersection.
-//! @param segmentT Parameter on the segment being tested (in [0, 1])
-//! @param lineT Parameter on the probe line (in [0, 1])
+//! Result of a line-segment intersection with parameters \a segmentT and \a lineT in [0,1].
 template<typename T>
 struct LineIntersection {
 	T segmentT;  //!< Parameter on the segment (curve or line being tested)
@@ -764,14 +740,7 @@ struct LineIntersection {
 	LineIntersection( T segT, T linT ) : segmentT( segT ), lineT( linT ) {}
 };
 
-//! Convert quadratic Bezier control points to polynomial coefficients.
-//! For coordinate x: x(t) = c0 + c1*t + c2*t²
-//! @param x0 First control point coordinate
-//! @param x1 Second control point coordinate (control point)
-//! @param x2 Third control point coordinate
-//! @param c0 Output constant coefficient
-//! @param c1 Output linear coefficient
-//! @param c2 Output quadratic coefficient
+//! Convert quadratic Bezier control points (\a x0, \a x1, \a x2) to polynomial coefficients x(t) = c0 + c1*t + c2*t²
 template<typename T>
 inline void quadraticBezierCoeffs( T x0, T x1, T x2, T& c0, T& c1, T& c2 )
 {
@@ -780,16 +749,7 @@ inline void quadraticBezierCoeffs( T x0, T x1, T x2, T& c0, T& c1, T& c2 )
 	c2 = x2 - T( 2 ) * x1 + x0;
 }
 
-//! Convert cubic Bezier control points to polynomial coefficients.
-//! For coordinate x: x(t) = c0 + c1*t + c2*t² + c3*t³
-//! @param x0 First control point coordinate
-//! @param x1 Second control point coordinate
-//! @param x2 Third control point coordinate
-//! @param x3 Fourth control point coordinate
-//! @param c0 Output constant coefficient
-//! @param c1 Output linear coefficient
-//! @param c2 Output quadratic coefficient
-//! @param c3 Output cubic coefficient
+//! Convert cubic Bezier control points (\a x0, \a x1, \a x2, \a x3) to polynomial coefficients x(t) = c0 + c1*t + c2*t² + c3*t³
 template<typename T>
 inline void cubicBezierCoeffs( T x0, T x1, T x2, T x3, T& c0, T& c1, T& c2, T& c3 )
 {
@@ -799,13 +759,7 @@ inline void cubicBezierCoeffs( T x0, T x1, T x2, T x3, T& c0, T& c1, T& c2, T& c
 	c3 = x3 - T( 3 ) * x2 + T( 3 ) * x1 - x0;
 }
 
-//! Find intersection between two line segments.
-//! @param seg0 First endpoint of segment
-//! @param seg1 Second endpoint of segment
-//! @param line0 First endpoint of probe line
-//! @param line1 Second endpoint of probe line
-//! @param result Output array (size 1) for intersection result
-//! @return Number of intersections (0 or 1)
+//! Find intersection between line segment (\a seg0 to \a seg1) and probe line (\a line0 to \a line1). Returns 0 or 1.
 template<typename T>
 inline int intersectLineLine( const glm::tvec2<T>& seg0, const glm::tvec2<T>& seg1,
                                const glm::tvec2<T>& line0, const glm::tvec2<T>& line1,
@@ -839,14 +793,7 @@ inline int intersectLineLine( const glm::tvec2<T>& seg0, const glm::tvec2<T>& se
 	return 1;
 }
 
-//! Find intersections between a quadratic Bezier and a line segment.
-//! Uses polynomial substitution: convert curve to polynomial, substitute into
-//! line equation, solve resulting quadratic.
-//! @param q Array of 3 control points for quadratic Bezier
-//! @param line0 First endpoint of probe line
-//! @param line1 Second endpoint of probe line
-//! @param result Output array (size 2) for intersection results
-//! @return Number of intersections (0, 1, or 2)
+//! Find intersections between quadratic Bezier \a q and line segment (\a line0 to \a line1). Returns 0-2.
 template<typename T>
 inline int intersectLineQuadratic( const glm::tvec2<T> q[3],
                                     const glm::tvec2<T>& line0, const glm::tvec2<T>& line1,
@@ -900,14 +847,7 @@ inline int intersectLineQuadratic( const glm::tvec2<T> q[3],
 	return count;
 }
 
-//! Find intersections between a cubic Bezier and a line segment.
-//! Uses polynomial substitution: convert curve to polynomial, substitute into
-//! line equation, solve resulting cubic.
-//! @param c Array of 4 control points for cubic Bezier
-//! @param line0 First endpoint of probe line
-//! @param line1 Second endpoint of probe line
-//! @param result Output array (size 3) for intersection results
-//! @return Number of intersections (0, 1, 2, or 3)
+//! Find intersections between cubic Bezier \a c and line segment (\a line0 to \a line1). Returns 0-3.
 template<typename T>
 inline int intersectLineCubic( const glm::tvec2<T> c[4],
                                 const glm::tvec2<T>& line0, const glm::tvec2<T>& line1,
@@ -965,8 +905,7 @@ inline int intersectLineCubic( const glm::tvec2<T> c[4],
 // Cubic-Cubic Bezier Intersection (recursive subdivision)
 //=============================================================================
 
-//! Result of a curve-curve intersection.
-//! @tparam T Scalar type (float or double)
+//! Result of a curve-curve intersection with parameters \a t1 and \a t2 on the respective curves.
 template<typename T>
 struct CurveIntersection {
 	T t1;  //!< Parameter on first curve (in [0, 1])
@@ -1058,11 +997,7 @@ void intersectCubicCubicRecursive(
 
 } // namespace detail
 
-//! Find intersections between two cubic Bezier curves using recursive subdivision.
-//! @param c1 Array of 4 control points for first cubic Bezier
-//! @param c2 Array of 4 control points for second cubic Bezier
-//! @param tolerance Approximation tolerance (smaller = more accurate)
-//! @return Vector of intersection results (t1, t2 parameter pairs)
+//! Find intersections between cubics \a c1 and \a c2 using recursive subdivision. \a tolerance controls accuracy.
 template<typename T>
 inline std::vector<CurveIntersection<T>> intersectCubicCubic(
 	const glm::tvec2<T> c1[4],
@@ -1096,12 +1031,7 @@ inline std::vector<CurveIntersection<T>> intersectCubicCubic(
 	return results;
 }
 
-//! Find self-intersections within a single cubic Bezier curve.
-//! Uses recursive subdivision to find where the curve crosses itself.
-//! @param c Array of 4 control points for cubic Bezier
-//! @param tolerance Approximation tolerance
-//! @param minSeparation Minimum t-separation to report (to avoid false positives at subdivision boundaries)
-//! @return Vector of intersection results (t1, t2 are parameters on the original curve, t1 < t2)
+//! Find self-intersections in cubic \a c. \a minSeparation filters out near-endpoint noise.
 template<typename T>
 inline std::vector<CurveIntersection<T>> selfIntersectCubic(
 	const glm::tvec2<T> c[4],

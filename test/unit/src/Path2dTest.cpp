@@ -6,6 +6,9 @@
 
 #include "catch.hpp"
 
+#include <chrono>
+#include <iomanip>
+
 using namespace ci;
 using namespace ci::app;
 using namespace std;
@@ -1063,4 +1066,102 @@ TEST_CASE("offset() with removeSelfIntersections")
 		// Both should produce similar results since no self-intersection to remove
 		REQUIRE( withFlag.getContours().size() == withoutFlag.getContours().size() );
 	}
+}
+
+//=============================================================================
+// Benchmark: findSelfIntersections performance
+//=============================================================================
+
+// Deterministic path generator for benchmarking
+// Uses LCG with fixed seed for reproducibility
+namespace {
+	struct DeterministicRng {
+		uint32_t state;
+		DeterministicRng( uint32_t seed ) : state( seed ) {}
+
+		uint32_t next() {
+			state = state * 1103515245 + 12345;
+			return ( state >> 16 ) & 0x7fff;
+		}
+
+		float nextFloat( float min, float max ) {
+			return min + ( max - min ) * ( next() / 32767.0f );
+		}
+	};
+
+	// Generate a deterministic path with n cubic segments that may self-intersect
+	Path2d generateBenchmarkPath( size_t numSegments, uint32_t seed ) {
+		DeterministicRng rng( seed );
+		Path2d path;
+
+		float x = rng.nextFloat( 100, 400 );
+		float y = rng.nextFloat( 100, 400 );
+		path.moveTo( x, y );
+
+		for( size_t i = 0; i < numSegments; ++i ) {
+			// Mostly cubics (80%), some lines (20%) - cubics are worst case
+			if( rng.next() % 5 == 0 ) {
+				x += rng.nextFloat( -100, 100 );
+				y += rng.nextFloat( -100, 100 );
+				path.lineTo( x, y );
+			}
+			else {
+				float c1x = x + rng.nextFloat( -80, 80 );
+				float c1y = y + rng.nextFloat( -80, 80 );
+				float c2x = x + rng.nextFloat( -80, 80 );
+				float c2y = y + rng.nextFloat( -80, 80 );
+				x += rng.nextFloat( -100, 100 );
+				y += rng.nextFloat( -100, 100 );
+				path.curveTo( c1x, c1y, c2x, c2y, x, y );
+			}
+		}
+
+		return path;
+	}
+}
+
+TEST_CASE("Benchmark: findSelfIntersections", "[.benchmark]")
+{
+	// Test segment counts: 1, 5, 10, 20, 30, 40, 50, 60, 70, 77
+	std::vector<size_t> segmentCounts = { 1, 5, 10, 20, 30, 40, 50, 60, 70, 77 };
+
+	// Fixed seed ensures identical paths across runs
+	constexpr uint32_t BENCHMARK_SEED = 0xDEADBEEF;
+	constexpr int ITERATIONS = 10;
+
+	console() << "\n=== findSelfIntersections Benchmark ===" << std::endl;
+	console() << "Segments\tAvg(ms)\t\tIsects\tCubics\tLines" << std::endl;
+
+	for( size_t numSegs : segmentCounts ) {
+		// Generate path with fixed seed + segment count for determinism
+		Path2d path = generateBenchmarkPath( numSegs, BENCHMARK_SEED + static_cast<uint32_t>( numSegs ) );
+
+		// Count segment types
+		size_t cubics = 0, lines = 0;
+		for( auto seg : path.getSegments() ) {
+			if( seg == Path2d::CUBICTO ) cubics++;
+			else if( seg == Path2d::LINETO ) lines++;
+		}
+
+		// Time multiple iterations
+		auto start = std::chrono::high_resolution_clock::now();
+		size_t totalIntersections = 0;
+
+		for( int i = 0; i < ITERATIONS; ++i ) {
+			auto isects = path.findSelfIntersections();
+			totalIntersections += isects.size();
+		}
+
+		auto end = std::chrono::high_resolution_clock::now();
+		double avgMs = std::chrono::duration<double, std::milli>( end - start ).count() / ITERATIONS;
+		size_t avgIsects = totalIntersections / ITERATIONS;
+
+		console() << numSegs << "\t\t"
+		          << std::fixed << std::setprecision( 3 ) << avgMs << "\t\t"
+		          << avgIsects << "\t" << cubics << "\t" << lines << std::endl;
+	}
+
+	console() << "========================================\n" << std::endl;
+
+	REQUIRE( true );  // Always pass - this is a benchmark
 }
