@@ -87,8 +87,6 @@ private:
 	bool        mShowResult = true;
 	bool        mShowOriginalControlPoints = true;
 	bool        mShowResultControlPoints = false;
-	bool        mShowFilled = true;
-	bool        mShowOutline = true;
 	Color       mOriginalColor = Color( 1.0f, 0.5f, 0.25f );
 	Color       mResultColor = Color( 0.25f, 0.6f, 0.9f );
 };
@@ -503,6 +501,18 @@ void BezierOffsetApp::updateResult()
 		else {
 			mResult = stroke( mPath, style, mTolerance );
 		}
+
+		// Apply self-intersection removal if enabled
+		if( mRemoveSelfIntersections && !mResult.empty() ) {
+			Shape2d cleaned;
+			for( const auto& contour : mResult.getContours() ) {
+				Shape2d contourCleaned = contour.removeSelfIntersections();
+				for( const auto& c : contourCleaned.getContours() ) {
+					cleaned.appendContour( c );
+				}
+			}
+			mResult = cleaned;
+		}
 	}
 }
 
@@ -688,6 +698,14 @@ void BezierOffsetApp::drawImGuiControls()
 		ImGui::Dummy( ImVec2( previewWidth, previewHeight ) );
 
 		ImGui::EndDisabled();
+
+		ImGui::Spacing();
+		if( ImGui::Checkbox( "Remove Self-Intersections", &mRemoveSelfIntersections ) ) {
+			updateResult();
+		}
+		if( ImGui::IsItemHovered() ) {
+			ImGui::SetTooltip( "Remove loops that occur at sharp corners\nwhen the stroke width exceeds the curve radius" );
+		}
 	}
 
 	// Presets
@@ -735,8 +753,6 @@ void BezierOffsetApp::drawImGuiControls()
 
 	ImGui::Checkbox( "Original Control Points", &mShowOriginalControlPoints );
 	ImGui::Checkbox( "Result Control Points", &mShowResultControlPoints );
-	ImGui::Checkbox( "Filled", &mShowFilled );
-	ImGui::Checkbox( "Outline", &mShowOutline );
 
 	// Path info
 	bool hasInput = mUseShape ? !mInputShape.empty() : !mPath.empty();
@@ -845,38 +861,30 @@ void BezierOffsetApp::drawContent()
 				Color gradColor = mOriginalColor * (1.0f - t) + mResultColor * t;
 				float alpha = (mNumOffsetCurves > 3) ? (0.3f + 0.7f * t) : 0.7f;
 
-				if( mShowFilled ) {
-					gl::color( ColorA( gradColor, alpha * 0.5f ) );
-					gl::draw( offsetResult );
-				}
+				gl::color( ColorA( gradColor, alpha * 0.5f ) );
+				gl::draw( offsetResult );
 
-				if( mShowOutline ) {
-					gl::color( ColorA( gradColor, alpha ) );
-					for( const auto& contour : offsetResult.getContours() ) {
-						gl::draw( contour );
-					}
+				gl::color( ColorA( gradColor, alpha ) );
+				for( const auto& contour : offsetResult.getContours() ) {
+					gl::draw( contour );
 				}
 			}
 		}
 		else {
-			if( mShowFilled ) {
-				gl::color( ColorA( mResultColor, 0.5f ) );
-				gl::draw( mResult );
+			gl::color( ColorA( mResultColor, 0.5f ) );
+			gl::draw( mResult );
+
+			gl::color( ColorA( mResultColor.r * 1.3f, mResultColor.g * 1.3f, mResultColor.b * 1.3f, 0.8f ) );
+			for( const auto& contour : mResult.getContours() ) {
+				gl::draw( contour );
 			}
 
-			if( mShowOutline ) {
-				gl::color( ColorA( mResultColor.r * 1.3f, mResultColor.g * 1.3f, mResultColor.b * 1.3f, 0.8f ) );
-				for( const auto& contour : mResult.getContours() ) {
-					gl::draw( contour );
-				}
-			}
-
-			// Result control points
+			// Result control points - green outline circles
 			if( mShowResultControlPoints ) {
-				gl::color( ColorA( mResultColor, 0.6f ) );
+				gl::color( Color( 0.2f, 0.9f, 0.2f ) );
 				for( const auto& contour : mResult.getContours() ) {
 					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
-						gl::drawSolidCircle( contour.getPoint( i ), 2.0f * pointScale );
+						gl::drawStrokedCircle( contour.getPoint( i ), 3.0f * pointScale );
 					}
 				}
 			}
