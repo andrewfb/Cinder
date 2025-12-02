@@ -12,7 +12,6 @@
 #include "cinder/CanvasUi.h"
 #include "cinder/CinderImGui.h"
 #include "cinder/Font.h"
-#include "cinder/Log.h"
 
 using namespace ci;
 using namespace ci::app;
@@ -93,23 +92,14 @@ private:
 
 void BezierOffsetApp::setup()
 {
-	CI_LOG_I( "Initializing BezierOffset Application" );
-
 	ImGui::Initialize();
 
-	// Setup canvas for pan/zoom - unbounded for drawing anywhere
+	// Setup canvas for pan/zoom
 	mCanvas.connect( getWindow() );
 	mCanvas.setZoomLimits( 0.1f, 10.0f );
-	// Use Alt+Left or Middle mouse for pan so Left mouse is free for drawing
-	mCanvas.setPanMouseButtons( {
-		{ MouseEvent::LEFT_DOWN, MouseEvent::ALT_DOWN },
-		{ MouseEvent::MIDDLE_DOWN, 0 }
-	} );
 
 	// Start with an S-curve
 	loadPresetShape( PresetShape::OPEN_S_CURVE );
-
-	CI_LOG_I( "BezierOffset ready" );
 }
 
 void BezierOffsetApp::mouseDown( MouseEvent event )
