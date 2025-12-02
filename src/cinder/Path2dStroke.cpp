@@ -2559,7 +2559,8 @@ Shape2d offset( const Path2d& path, float distance, Join join, float miterLimit,
 		bool keepOutermost = ( distance >= 0.0f );
 		Shape2d cleaned;
 		for( const auto& contour : result.getContours() ) {
-			cleaned.appendContour( contour.removeSelfIntersections( keepOutermost ) );
+			// removeSelfIntersections now returns Shape2d (may have multiple contours)
+			cleaned.append( contour.removeSelfIntersections( keepOutermost ) );
 		}
 		return cleaned;
 	}

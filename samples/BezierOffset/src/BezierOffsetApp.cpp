@@ -319,9 +319,13 @@ void BezierOffsetApp::keyDown( KeyEvent event )
 					}
 
 					// Show what removeSelfIntersections produces
-					Path2d cleaned = contour.removeSelfIntersections();
-					cout << "  After removeSelfIntersections: " << cleaned.getNumSegments() << " segments, "
-					     << cleaned.getNumPoints() << " points" << endl;
+					Shape2d cleanedShape = contour.removeSelfIntersections();
+					cout << "  After removeSelfIntersections: " << cleanedShape.getNumContours() << " contours" << endl;
+					for( size_t c = 0; c < cleanedShape.getNumContours(); ++c ) {
+						const auto& cleaned = cleanedShape.getContour( c );
+						cout << "    Contour " << c << ": " << cleaned.getNumSegments() << " segments, "
+						     << cleaned.getNumPoints() << " points" << endl;
+					}
 
 					// Dump the raw contour path
 					cout << "  Raw contour path:" << endl;

@@ -30,8 +30,12 @@
 
 #include "cinder/CinderMath.h"
 #include "cinder/Path2d.h"
+#include "cinder/Shape2d.h"
 
 #include <algorithm>
+#include <map>
+#include <set>
+#include <cfloat>
 #include <iterator>
 
 using std::vector;
@@ -2434,6 +2438,13 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 					}
 				}
 
+				// For first-last segments (even on open paths): filter out start==end intersection
+				// This handles open paths that return to their starting point
+				if( i == firstDrawable && j == lastDrawable ) {
+					if( isect.t1 < ENDPOINT_THRESHOLD && isect.t2 > 1.0 - ENDPOINT_THRESHOLD )
+						continue;
+				}
+
 				SelfIntersection si;
 				si.segment1 = i;
 				si.segment2 = j;
@@ -2692,13 +2703,20 @@ std::vector<Path2d> Path2d::splitAtMultiple( const std::vector<float>& tValues )
 		return results;
 	}
 
-	// Split iteratively
+	// Split iteratively, tracking the range of the remaining path
 	Path2d remaining = *this;
-	float offset = 0.0f;
+	float rangeStart = 0.0f;  // Start of current remaining's range in original coordinates
+	float rangeEnd = maxT;    // End of current remaining's range in original coordinates
 
 	for( float t : sortedT ) {
-		float adjustedT = t - offset;
-		if( adjustedT <= 0.0f )
+		if( t <= rangeStart || t >= rangeEnd )
+			continue;
+
+		// Convert original t to the remaining path's local coordinates [0, numSegments]
+		float remainingMaxT = static_cast<float>( remaining.getNumSegments() );
+		float adjustedT = ( t - rangeStart ) / ( rangeEnd - rangeStart ) * remainingMaxT;
+
+		if( adjustedT <= 0.0f || adjustedT >= remainingMaxT )
 			continue;
 
 		auto [first, second] = remaining.splitAt( adjustedT );
@@ -2706,7 +2724,8 @@ std::vector<Path2d> Path2d::splitAtMultiple( const std::vector<float>& tValues )
 			results.push_back( std::move( first ) );
 		}
 		remaining = std::move( second );
-		offset = t;
+		rangeStart = t;  // Update the start of the remaining range
+		// rangeEnd stays the same (we're always splitting towards the end)
 	}
 
 	// Add final segment
@@ -2718,10 +2737,15 @@ std::vector<Path2d> Path2d::splitAtMultiple( const std::vector<float>& tValues )
 }
 
 //=============================================================================
-// Self-Intersection Removal
+// Self-Intersection Removal - Graph-Based Algorithm
 //=============================================================================
 
 namespace {
+
+// Epsilon for node welding and point comparison
+// Note: Must be large enough to handle floating-point errors from bezier subdivision
+constexpr float WELD_EPSILON = 1e-3f;
+
 // Helper to append segments from one path to another
 void appendPath( Path2d& dest, const Path2d& src )
 {
@@ -2748,82 +2772,562 @@ void appendPath( Path2d& dest, const Path2d& src )
 		}
 	}
 }
+
+// Graph structures for planar subdivision
+struct GraphNode {
+	vec2 pos;
+	std::vector<size_t> outgoingHalfEdges;
+};
+
+struct HalfEdge {
+	size_t fromNode;
+	size_t toNode;
+	size_t twinIdx;           // SIZE_MAX if no twin (open path endpoints)
+	Path2d geometry;          // The curve segment
+	vec2 outgoingTangent;     // Direction leaving fromNode (normalized)
+	bool visited = false;
+};
+
+// Cross product for 2D vectors
+inline float cross2d( const vec2& a, const vec2& b ) {
+	return a.x * b.y - a.y * b.x;
+}
+
+// Compare angles using quadrant + cross product (more robust than atan2)
+// Returns true if angle of 'a' is less than angle of 'b' in CCW order from +X
+bool compareAnglesCCW( const vec2& a, const vec2& b ) {
+	auto quadrant = []( const vec2& v ) -> int {
+		if( v.y >= 0 ) return v.x >= 0 ? 0 : 1;
+		else return v.x < 0 ? 2 : 3;
+	};
+	int qa = quadrant( a );
+	int qb = quadrant( b );
+	if( qa != qb ) return qa < qb;
+	return cross2d( a, b ) > 0;
+}
+
+// Find or create a node at the given position
+size_t findOrCreateNode( std::vector<GraphNode>& nodes, const vec2& pos ) {
+	for( size_t i = 0; i < nodes.size(); ++i ) {
+		if( glm::distance( nodes[i].pos, pos ) < WELD_EPSILON ) {
+			return i;
+		}
+	}
+	nodes.push_back( { pos, {} } );
+	return nodes.size() - 1;
+}
+
+// Get tangent at start of a path segment (for outgoing direction)
+vec2 getStartTangent( const Path2d& path ) {
+	if( path.empty() || path.getNumSegments() == 0 )
+		return vec2( 1, 0 );
+
+	vec2 start = path.getPoint( 0 );
+	vec2 tangent = path.getTangent( 0.001f );  // Slightly after start
+	float len = glm::length( tangent );
+	if( len < 1e-8f ) {
+		// Fallback: use chord to next point
+		if( path.getPoints().size() > 1 ) {
+			tangent = path.getPoints()[1] - start;
+			len = glm::length( tangent );
+		}
+	}
+	return len > 1e-8f ? tangent / len : vec2( 1, 0 );
+}
+
+// Get tangent at end of a path segment (for incoming direction)
+vec2 getEndTangent( const Path2d& path ) {
+	if( path.empty() || path.getNumSegments() == 0 )
+		return vec2( 1, 0 );
+
+	float maxT = static_cast<float>( path.getNumSegments() );
+	vec2 tangent = path.getTangent( maxT - 0.001f );  // Slightly before end
+	float len = glm::length( tangent );
+	if( len < 1e-8f ) {
+		// Fallback: use chord from previous point
+		const auto& pts = path.getPoints();
+		if( pts.size() > 1 ) {
+			tangent = pts.back() - pts[pts.size() - 2];
+			len = glm::length( tangent );
+		}
+	}
+	return len > 1e-8f ? tangent / len : vec2( 1, 0 );
+}
+
+// Compute signed area using shoelace formula on path control points
+// Positive = CCW, Negative = CW
+float computePathSignedArea( const Path2d& path ) {
+	const auto& pts = path.getPoints();
+	if( pts.size() < 3 ) return 0.0f;
+
+	double sum = 0;
+	size_t n = pts.size();
+	for( size_t i = 0; i < n; ++i ) {
+		size_t j = ( i + 1 ) % n;
+		sum += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+	}
+	return static_cast<float>( sum * 0.5 );
+}
+
+// Reverse a Path2d
+Path2d reversePath( const Path2d& path ) {
+	Path2d result;
+	if( path.empty() ) return result;
+
+	// Get all points and segment types
+	const auto& pts = path.getPoints();
+	const auto& segs = path.getSegments();
+
+	if( pts.empty() ) return result;
+
+	// Start at the end point
+	result.moveTo( pts.back() );
+
+	// Walk backwards through segments
+	size_t ptIdx = pts.size() - 1;
+	for( int s = static_cast<int>( segs.size() ) - 1; s >= 0; --s ) {
+		Path2d::SegmentType segType = segs[s];
+
+		switch( segType ) {
+			case Path2d::LINETO:
+				ptIdx -= 1;
+				result.lineTo( pts[ptIdx] );
+				break;
+			case Path2d::QUADTO:
+				// Quadratic: control point, then endpoint (reversed order)
+				result.quadTo( pts[ptIdx - 1], pts[ptIdx - 2] );
+				ptIdx -= 2;
+				break;
+			case Path2d::CUBICTO:
+				// Cubic: reverse control points
+				result.curveTo( pts[ptIdx - 1], pts[ptIdx - 2], pts[ptIdx - 3] );
+				ptIdx -= 3;
+				break;
+			default:
+				break;
+		}
+	}
+
+	return result;
+}
+
+// Compute signed area of a cycle (positive = CCW, negative = CW)
+float computeCycleSignedArea( const std::vector<HalfEdge>& halfEdges,
+                               const std::vector<size_t>& cycle ) {
+	if( cycle.empty() ) return 0.0f;
+
+	// Concatenate all geometry and compute signed area
+	Path2d combined;
+	for( size_t heIdx : cycle ) {
+		const auto& he = halfEdges[heIdx];
+		if( combined.empty() ) {
+			combined = he.geometry;
+		} else {
+			appendPath( combined, he.geometry );
+		}
+	}
+
+	if( combined.empty() ) return 0.0f;
+	return computePathSignedArea( combined );
+}
+
+// Extract a cycle starting from a half-edge using proper DCEL face walk
+// The correct rule: at each node, take the edge that is PREVIOUS in the
+// CCW-sorted adjacency list from the incoming edge's twin.
+// This traces the LEFT face of each half-edge.
+std::vector<size_t> extractCycle( std::vector<GraphNode>& nodes,
+                                   std::vector<HalfEdge>& halfEdges,
+                                   size_t startHeIdx ) {
+	std::vector<size_t> cycle;
+	size_t currentHe = startHeIdx;
+	size_t startFromNode = halfEdges[startHeIdx].fromNode;
+
+	while( true ) {
+		if( halfEdges[currentHe].visited ) {
+			// We've completed the cycle or hit an already-visited edge
+			break;
+		}
+
+		halfEdges[currentHe].visited = true;
+		cycle.push_back( currentHe );
+
+		size_t toNodeIdx = halfEdges[currentHe].toNode;
+		const GraphNode& toNode = nodes[toNodeIdx];
+		size_t twinIdx = halfEdges[currentHe].twinIdx;
+
+		// Find the next half-edge using DCEL face walk:
+		// Find twin's position in sorted list, take PREVIOUS (wrap around)
+		size_t nextHe = SIZE_MAX;
+
+		if( twinIdx != SIZE_MAX && toNode.outgoingHalfEdges.size() > 1 ) {
+			// Find twin in the sorted adjacency list
+			const auto& adj = toNode.outgoingHalfEdges;
+			for( size_t i = 0; i < adj.size(); ++i ) {
+				if( adj[i] == twinIdx ) {
+					// Take the PREVIOUS element (wrapping around)
+					// This gives us the left face of the current half-edge
+					size_t prevIdx = ( i == 0 ) ? adj.size() - 1 : i - 1;
+					size_t candidate = adj[prevIdx];
+					// Skip if already visited
+					if( !halfEdges[candidate].visited ) {
+						nextHe = candidate;
+					}
+					break;
+				}
+			}
+		}
+
+		// Fallback: if no twin or couldn't find in list, try any unvisited edge
+		if( nextHe == SIZE_MAX ) {
+			for( size_t heIdx : toNode.outgoingHalfEdges ) {
+				if( !halfEdges[heIdx].visited && heIdx != twinIdx ) {
+					nextHe = heIdx;
+					break;
+				}
+			}
+		}
+
+		if( nextHe == SIZE_MAX ) {
+			// No more edges - walk ended (incomplete cycle for open paths)
+			break;
+		}
+
+		currentHe = nextHe;
+
+		// Check if we've returned to the start node
+		if( halfEdges[currentHe].fromNode == startFromNode ) {
+			// Check if this completes the cycle (returning to start edge's from-node)
+			break;
+		}
+	}
+
+	return cycle;
+}
+
+// Reconstruct a Path2d from a cycle of half-edges
+Path2d reconstructPathFromCycle( const std::vector<HalfEdge>& halfEdges,
+                                  const std::vector<size_t>& cycle ) {
+	Path2d result;
+	for( size_t heIdx : cycle ) {
+		const auto& he = halfEdges[heIdx];
+		if( result.empty() ) {
+			result = he.geometry;
+		} else {
+			appendPath( result, he.geometry );
+		}
+	}
+	return result;
+}
+
 } // anonymous namespace
 
-Path2d Path2d::removeSelfIntersections( bool keepOutermost ) const
+Shape2d Path2d::removeSelfIntersections( bool keepOutermost ) const
 {
+	Shape2d result;
+
+	// Empty path returns empty result
+	if( empty() ) {
+		return result;
+	}
+
 	// Find all self-intersections
 	auto intersections = findSelfIntersections();
 
 	if( intersections.empty() ) {
-		return *this;  // No intersections, return original
+		// No intersections, return original as single contour
+		result.appendContour( *this );
+		return result;
 	}
 
-	// For offset curves, at each self-intersection we have a loop between t1 and t2.
-	// We want to "skip" the loop by going from t1 directly to t2.
-	//
-	// The algorithm:
-	// 1. Collect skip ranges [t1, t2] from each intersection
-	// 2. Merge overlapping ranges
-	// 3. Keep segments outside of skip ranges: [0, skip1.t1], [skip1.t2, skip2.t1], etc.
+	// =========================================================================
+	// Phase 1+2: Use splitAtMultiple to create atomic edges at intersection points
+	// =========================================================================
 
-	// Collect and sort skip ranges
-	std::vector<std::pair<float, float>> skipRanges;
+	// Collect all unique t values from intersections
+	// findSelfIntersections returns t values in segment-indexed format: segment + localT
+	// where segment is an integer and localT is in [0, 1]
+	std::set<float> tValues;
+	float maxT = static_cast<float>( getNumSegments() );
+
 	for( const auto& isect : intersections ) {
-		skipRanges.emplace_back( isect.t1, isect.t2 );
-	}
-	std::sort( skipRanges.begin(), skipRanges.end() );
+		// Only filter t values too close to path start/end (avoid degenerate edges)
+		// Do NOT filter based on segment boundaries - intersections at segment
+		// endpoints are valid and we need nodes there
+		constexpr float SNAP_EPSILON = 1e-4f;
 
-	// Merge overlapping skip ranges
-	std::vector<std::pair<float, float>> merged;
-	merged.push_back( skipRanges[0] );
-	for( size_t i = 1; i < skipRanges.size(); ++i ) {
-		if( skipRanges[i].first <= merged.back().second ) {
-			merged.back().second = std::max( merged.back().second, skipRanges[i].second );
-		}
-		else {
-			merged.push_back( skipRanges[i] );
-		}
+		// Include t1 if not at path start/end
+		if( isect.t1 > SNAP_EPSILON && isect.t1 < maxT - SNAP_EPSILON )
+			tValues.insert( isect.t1 );
+		// Include t2 if not at path start/end
+		if( isect.t2 > SNAP_EPSILON && isect.t2 < maxT - SNAP_EPSILON )
+			tValues.insert( isect.t2 );
 	}
 
-	// Determine which ranges to KEEP (inverse of skip ranges)
-	std::vector<std::pair<float, float>> keepRanges;
-	float maxT = static_cast<float>( mSegments.size() );
-	float currentT = 0.0f;
+	// Split path at all intersection points
+	std::vector<float> splitTs( tValues.begin(), tValues.end() );
+	std::vector<Path2d> atomicEdges = splitAtMultiple( splitTs );
 
-	for( const auto& skip : merged ) {
-		if( currentT < skip.first ) {
-			keepRanges.emplace_back( currentT, skip.first );
-		}
-		currentT = skip.second;
+	// Filter out empty or degenerate edges
+	atomicEdges.erase(
+		std::remove_if( atomicEdges.begin(), atomicEdges.end(),
+			[]( const Path2d& p ) {
+				if( p.empty() || p.getNumSegments() == 0 )
+					return true;
+				// Check for degenerate (zero-length)
+				vec2 start = p.getPoint( 0 );
+				vec2 end = p.getPosition( static_cast<float>( p.getNumSegments() ) );
+				return glm::distance( start, end ) < WELD_EPSILON;
+			} ),
+		atomicEdges.end()
+	);
+
+	if( atomicEdges.empty() ) {
+		result.appendContour( *this );
+		return result;
 	}
-	if( currentT < maxT ) {
-		keepRanges.emplace_back( currentT, maxT );
+
+	// =========================================================================
+	// Phase 3: Build planar graph with half-edges
+	// =========================================================================
+
+	// First, collect canonical intersection points - these are more accurate
+	// than the endpoints we get from splitting
+	std::vector<vec2> intersectionPoints;
+	for( const auto& isect : intersections ) {
+		intersectionPoints.push_back( isect.point );
 	}
 
-	if( keepRanges.empty() ) {
-		return Path2d();  // Everything was skipped
+	// Helper to snap a point to a nearby intersection point
+	auto snapToIntersection = [&intersectionPoints]( vec2 pt ) -> vec2 {
+		constexpr float SNAP_RADIUS = 5.0f;  // Larger radius to account for split errors
+		for( const auto& ip : intersectionPoints ) {
+			if( glm::distance( pt, ip ) < SNAP_RADIUS ) {
+				return ip;  // Use the canonical intersection point
+			}
+		}
+		return pt;  // No nearby intersection, keep original
+	};
+
+	std::vector<GraphNode> nodes;
+	std::vector<HalfEdge> halfEdges;
+
+	for( auto& edge : atomicEdges ) {
+		if( edge.empty() ) continue;
+
+		vec2 startPt = snapToIntersection( edge.getPoint( 0 ) );
+		vec2 endPt = snapToIntersection( edge.getPosition( static_cast<float>( edge.getNumSegments() ) ) );
+
+		if( glm::distance( startPt, endPt ) < WELD_EPSILON ) continue;
+
+		size_t fromNode = findOrCreateNode( nodes, startPt );
+		size_t toNode = findOrCreateNode( nodes, endPt );
+
+		if( fromNode == toNode ) continue;  // Skip loops to same node
+
+		vec2 startTangent = getStartTangent( edge );
+		vec2 endTangent = getEndTangent( edge );
+
+		// Create forward half-edge
+		size_t fwdIdx = halfEdges.size();
+		halfEdges.push_back( {
+			fromNode, toNode, SIZE_MAX,
+			edge, startTangent, false
+		} );
+		nodes[fromNode].outgoingHalfEdges.push_back( fwdIdx );
+
+		// Create reverse half-edge
+		Path2d reversedEdge = reversePath( edge );
+		size_t revIdx = halfEdges.size();
+		halfEdges.push_back( {
+			toNode, fromNode, fwdIdx,
+			std::move( reversedEdge ), -endTangent, false
+		} );
+		nodes[toNode].outgoingHalfEdges.push_back( revIdx );
+
+		// Link twins
+		halfEdges[fwdIdx].twinIdx = revIdx;
 	}
 
-	// Build the result by extracting and concatenating keep ranges
-	Path2d result;
-	bool first = true;
+	// =========================================================================
+	// Phase 4: Sort half-edges at each node by angle
+	// =========================================================================
 
-	for( const auto& range : keepRanges ) {
-		// Extract the segment from range.first to range.second
-		auto [before, afterFirst] = splitAt( range.first );
-		auto [segment, afterSecond] = afterFirst.splitAt( range.second - range.first );
+	for( auto& node : nodes ) {
+		std::sort( node.outgoingHalfEdges.begin(), node.outgoingHalfEdges.end(),
+			[&halfEdges]( size_t a, size_t b ) {
+				return compareAnglesCCW( halfEdges[a].outgoingTangent,
+				                         halfEdges[b].outgoingTangent );
+			} );
+	}
 
-		if( segment.empty() )
-			continue;
 
-		if( first ) {
-			result = std::move( segment );
-			first = false;
+	// =========================================================================
+	// Phase 5: Handle OPEN vs CLOSED paths differently
+	// =========================================================================
+
+	bool pathIsClosed = isClosed();
+
+	if( !pathIsClosed ) {
+		// =========================================================================
+		// OPEN PATH: T-value based loop skipping
+		// For each self-intersection (t1, t2) where t1 < t2, the "loop" is the
+		// portion between t1 and t2. We skip those ranges and stitch the remaining
+		// portions together at the intersection points.
+		// =========================================================================
+
+		float maxT = static_cast<float>( getNumSegments() );
+
+		// Build list of "skip ranges" from the original intersections
+		// Each intersection (t1, t2) where t1 < t2 defines a skip range
+		std::vector<std::pair<float, float>> skipRanges;
+		for( const auto& isect : intersections ) {
+			float tMin = std::min( isect.t1, isect.t2 );
+			float tMax = std::max( isect.t1, isect.t2 );
+			skipRanges.push_back( { tMin, tMax } );
 		}
-		else {
-			appendPath( result, segment );
+
+		// Sort by start t-value
+		std::sort( skipRanges.begin(), skipRanges.end() );
+
+		// Merge overlapping skip ranges
+		std::vector<std::pair<float, float>> mergedSkips;
+		for( const auto& sr : skipRanges ) {
+			if( mergedSkips.empty() || sr.first > mergedSkips.back().second + 0.001f ) {
+				mergedSkips.push_back( sr );
+			} else {
+				// Extend existing range
+				mergedSkips.back().second = std::max( mergedSkips.back().second, sr.second );
+			}
 		}
+
+		// Build "keep ranges" - the portions we want to keep
+		std::vector<std::pair<float, float>> keepRanges;
+		float currentT = 0.0f;
+		for( const auto& skip : mergedSkips ) {
+			if( skip.first > currentT + 0.001f ) {
+				keepRanges.push_back( { currentT, skip.first } );
+			}
+			currentT = skip.second;
+		}
+		if( currentT < maxT - 0.001f ) {
+			keepRanges.push_back( { currentT, maxT } );
+		}
+
+		// If no keep ranges, something went wrong - return original
+		if( keepRanges.empty() ) {
+			result.appendContour( *this );
+			return result;
+		}
+
+		// Build output path by extracting and stitching keep ranges
+		Path2d outputPath;
+		bool firstRange = true;
+
+		for( const auto& range : keepRanges ) {
+			// Extract the portion from range.first to range.second
+			// NOTE: getSubPath expects normalized t ∈ [0,1], but our t-values are
+			// segment-indexed (e.g., t=5.44 means segment 5, position 0.44)
+			// Convert to normalized: t_normalized = t_segment / numSegments
+			float normalizedStart = range.first / maxT;
+			float normalizedEnd = range.second / maxT;
+			Path2d portion = getSubPath( normalizedStart, normalizedEnd );
+
+			if( portion.empty() )
+				continue;
+
+			if( firstRange ) {
+				outputPath = std::move( portion );
+				firstRange = false;
+			} else {
+				// The end of previous range and start of this range should be at
+				// the same intersection point. Just append the new portion.
+				appendPath( outputPath, portion );
+			}
+		}
+
+		if( !outputPath.empty() ) {
+			result.appendContour( std::move( outputPath ) );
+		} else {
+			result.appendContour( *this );
+		}
+
+		return result;
+	}
+
+	// =========================================================================
+	// CLOSED PATH: Extract all faces via leftmost turn traversal
+	// =========================================================================
+
+	std::vector<std::pair<std::vector<size_t>, float>> cycles;  // cycle, signed area
+
+	for( size_t heIdx = 0; heIdx < halfEdges.size(); ++heIdx ) {
+		if( halfEdges[heIdx].visited ) continue;
+
+		auto cycle = extractCycle( nodes, halfEdges, heIdx );
+
+		// Validate: must have at least 3 edges and must be CLOSED
+		// (last edge's toNode == first edge's fromNode)
+		if( cycle.size() >= 3 ) {
+			size_t firstFrom = halfEdges[cycle.front()].fromNode;
+			size_t lastTo = halfEdges[cycle.back()].toNode;
+			if( firstFrom == lastTo ) {
+				// Valid closed cycle
+				float area = computeCycleSignedArea( halfEdges, cycle );
+				cycles.push_back( { std::move( cycle ), area } );
+			}
+		}
+	}
+
+	if( cycles.empty() ) {
+		result.appendContour( *this );
+		return result;
+	}
+
+	// =========================================================================
+	// Phase 6: Select appropriate cycles based on keepOutermost
+	// =========================================================================
+
+	if( keepOutermost ) {
+		// Find cycle with largest positive (CCW) signed area
+		float maxArea = -FLT_MAX;
+		size_t bestIdx = 0;
+		for( size_t i = 0; i < cycles.size(); ++i ) {
+			if( cycles[i].second > maxArea ) {
+				maxArea = cycles[i].second;
+				bestIdx = i;
+			}
+		}
+
+		if( maxArea > 0 ) {
+			Path2d contour = reconstructPathFromCycle( halfEdges, cycles[bestIdx].first );
+			if( !contour.empty() ) {
+				contour.close();
+				result.appendContour( std::move( contour ) );
+			}
+		}
+	} else {
+		// Find cycle with largest negative (CW) signed area (innermost)
+		float minArea = FLT_MAX;
+		size_t bestIdx = 0;
+		for( size_t i = 0; i < cycles.size(); ++i ) {
+			if( cycles[i].second < minArea ) {
+				minArea = cycles[i].second;
+				bestIdx = i;
+			}
+		}
+
+		if( minArea < 0 ) {
+			Path2d contour = reconstructPathFromCycle( halfEdges, cycles[bestIdx].first );
+			if( !contour.empty() ) {
+				contour.close();
+				result.appendContour( std::move( contour ) );
+			}
+		}
+	}
+
+	// If we didn't find any suitable cycle, return original
+	if( result.getContours().empty() ) {
+		result.appendContour( *this );
 	}
 
 	return result;

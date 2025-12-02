@@ -32,6 +32,8 @@
 
 namespace cinder {
 
+class Shape2d;  // Forward declaration for removeSelfIntersections
+
 class CI_API Path2d {
  public:
 	Path2d() {}
@@ -230,12 +232,13 @@ class CI_API Path2d {
 	//! @return Vector of Path2d segments between split points
 	std::vector<Path2d>	splitAtMultiple( const std::vector<float>& tValues ) const;
 
-	//! Remove self-intersecting loops from the path.
+	//! Remove self-intersecting loops from the path using planar graph decomposition.
 	//! For offset curves, this removes the "inner" loops that occur at sharp corners.
+	//! Uses a graph-based algorithm that correctly handles complex cases like stars.
 	//! @param keepOutermost If true, keep outermost portions (for positive offsets);
 	//!                      if false, keep innermost portions (for negative offsets)
-	//! @return A new path with self-intersections removed
-	Path2d	removeSelfIntersections( bool keepOutermost = true ) const;
+	//! @return A Shape2d with self-intersections removed (may have multiple contours)
+	Shape2d	removeSelfIntersections( bool keepOutermost = true ) const;
 
 	static int	calcQuadraticBezierMonotoneRegions( const vec2 p[3], float resultT[2] );
 	static vec2	calcQuadraticBezierPos( const vec2 p[3], float t );
