@@ -1,0 +1,112 @@
+#pragma once
+
+#include "draw_clockwise_clip.frag.exports.h"
+
+namespace rive {
+namespace gpu {
+namespace glsl {
+const char draw_clockwise_clip_frag[] = R"===(/*
+ * Copyright 2025 Rive
+ */
+
+#ifdef _EXPORTED_FRAGMENT
+
+PLS_BLOCK_BEGIN
+#ifndef _EXPORTED_FIXED_FUNCTION_COLOR_OUTPUT
+PLS_DECL4F(COLOR_PLANE_IDX, colorBuffer);
+#endif
+PLS_DECLUI(CLIP_PLANE_IDX, clipBuffer);
+#ifndef _EXPORTED_FIXED_FUNCTION_COLOR_OUTPUT
+PLS_DECL4F(SCRATCH_COLOR_PLANE_IDX, scratchColorBuffer);
+#endif
+PLS_DECLUI(COVERAGE_PLANE_IDX, coverageBuffer);
+PLS_BLOCK_END
+
+PLS_MAIN(_EXPORTED_drawFragmentMain)
+{
+    VARYING_UNPACK(v_clipIDs, half2);
+    half clipID = -v_clipIDs.x;
+
+#ifdef _EXPORTED_DRAW_INTERIOR_TRIANGLES
+    VARYING_INIT(v_windingWeight, half);
+    half fragCoverage = v_windingWeight;
+#else
+    VARYING_INIT(v_coverages, COVERAGE_TYPE);
+    half fragCoverage = v_coverages.x;
+#endif //@DRAW_INTERIOR_TRIANGLES
+
+    PLS_INTERLOCK_BEGIN;
+
+    half2 clipData;
+    half clipBufferID, clipCoverage;
+#if defined(_EXPORTED_DRAW_INTERIOR_TRIANGLES) && defined(_EXPORTED_BORROWED_COVERAGE_PASS)
+    if (_EXPORTED_BORROWED_COVERAGE_PASS)
+    {
+        // Interior triangles with borrowed coverage are always the first
+        // fragment of the path at their pixel, so we don't need to check the
+        // current coverage value.
+        clipCoverage = fragCoverage;
+    }
+    else
+#endif
+    {
+        clipData = unpackHalf2x16(PLS_LOADUI(clipBuffer));
+        clipBufferID = clipData.y;
+        half initialCoverage =
+            clipBufferID == clipID ? clipData.x : make_half(.0);
+        clipCoverage = initialCoverage + fragCoverage;
+    }
+
+#ifdef _EXPORTED_ENABLE_NESTED_CLIPPING
+    half outerClipID = v_clipIDs.y;
+    if (_EXPORTED_ENABLE_NESTED_CLIPPING && outerClipID != .0)
+    {
+        half outerClipCoverage = .0;
+#if defined(_EXPORTED_DRAW_INTERIOR_TRIANGLES) && defined(_EXPORTED_BORROWED_COVERAGE_PASS)
+        if (_EXPORTED_BORROWED_COVERAGE_PASS)
+        {
+            // Interior triangles with borrowed coverage did not load the clip
+            // buffer already, so do that now.
+            clipData = unpackHalf2x16(PLS_LOADUI(clipBuffer));
+            clipBufferID = clipData.y;
+        }
+#endif
+        if (clipBufferID != clipID)
+        {
+            outerClipCoverage = clipBufferID == outerClipID ? clipData.x : .0;
+            // The coverage buffer is a free resource when rendering clip
+            // because we don't use it to track coverage. Use it instead to
+            // temporarily save the outer clip for nested clips. But make sure
+            // to write an invalid pathID so we don't corrupt any future paths
+            // that will be drawn.
+            PLS_STOREUI(
+                coverageBuffer,
+                packHalf2x16(make_half2(outerClipCoverage, INVALID_PATH_ID)));
+        }
+        else
+        {
+            outerClipCoverage = unpackHalf2x16(PLS_LOADUI(coverageBuffer)).x;
+            PLS_PRESERVE_UI(coverageBuffer);
+        }
+        clipCoverage = min(clipCoverage, outerClipCoverage);
+    }
+    else
+#endif
+    {
+        PLS_PRESERVE_UI(coverageBuffer);
+    }
+
+    PLS_STOREUI(clipBuffer, packHalf2x16(make_half2(clipCoverage, clipID)));
+#ifndef _EXPORTED_FIXED_FUNCTION_COLOR_OUTPUT
+    PLS_PRESERVE_4F(colorBuffer);
+#endif
+    PLS_INTERLOCK_END;
+
+    EMIT_PLS;
+}
+
+#endif // FRAGMENT
+)===";
+} // namespace glsl
+} // namespace gpu
+} // namespace rive
