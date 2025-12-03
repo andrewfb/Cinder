@@ -220,6 +220,21 @@ class CI_API Path2d {
 	//! @return Vector of self-intersection results, each containing the two t-values and the intersection point
 	std::vector<SelfIntersection>	findSelfIntersections( float tolerance = 1e-4f ) const;
 
+	//! Result of a path-to-path intersection search
+	struct Intersection {
+		float t1;           //!< Parameter value on this path (in range [0, numSegments])
+		float t2;           //!< Parameter value on the other path (in range [0, numSegments])
+		vec2  point;        //!< The intersection point
+		size_t segment1;    //!< Segment index on this path
+		size_t segment2;    //!< Segment index on the other path
+	};
+
+	//! Find all points where this path intersects with \a other.
+	//! @param other The path to test for intersections with
+	//! @param tolerance Approximation tolerance for intersection detection
+	//! @return Vector of intersection results, where t1/segment1 refer to this path and t2/segment2 refer to \a other
+	std::vector<Intersection>	findIntersections( const Path2d &other, float tolerance = 1e-4f ) const;
+
 	//! Split the path at parameter \a t, where the integer part is the segment index
 	//! and the fractional part is the position within that segment [0,1).
 	//! @param t Parameter value where to split (e.g., 1.5 means middle of segment 1)

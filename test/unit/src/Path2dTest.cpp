@@ -688,6 +688,182 @@ TEST_CASE("Path2d::findSelfIntersections")
 }
 
 //=============================================================================
+// Path2d::findIntersections Tests
+//=============================================================================
+
+TEST_CASE("Path2d::findIntersections")
+{
+	SECTION("No intersection - parallel lines")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 0 );
+		path1.lineTo( 100, 0 );
+
+		Path2d path2;
+		path2.moveTo( 0, 10 );
+		path2.lineTo( 100, 10 );
+
+		auto results = path1.findIntersections( path2 );
+		REQUIRE( results.empty() );
+	}
+
+	SECTION("Single line-line intersection")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 0 );
+		path1.lineTo( 100, 100 );
+
+		Path2d path2;
+		path2.moveTo( 0, 100 );
+		path2.lineTo( 100, 0 );
+
+		auto results = path1.findIntersections( path2 );
+		REQUIRE( results.size() == 1 );
+		REQUIRE( results[0].point.x == Approx( 50.0f ).margin( 0.1f ) );
+		REQUIRE( results[0].point.y == Approx( 50.0f ).margin( 0.1f ) );
+		REQUIRE( results[0].t1 == Approx( 0.5f ).margin( 0.01f ) );
+		REQUIRE( results[0].t2 == Approx( 0.5f ).margin( 0.01f ) );
+		REQUIRE( results[0].segment1 == 0 );
+		REQUIRE( results[0].segment2 == 0 );
+	}
+
+	SECTION("Line-cubic intersection")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 50 );
+		path1.lineTo( 100, 50 );
+
+		Path2d path2;
+		path2.moveTo( 50, 0 );
+		path2.curveTo( 50, 33, 50, 67, 50, 100 );
+
+		auto results = path1.findIntersections( path2 );
+		REQUIRE( results.size() == 1 );
+		REQUIRE( results[0].point.x == Approx( 50.0f ).margin( 0.5f ) );
+		REQUIRE( results[0].point.y == Approx( 50.0f ).margin( 0.5f ) );
+	}
+
+	SECTION("Cubic-cubic intersection")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 50 );
+		path1.curveTo( 33, 0, 67, 100, 100, 50 );
+
+		Path2d path2;
+		path2.moveTo( 50, 0 );
+		path2.curveTo( 0, 33, 100, 67, 50, 100 );
+
+		auto results = path1.findIntersections( path2 );
+		REQUIRE( results.size() >= 1 );
+	}
+
+	SECTION("Multi-segment paths")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 0 );
+		path1.lineTo( 50, 0 );
+		path1.lineTo( 100, 50 );
+
+		Path2d path2;
+		path2.moveTo( 25, -25 );
+		path2.lineTo( 25, 25 );  // Crosses first segment of path1
+
+		auto results = path1.findIntersections( path2 );
+		REQUIRE( results.size() == 1 );
+		REQUIRE( results[0].segment1 == 0 );
+		REQUIRE( results[0].point.x == Approx( 25.0f ).margin( 0.1f ) );
+	}
+
+	SECTION("Empty paths return no intersections")
+	{
+		Path2d path1;
+		Path2d path2;
+		path2.moveTo( 0, 0 );
+		path2.lineTo( 100, 100 );
+
+		auto results = path1.findIntersections( path2 );
+		REQUIRE( results.empty() );
+
+		results = path2.findIntersections( path1 );
+		REQUIRE( results.empty() );
+	}
+
+	SECTION("Line crossing closed rect - CLOSE segment intersection")
+	{
+		// A horizontal line that crosses through a closed rectangle
+		// The rect's CLOSE segment (left edge from bottom-left back to top-left)
+		// should be detected for intersections
+		vec2 center( 0, 0 );
+
+		// Simple horizontal line crossing through the rect at y=0
+		Path2d line;
+		line.moveTo( center + vec2( -150, 0 ) );
+		line.lineTo( center + vec2( 150, 0 ) );
+
+		// Rect - segments are (MOVETO is NOT stored in segments array):
+		// [0] LINETO to (100, -80)  - top edge (from moveTo point)
+		// [1] LINETO to (100, 80)   - right edge
+		// [2] LINETO to (-100, 80)  - bottom edge
+		// [3] CLOSE                 - left edge from (-100, 80) back to (-100, -80)
+		Path2d rect;
+		rect.moveTo( center + vec2( -100, -80 ) );
+		rect.lineTo( center + vec2( 100, -80 ) );
+		rect.lineTo( center + vec2( 100, 80 ) );
+		rect.lineTo( center + vec2( -100, 80 ) );
+		rect.close();
+
+		// The line should cross both the left edge (CLOSE) and right edge
+		auto results = line.findIntersections( rect );
+
+		// Debug: print results
+		std::cout << "Found " << results.size() << " intersections:" << std::endl;
+		for( size_t i = 0; i < results.size(); ++i ) {
+			std::cout << "  [" << i << "] seg1=" << results[i].segment1
+			          << " seg2=" << results[i].segment2
+			          << " point=(" << results[i].point.x << "," << results[i].point.y << ")" << std::endl;
+		}
+
+		// Debug: print line segments
+		std::cout << "Line has " << line.getSegments().size() << " segments, "
+		          << line.getPoints().size() << " points" << std::endl;
+		for( size_t s = 0; s < line.getSegments().size(); ++s ) {
+			std::cout << "  seg[" << s << "] type=" << (int)line.getSegments()[s] << std::endl;
+		}
+
+		// Debug: print rect segments
+		std::cout << "Rect has " << rect.getSegments().size() << " segments, "
+		          << rect.getPoints().size() << " points" << std::endl;
+		for( size_t s = 0; s < rect.getSegments().size(); ++s ) {
+			std::cout << "  seg[" << s << "] type=" << (int)rect.getSegments()[s] << std::endl;
+		}
+
+		// Should have exactly 2 intersections (entering through left, exiting through right)
+		REQUIRE( results.size() == 2 );
+
+		// Check that one intersection is on the CLOSE segment (segment2 == 3)
+		// and one is on the right edge (segment2 == 1)
+		bool foundCloseSegmentIntersection = false;
+		bool foundRightEdgeIntersection = false;
+		for( const auto& isect : results ) {
+			if( isect.segment2 == 3 ) {
+				foundCloseSegmentIntersection = true;
+				// The intersection should be on the left edge (x ≈ -100, y = 0)
+				REQUIRE( isect.point.x == Approx( -100.0f ).margin( 1.0f ) );
+				REQUIRE( isect.point.y == Approx( 0.0f ).margin( 1.0f ) );
+			}
+			if( isect.segment2 == 1 ) {
+				foundRightEdgeIntersection = true;
+				// The intersection should be on the right edge (x ≈ 100, y = 0)
+				REQUIRE( isect.point.x == Approx( 100.0f ).margin( 1.0f ) );
+				REQUIRE( isect.point.y == Approx( 0.0f ).margin( 1.0f ) );
+			}
+		}
+		REQUIRE( foundCloseSegmentIntersection );
+		REQUIRE( foundRightEdgeIntersection );
+	}
+}
+
+//=============================================================================
 // Path2d::splitAt Tests
 //=============================================================================
 

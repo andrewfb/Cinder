@@ -1851,10 +1851,11 @@ PathEl splitElementRight( const PathEl& el, const glm::dvec2& prevPt, double t )
 	}
 
 	switch( el.type ) {
-		case Path2d::LINETO: {
-			result.p1 = prevPt + t * ( el.p1 - prevPt );
+		case Path2d::LINETO:
+			// Right portion of a line still ends at original endpoint (el.p1)
+			// The new starting point will be tracked externally via prevPt
+			// No modification needed - result.p1 is already el.p1
 			break;
-		}
 		case Path2d::QUADTO: {
 			glm::dvec2 q[3] = { prevPt, el.p1, el.p2 };
 			glm::dvec2 rightQ[3];

@@ -2278,10 +2278,18 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 				pts.push_back( dvec2( mPoints[firstPt + 2] ) );
 				pts.push_back( dvec2( mPoints[firstPt + 3] ) );
 				break;
+			case CLOSE:
+				// CLOSE is an implicit line from the last point back to the first point
+				if( !mPoints.empty() ) {
+					pts.push_back( dvec2( mPoints[firstPt] ) );  // Last point before CLOSE
+					pts.push_back( dvec2( mPoints[0] ) );        // First point (MOVETO)
+				}
+				break;
 			default:
 				break;
 		}
-		return { type, pts };
+		// For CLOSE, return as LINETO for intersection purposes
+		return { (type == CLOSE) ? LINETO : type, pts };
 	};
 
 	// Build segment info (first point index for each segment)
@@ -2309,6 +2317,12 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 			// Use include() to ensure canonical bounds (x1 <= x2, y1 <= y2)
 			Rectf bounds( mPoints[ptIdx - 1], mPoints[ptIdx - 1] );
 			bounds.include( mPoints[ptIdx] );
+			segmentBounds[s] = bounds;
+		}
+		else if( mSegments[s] == CLOSE && !mPoints.empty() ) {
+			// CLOSE is an implicit line from last point to first point
+			Rectf bounds( mPoints[ptIdx - 1], mPoints[ptIdx - 1] );
+			bounds.include( mPoints[0] );
 			segmentBounds[s] = bounds;
 		}
 		ptIdx += sSegmentTypePointCounts[mSegments[s]];
@@ -2339,7 +2353,7 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 		ptIdx += sSegmentTypePointCounts[mSegments[s]];
 	}
 
-	// Find indices of first and last drawable segments (for closed path adjacency check)
+	// Find indices of first and last drawable segments
 	size_t firstDrawable = 0;
 	size_t lastDrawable = 0;
 	bool foundFirst = false;
@@ -2355,7 +2369,7 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 
 	// Check all pairs of segments (including adjacent ones that might cross in the middle)
 	for( size_t i = 0; i < mSegments.size(); ++i ) {
-		if( mSegments[i] == MOVETO || mSegments[i] == CLOSE )
+		if( mSegments[i] == MOVETO )
 			continue;
 
 		auto [type1, pts1] = getSegmentPoints( i, segmentFirstPoint[i] );
@@ -2363,12 +2377,22 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 			continue;
 
 		for( size_t j = i + 1; j < mSegments.size(); ++j ) {
-			if( mSegments[j] == MOVETO || mSegments[j] == CLOSE )
+			if( mSegments[j] == MOVETO )
 				continue;
 
-			// Check adjacency: consecutive segments OR first-last for closed paths
-			bool areAdjacent = ( j == i + 1 ) ||
-			                   ( isClosed() && i == firstDrawable && j == lastDrawable );
+			// Check adjacency: consecutive segments, first-last for closed paths,
+			// or CLOSE segment adjacent to its neighbors
+			bool areAdjacent = ( j == i + 1 );
+			if( !areAdjacent && isClosed() ) {
+				// First and last drawable segments are adjacent via CLOSE
+				if( i == firstDrawable && j == lastDrawable )
+					areAdjacent = true;
+				// CLOSE segment is adjacent to lastDrawable and firstDrawable
+				if( mSegments[i] == CLOSE && (j == firstDrawable || j == lastDrawable) )
+					areAdjacent = true;
+				if( mSegments[j] == CLOSE && (i == firstDrawable || i == lastDrawable) )
+					areAdjacent = true;
+			}
 
 			// Early rejection: skip intersection tests if bounding boxes don't overlap
 			if( !segmentBounds[i].intersects( segmentBounds[j] ) ) {
@@ -2492,6 +2516,247 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 				}
 
 				results.push_back( si );
+			}
+		}
+	}
+
+	return results;
+}
+
+std::vector<Path2d::Intersection> Path2d::findIntersections( const Path2d &other, float tolerance ) const
+{
+	std::vector<Intersection> results;
+
+	if( mSegments.empty() || mPoints.empty() || other.mSegments.empty() || other.mPoints.empty() )
+		return results;
+
+	// Helper to get segment control points for intersection testing
+	// firstPt represents the index of the first point of this segment (including inherited start point)
+	// Note: MOVETO is NOT stored in the segments array - only the point is stored
+	// So for LINETO at index 0: firstPt=0, uses points[0] (inherited from moveTo) and points[1]
+	// For LINETO at index N: firstPt=N, uses points[N] and points[N+1]
+	auto getSegmentPoints = []( const Path2d& path, size_t segIdx, size_t firstPt )
+		-> std::pair<SegmentType, std::vector<dvec2>>
+	{
+		std::vector<dvec2> pts;
+		SegmentType type = path.getSegments()[segIdx];
+		const auto& points = path.getPoints();
+		switch( type ) {
+			case LINETO:
+				pts.push_back( dvec2( points[firstPt] ) );      // start
+				pts.push_back( dvec2( points[firstPt + 1] ) );  // end
+				break;
+			case QUADTO:
+				pts.push_back( dvec2( points[firstPt] ) );      // start
+				pts.push_back( dvec2( points[firstPt + 1] ) );  // control
+				pts.push_back( dvec2( points[firstPt + 2] ) );  // end
+				break;
+			case CUBICTO:
+				pts.push_back( dvec2( points[firstPt] ) );      // start
+				pts.push_back( dvec2( points[firstPt + 1] ) );  // control 1
+				pts.push_back( dvec2( points[firstPt + 2] ) );  // control 2
+				pts.push_back( dvec2( points[firstPt + 3] ) );  // end
+				break;
+			case CLOSE:
+				// CLOSE is an implicit line from the last point back to the first point
+				// Note: firstPt is invalid for CLOSE (points past end), use points.size()-1
+				if( !points.empty() ) {
+					pts.push_back( dvec2( points[points.size() - 1] ) );  // Last point
+					pts.push_back( dvec2( points[0] ) );                  // First point (MOVETO)
+				}
+				break;
+			default:
+				break;
+		}
+		// For CLOSE, treat it as LINETO for intersection purposes
+		if( type == CLOSE && pts.size() == 2 ) {
+			return { LINETO, pts };
+		}
+		return { type, pts };
+	};
+
+	// Build segment info for this path
+	std::vector<size_t> segmentFirstPoint1;
+	size_t ptIdx = 1;
+	for( size_t s = 0; s < mSegments.size(); ++s ) {
+		segmentFirstPoint1.push_back( ptIdx - 1 );
+		ptIdx += sSegmentTypePointCounts[mSegments[s]];
+	}
+
+	// Build segment info for other path
+	std::vector<size_t> segmentFirstPoint2;
+	ptIdx = 1;
+	for( size_t s = 0; s < other.mSegments.size(); ++s ) {
+		segmentFirstPoint2.push_back( ptIdx - 1 );
+		ptIdx += sSegmentTypePointCounts[other.mSegments[s]];
+	}
+
+	// Pre-compute bounding boxes for this path
+	// Note: MOVETO is NOT stored in the segments array - only the point is stored
+	// ptIdx starts at 1, and for the first segment (after implicit moveTo), ptIdx=1 means
+	// the segment uses points[0] and points[1]
+	std::vector<Rectf> bounds1( mSegments.size() );
+	ptIdx = 1;
+	for( size_t s = 0; s < mSegments.size(); ++s ) {
+		if( mSegments[s] == CUBICTO || mSegments[s] == QUADTO ) {
+			Rectf bounds( mPoints[ptIdx - 1], mPoints[ptIdx - 1] );
+			size_t numPts = sSegmentTypePointCounts[mSegments[s]];
+			for( size_t p = 0; p <= numPts; ++p ) {
+				bounds.include( mPoints[ptIdx - 1 + p] );
+			}
+			bounds1[s] = bounds;
+		}
+		else if( mSegments[s] == LINETO ) {
+			Rectf bounds( mPoints[ptIdx - 1], mPoints[ptIdx - 1] );
+			bounds.include( mPoints[ptIdx] );
+			bounds1[s] = bounds;
+		}
+		else if( mSegments[s] == CLOSE && !mPoints.empty() ) {
+			// CLOSE is a line from last point to first point
+			// Note: ptIdx-1 is invalid for CLOSE (points past end), use mPoints.size()-1
+			Rectf bounds( mPoints[mPoints.size() - 1], mPoints[mPoints.size() - 1] );
+			bounds.include( mPoints[0] );
+			bounds1[s] = bounds;
+		}
+		ptIdx += sSegmentTypePointCounts[mSegments[s]];
+	}
+
+	// Pre-compute bounding boxes for other path
+	std::vector<Rectf> bounds2( other.mSegments.size() );
+	ptIdx = 1;
+	for( size_t s = 0; s < other.mSegments.size(); ++s ) {
+		if( other.mSegments[s] == CUBICTO || other.mSegments[s] == QUADTO ) {
+			Rectf bounds( other.mPoints[ptIdx - 1], other.mPoints[ptIdx - 1] );
+			size_t numPts = sSegmentTypePointCounts[other.mSegments[s]];
+			for( size_t p = 0; p <= numPts; ++p ) {
+				bounds.include( other.mPoints[ptIdx - 1 + p] );
+			}
+			bounds2[s] = bounds;
+		}
+		else if( other.mSegments[s] == LINETO ) {
+			Rectf bounds( other.mPoints[ptIdx - 1], other.mPoints[ptIdx - 1] );
+			bounds.include( other.mPoints[ptIdx] );
+			bounds2[s] = bounds;
+		}
+		else if( other.mSegments[s] == CLOSE && !other.mPoints.empty() ) {
+			// CLOSE is a line from last point to first point
+			// Note: ptIdx-1 is invalid for CLOSE (points past end), use points.size()-1
+			Rectf bounds( other.mPoints[other.mPoints.size() - 1], other.mPoints[other.mPoints.size() - 1] );
+			bounds.include( other.mPoints[0] );
+			bounds2[s] = bounds;
+		}
+		ptIdx += sSegmentTypePointCounts[other.mSegments[s]];
+	}
+
+	// Check all pairs of segments between paths
+	for( size_t i = 0; i < mSegments.size(); ++i ) {
+		if( mSegments[i] == MOVETO )
+			continue;
+
+		auto [type1, pts1] = getSegmentPoints( *this, i, segmentFirstPoint1[i] );
+		if( pts1.empty() )
+			continue;
+
+		for( size_t j = 0; j < other.mSegments.size(); ++j ) {
+			if( other.mSegments[j] == MOVETO )
+				continue;
+
+			// Early rejection: skip if bounding boxes don't overlap
+			if( !bounds1[i].intersects( bounds2[j] ) )
+				continue;
+
+			auto [type2, pts2] = getSegmentPoints( other, j, segmentFirstPoint2[j] );
+			if( pts2.empty() )
+				continue;
+
+			// Check intersection based on segment types
+			std::vector<CurveIntersection<double>> isects;
+
+			if( type1 == CUBICTO && type2 == CUBICTO ) {
+				dvec2 c1[4] = { pts1[0], pts1[1], pts1[2], pts1[3] };
+				dvec2 c2[4] = { pts2[0], pts2[1], pts2[2], pts2[3] };
+				isects = intersectCubicCubic( c1, c2, double( tolerance ) );
+			}
+			else if( type1 == CUBICTO && type2 == LINETO ) {
+				dvec2 c[4] = { pts1[0], pts1[1], pts1[2], pts1[3] };
+				LineIntersection<double> lineIsects[3];
+				int count = intersectLineCubic( c, pts2[0], pts2[1], lineIsects );
+				for( int k = 0; k < count; ++k ) {
+					isects.emplace_back( lineIsects[k].segmentT, lineIsects[k].lineT );
+				}
+			}
+			else if( type1 == LINETO && type2 == CUBICTO ) {
+				dvec2 c[4] = { pts2[0], pts2[1], pts2[2], pts2[3] };
+				LineIntersection<double> lineIsects[3];
+				int count = intersectLineCubic( c, pts1[0], pts1[1], lineIsects );
+				for( int k = 0; k < count; ++k ) {
+					isects.emplace_back( lineIsects[k].lineT, lineIsects[k].segmentT );
+				}
+			}
+			else if( type1 == LINETO && type2 == LINETO ) {
+				LineIntersection<double> lineIsect[1];
+				int count = intersectLineLine( pts1[0], pts1[1], pts2[0], pts2[1], lineIsect );
+				if( count > 0 ) {
+					isects.emplace_back( lineIsect[0].segmentT, lineIsect[0].lineT );
+				}
+			}
+			else if( type1 == QUADTO || type2 == QUADTO ) {
+				// Elevate quadratics to cubics
+				dvec2 c1[4], c2[4];
+
+				if( type1 == QUADTO ) {
+					dvec2 q[3] = { pts1[0], pts1[1], pts1[2] };
+					raiseQuadraticToCubic( q, c1 );
+				}
+				else if( type1 == CUBICTO ) {
+					c1[0] = pts1[0]; c1[1] = pts1[1]; c1[2] = pts1[2]; c1[3] = pts1[3];
+				}
+				else {
+					c1[0] = pts1[0];
+					c1[1] = pts1[0] + ( pts1[1] - pts1[0] ) / 3.0;
+					c1[2] = pts1[0] + 2.0 * ( pts1[1] - pts1[0] ) / 3.0;
+					c1[3] = pts1[1];
+				}
+
+				if( type2 == QUADTO ) {
+					dvec2 q[3] = { pts2[0], pts2[1], pts2[2] };
+					raiseQuadraticToCubic( q, c2 );
+				}
+				else if( type2 == CUBICTO ) {
+					c2[0] = pts2[0]; c2[1] = pts2[1]; c2[2] = pts2[2]; c2[3] = pts2[3];
+				}
+				else {
+					c2[0] = pts2[0];
+					c2[1] = pts2[0] + ( pts2[1] - pts2[0] ) / 3.0;
+					c2[2] = pts2[0] + 2.0 * ( pts2[1] - pts2[0] ) / 3.0;
+					c2[3] = pts2[1];
+				}
+
+				isects = intersectCubicCubic( c1, c2, double( tolerance ) );
+			}
+
+			// Add results
+			for( const auto& isect : isects ) {
+				Intersection ix;
+				ix.segment1 = i;
+				ix.segment2 = j;
+				ix.t1 = float( i ) + float( isect.t1 );
+				ix.t2 = float( j ) + float( isect.t2 );
+
+				// Compute intersection point using this path's segment
+				if( type1 == CUBICTO ) {
+					dvec2 c[4] = { pts1[0], pts1[1], pts1[2], pts1[3] };
+					ix.point = vec2( evalCubicBezier( c, isect.t1 ) );
+				}
+				else if( type1 == QUADTO ) {
+					dvec2 q[3] = { pts1[0], pts1[1], pts1[2] };
+					ix.point = vec2( evalQuadraticBezier( q, isect.t1 ) );
+				}
+				else {
+					ix.point = vec2( glm::mix( pts1[0], pts1[1], isect.t1 ) );
+				}
+
+				results.push_back( ix );
 			}
 		}
 	}
