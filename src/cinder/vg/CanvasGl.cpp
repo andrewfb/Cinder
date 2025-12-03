@@ -16,10 +16,28 @@
 #include "rive/math/raw_path.hpp"
 
 // For Rive's GLAD loader initialization
-#include "glad_custom.h"
+#include "glad/glad_custom.h"
 
-// For GLFW's glfwGetProcAddress
-#include "GLFW/glfw3.h"
+#if defined( CINDER_MSW )
+    #include <windows.h>
+    // Windows-compatible GetProcAddress for GLAD
+    static void* winGlGetProcAddress( const char* name ) {
+        void* p = (void*)::wglGetProcAddress( name );
+        // wglGetProcAddress returns NULL for OpenGL 1.1 functions
+        // We need to load them from opengl32.dll instead
+        if( p == nullptr || p == (void*)0x1 || p == (void*)0x2 ||
+            p == (void*)0x3 || p == (void*)-1 ) {
+            static HMODULE opengl32 = LoadLibraryA( "opengl32.dll" );
+            if( opengl32 ) {
+                p = (void*)GetProcAddress( opengl32, name );
+            }
+        }
+        return p;
+    }
+#else
+    // For GLFW's glfwGetProcAddress on other platforms
+    #include "GLFW/glfw3.h"
+#endif
 
 using namespace rive;
 using namespace rive::gpu;
@@ -70,7 +88,11 @@ void CanvasGl::initializeGl( const CanvasOptions &options )
               << " disableFSI=" << options.disableFragmentShaderInterlock );
 
     // Initialize Rive's GLAD loader - this sets up GLAD_GL_version_major etc.
+#if defined( CINDER_MSW )
+    gladLoadCustomLoader( (GLADloadfunc)winGlGetProcAddress );
+#else
     gladLoadCustomLoader( (GLADloadfunc)glfwGetProcAddress );
+#endif
 
     RenderContextGLImpl::ContextOptions riveOptions;
     riveOptions.disablePixelLocalStorage = options.disablePixelLocalStorage;

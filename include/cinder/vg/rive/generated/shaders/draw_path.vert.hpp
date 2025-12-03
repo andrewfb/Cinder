@@ -445,7 +445,7 @@ INLINE half find_frag_coverage(COVERAGE_TYPE coverages TEXTURE_CONTEXT_DECL)
     else // Fill. (Back-face culling handles the sign of coverages.x.)
         return find_fill_coverage(coverages TEXTURE_CONTEXT_FORWARD);
 }
-
+)===" R"===(
 INLINE half apply_frag_coverage(half initialCoverage,
                                 COVERAGE_TYPE coverages TEXTURE_CONTEXT_DECL)
 {

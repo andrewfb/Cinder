@@ -442,7 +442,7 @@ void ObjLoader::loadGroupNormalsTextures( const Group &group, map<VertexTriple,i
 		for( int v = 0; v < group.mFaces[f].mNumVertices; ++v ) {
 			if( ! forceUnique ) {
 				VertexTriple vTriple = make_tuple( group.mFaces[f].mVertexIndices[v], group.mFaces[f].mTexCoordIndices[v], group.mFaces[f].mNormalIndices[v] );
-				pair<map<VertexTriple,int>::iterator,bool> result = uniqueVerts.insert( make_pair( vTriple, mOutputVertices.size() ) );
+				pair<map<VertexTriple,int>::iterator,bool> result = uniqueVerts.insert( make_pair( vTriple, static_cast<int>( mOutputVertices.size() ) ) );
 				if( result.second ) { // we've got a new, unique vertex here, so let's append it
 					mOutputVertices.push_back( mInternalVertices[group.mFaces[f].mVertexIndices[v]] );
 					mOutputNormals.push_back( mInternalNormals[group.mFaces[f].mNormalIndices[v]] );
@@ -509,7 +509,7 @@ void ObjLoader::loadGroupNormals( const Group &group, map<VertexPair,int> &uniqu
 		for( int v = 0; v < group.mFaces[f].mNumVertices; ++v ) {
 			if( ! forceUnique ) {
 				VertexPair vPair = make_tuple( group.mFaces[f].mVertexIndices[v], group.mFaces[f].mNormalIndices[v] );
-				pair<map<VertexPair,int>::iterator,bool> result = uniqueVerts.insert( make_pair( vPair, mOutputVertices.size() ) );
+				pair<map<VertexPair,int>::iterator,bool> result = uniqueVerts.insert( make_pair( vPair, static_cast<int>( mOutputVertices.size() ) ) );
 				if( result.second ) { // we've got a new, unique vertex here, so let's append it
 					mOutputVertices.push_back( mInternalVertices[group.mFaces[f].mVertexIndices[v]] );
 					mOutputNormals.push_back( mInternalNormals[group.mFaces[f].mNormalIndices[v]] );
@@ -566,7 +566,7 @@ void ObjLoader::loadGroupTextures( const Group &group, map<VertexPair,int> &uniq
 		for( int v = 0; v < group.mFaces[f].mNumVertices; ++v ) {
 			if( ! forceUnique ) {
 				VertexPair vPair = make_tuple( group.mFaces[f].mVertexIndices[v], group.mFaces[f].mTexCoordIndices[v] );
-				pair<map<VertexPair,int>::iterator,bool> result = uniqueVerts.insert( make_pair( vPair, mOutputVertices.size() ) );
+				pair<map<VertexPair,int>::iterator,bool> result = uniqueVerts.insert( make_pair( vPair, static_cast<int>( mOutputVertices.size() ) ) );
 				if( result.second ) { // we've got a new, unique vertex here, so let's append it
 					mOutputVertices.push_back( mInternalVertices[group.mFaces[f].mVertexIndices[v]] );
 					mOutputTexCoords.push_back( mInternalTexCoords[group.mFaces[f].mTexCoordIndices[v]] );
@@ -617,7 +617,7 @@ void ObjLoader::loadGroup( const Group &group, map<int,int> &uniqueVerts ) const
 		vector<int> faceIndices;
 		faceIndices.reserve( group.mFaces[f].mNumVertices );
 		for( int v = 0; v < group.mFaces[f].mNumVertices; ++v ) {
-			pair<map<int,int>::iterator,bool> result = uniqueVerts.insert( make_pair( group.mFaces[f].mVertexIndices[v], mOutputVertices.size() ) );
+			pair<map<int,int>::iterator,bool> result = uniqueVerts.insert( make_pair( group.mFaces[f].mVertexIndices[v], static_cast<int>( mOutputVertices.size() ) ) );
 			if( result.second ) { // we've got a new, unique vertex here, so let's append it
 				mOutputVertices.push_back( mInternalVertices[group.mFaces[f].mVertexIndices[v]] );
                 if( hasColors )

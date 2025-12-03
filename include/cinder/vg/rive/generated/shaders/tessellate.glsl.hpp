@@ -382,6 +382,7 @@ FRAG_DATA_MAIN(TESSDATA4, _EXPORTED_tessellateFragmentMain)
         tessCoord = isTan0 ? p0 : p3;
         theta = atan2(isTan0 ? tangents[0] : tangents[1]);
     }
+)===" R"===(
     else if ((contourIDWithFlags & RETROFITTED_TRIANGLE_CONTOUR_FLAG) != 0u)
     {
         // This cubic should actually be drawn as the single, non-AA triangle:

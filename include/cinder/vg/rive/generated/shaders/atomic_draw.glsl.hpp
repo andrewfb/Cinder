@@ -241,7 +241,7 @@ NO_PERSPECTIVE VARYING(0, float2, v_texCoord);
 NO_PERSPECTIVE VARYING(1, float4, v_clipRect);
 #endif
 VARYING_BLOCK_END
-
+)===" R"===(
 #ifdef _EXPORTED_VERTEX
 IMAGE_MESH_VERTEX_MAIN(_EXPORTED_drawVertexMain,
                        PositionAttr,
@@ -504,7 +504,7 @@ INLINE void resolve_paint(uint pathID,
             advanced_color_blend(fragColorOut.xyz, dstColorPremul, blendMode);
     }
 #endif // !FIXED_FUNCTION_COLOR_OUTPUT && ENABLE_ADVANCED_BLEND
-
+)===" R"===(
     // When PLS_BLEND_SRC_OVER is defined, the caller and/or blend state
     // multiply alpha into fragColorOut for us. Otherwise, we have to
     // premultiply it.

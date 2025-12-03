@@ -8,7 +8,7 @@
 #include "rive/renderer/render_context.hpp"
 #include "rive/shapes/paint/color.hpp"
 // For gradients
-#include "gradient.hpp"
+#include "renderer/gradient.hpp"
 
 using namespace rive;
 using namespace rive::gpu;

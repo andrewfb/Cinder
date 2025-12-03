@@ -382,7 +382,7 @@ INLINE bool unpack_tessellated_path_vertex(float4 patchVertexData,
     float2 midpoint = uintBitsToFloat(contourData.xy);
     outPathID = contourData.z & 0xffffu;
     uint vertexIndex0 = contourData.w;
-
+)===" R"===(
     // Fetch and unpack the path.
     float2x2 M = make_float2x2(
         uintBitsToFloat(STORAGE_BUFFER_LOAD4(_EXPORTED_pathBuffer, outPathID * 4u)));
@@ -547,7 +547,7 @@ INLINE bool unpack_tessellated_path_vertex(float4 patchVertexData,
     float2 norm = float2(sin(theta), -cos(theta));
     float2 origin = TESSDATA_AS_FLOAT(tessVertexData.xy);
     float2 postTransformVertexOffset = float2(0, 0);
-
+)===" R"===(
     if (featherRadius != .0)
     {
         // Never use a feather harder than 1.5 standard deviations across a
@@ -745,7 +745,7 @@ INLINE bool unpack_tessellated_path_vertex(float4 patchVertexData,
             // eval_feathered_fill() just feathers outCoverages.w=y0 when
             // we're a flat edge, so initialize it with fillCoverage.
             outCoverages.w = fillCoverage;
-
+)===" R"===(
             if ((contourIDWithFlags & JOIN_TYPE_MASK) ==
                     FEATHER_JOIN_CONTOUR_FLAG &&
                 vertexType == STROKE_VERTEX)

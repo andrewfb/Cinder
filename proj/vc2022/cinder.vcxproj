@@ -168,10 +168,10 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalOptions>/MP %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/MP /utf-8 %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;NOMINMAX;_WIN32_WINNT=0x0A00;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions);FT2_BUILD_LIBRARY=1;FT_DEBUG_LEVEL_TRACE=1</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;..\..\include\cinder\vg\rive;..\..\include\cinder\vg\rive\glad;..\..\include\cinder\vg\rive\shaders;..\..\src\cinder\vg\rive;..\..\src\cinder\vg\rive\renderer;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;NOMINMAX;_WIN32_WINNT=0x0A00;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;RIVE_DESKTOP_GL;%(PreprocessorDefinitions);FT2_BUILD_LIBRARY=1;FT_DEBUG_LEVEL_TRACE=1</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
@@ -198,7 +198,7 @@
     <ClCompile>
       <AdditionalOptions>/MP %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;..\..\include\cinder\vg\rive;..\..\include\cinder\vg\rive\glad;..\..\src\cinder\vg\rive;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>CINDER_SHARED_BUILD;JSON_DLL_BUILD;WIN32;_DEBUG;_LIB;NOMINMAX;_WIN32_WINNT=0x0A00;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions);FT2_BUILD_LIBRARY=1;FT_DEBUG_LEVEL_TRACE=1</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -231,7 +231,7 @@
     <ClCompile>
       <AdditionalOptions>/MP %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;..\..\include\cinder\vg\rive;..\..\include\cinder\vg\rive\glad;..\..\src\cinder\vg\rive;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;NOMINMAX;_WIN32_WINNT=0x0A00;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;CINDER_GL_ANGLE;%(PreprocessorDefinitions);FT2_BUILD_LIBRARY=1;FT_DEBUG_LEVEL_TRACE=1</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -261,8 +261,8 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;NOMINMAX;_WIN32_WINNT=0x0A00;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions);FT2_BUILD_LIBRARY=1;FT_DEBUG_LEVEL_TRACE=1</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;..\..\include\cinder\vg\rive;..\..\include\cinder\vg\rive\glad;..\..\include\cinder\vg\rive\shaders;..\..\src\cinder\vg\rive;..\..\src\cinder\vg\rive\renderer;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;NOMINMAX;_WIN32_WINNT=0x0A00;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;RIVE_DESKTOP_GL;%(PreprocessorDefinitions);FT2_BUILD_LIBRARY=1;FT_DEBUG_LEVEL_TRACE=1</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PrecompiledHeader>
@@ -291,7 +291,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;..\..\include\cinder\vg\rive;..\..\include\cinder\vg\rive\glad;..\..\src\cinder\vg\rive;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>CINDER_SHARED_BUILD;JSON_DLL_BUILD;WIN32;NDEBUG;_LIB;NOMINMAX;_WIN32_WINNT=0x0A00;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions);FT2_BUILD_LIBRARY=1;FT_DEBUG_LEVEL_TRACE=1</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -326,7 +326,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir);..\..\include;..\..\include\imgui;..\..\include\msw\png;..\..\include\msw;..\..\include\oggvorbis;..\..\src\libtess2;..\..\src\linebreak;..\..\src\r8brain;..\..\include\ANGLE;..\..\include\tinyexr;..\..\src\zlib;..\..\include\freetype;..\..\include\cinder\vg\rive;..\..\include\cinder\vg\rive\glad;..\..\src\cinder\vg\rive;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;NOMINMAX;_WIN32_WINNT=0x0A00;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions);CINDER_GL_ANGLE;FT2_BUILD_LIBRARY=1;FT_DEBUG_LEVEL_TRACE=1</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
@@ -489,6 +489,58 @@
     <ClCompile Include="..\..\src\cinder\gl\Vbo.cpp" />
     <ClCompile Include="..\..\src\cinder\gl\VboMesh.cpp" />
     <ClCompile Include="..\..\src\cinder\gl\wrapper.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\CanvasGl.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\Paint.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\core\color.cpp">
+      <ObjectFileName>$(IntDir)rive_color.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\..\src\cinder\vg\rive\core\renderer.cpp">
+      <ObjectFileName>$(IntDir)rive_core_renderer.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\aabb.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\bezier_utils.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\bit_field_loc.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\contour_measure.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\hit_test.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\mat2d.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\mat2d_find_max_scale.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\n_slicer_helpers.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\path_measure.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\random.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\raw_path.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\raw_path_utils.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\rectangles_to_contour.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\math\vec2d.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\draw.cpp">
+      <ObjectFileName>$(IntDir)rive_draw.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gl\gl_state.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gl\gl_utils.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gl\load_gles_extensions.cpp">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gl\load_store_actions_ext.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gl\pls_impl_ext_native.cpp">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gl\pls_impl_rw_texture.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gl\render_buffer_gl_impl.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gl\render_context_gl_impl.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gl\render_target_gl.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gpu.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gpu_resource.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gradient.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\gr_triangulator.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\intersection_board.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\render_context.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\render_context_helper_impl.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\rive_renderer.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\rive_render_factory.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\rive_render_image.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\rive_render_paint.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\rive_render_path.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\renderer\sk_rectanizer_skyline.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\rive\glad\glad_custom.c" />
     <ClCompile Include="..\..\src\cinder\ImageFileTinyExr.cpp" />
     <ClCompile Include="..\..\src\cinder\ImageIo.cpp" />
     <ClCompile Include="..\..\src\cinder\ImageSourceFileRadiance.cpp" />
@@ -798,6 +850,9 @@
     <ClInclude Include="..\..\include\cinder\gl\Vbo.h" />
     <ClInclude Include="..\..\include\cinder\gl\VboMesh.h" />
     <ClInclude Include="..\..\include\cinder\gl\wrapper.h" />
+    <ClInclude Include="..\..\include\cinder\vg\Canvas.h" />
+    <ClInclude Include="..\..\include\cinder\vg\CanvasGl.h" />
+    <ClInclude Include="..\..\include\cinder\vg\Paint.h" />
     <ClInclude Include="..\..\include\cinder\ImageSourceFileRadiance.h" />
     <ClInclude Include="..\..\include\cinder\ImageSourceFileStbImage.h" />
     <ClInclude Include="..\..\include\cinder\ImageTargetFileStbImage.h" />

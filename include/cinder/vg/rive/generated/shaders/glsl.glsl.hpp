@@ -378,6 +378,7 @@ INLINE uint packHalf2x16(vec2 v)
 #ifdef GL_ARB_shader_storage_buffer_object
 #extension GL_ARB_shader_storage_buffer_object : require
 #endif
+)===" R"===(
 #define STORAGE_BUFFER_U32x2(IDX, GLSL_STRUCT_NAME, NAME)                       \
     layout(std430, binding = IDX) readonly buffer GLSL_STRUCT_NAME             \
     {                                                                          \
