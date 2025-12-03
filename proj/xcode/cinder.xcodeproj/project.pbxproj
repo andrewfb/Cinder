@@ -7,6 +7,56 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+/* Rive VG Wrapper */
+		RVE0002000000000000000C3 /* Paint.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE0001000000000000000C3 /* Paint.cpp */; };
+		RVE0002000000000000000C5 /* CanvasGl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE0001000000000000000C5 /* CanvasGl.cpp */; };
+/* Rive Renderer Core */
+		RVE000200000000000000002 /* draw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000002 /* draw.cpp */; };
+		RVE000200000000000000003 /* gpu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000003 /* gpu.cpp */; };
+		RVE000200000000000000004 /* gpu_resource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000004 /* gpu_resource.cpp */; };
+		RVE000200000000000000005 /* gr_triangulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000005 /* gr_triangulator.cpp */; };
+		RVE000200000000000000006 /* gradient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000006 /* gradient.cpp */; };
+		RVE000200000000000000007 /* intersection_board.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000007 /* intersection_board.cpp */; };
+		RVE000200000000000000008 /* render_context.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000008 /* render_context.cpp */; };
+		RVE000200000000000000009 /* render_context_helper_impl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000009 /* render_context_helper_impl.cpp */; };
+		RVE00020000000000000000A /* rive_render_factory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000000A /* rive_render_factory.cpp */; };
+		RVE00020000000000000000B /* rive_render_image.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000000B /* rive_render_image.cpp */; };
+		RVE00020000000000000000C /* rive_render_paint.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000000C /* rive_render_paint.cpp */; };
+		RVE00020000000000000000D /* rive_render_path.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000000D /* rive_render_path.cpp */; };
+		RVE00020000000000000000E /* rive_renderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000000E /* rive_renderer.cpp */; };
+		RVE00020000000000000000F /* sk_rectanizer_skyline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000000F /* sk_rectanizer_skyline.cpp */; };
+/* Rive GL Backend */
+		RVE000200000000000000010 /* gl_state.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000010 /* gl_state.cpp */; };
+		RVE000200000000000000011 /* gl_utils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000011 /* gl_utils.cpp */; };
+/* Removed - Android only: RVE000200000000000000012 load_gles_extensions.cpp */
+		RVE000200000000000000013 /* load_store_actions_ext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000013 /* load_store_actions_ext.cpp */; };
+		RVE000200000000000000014 /* pls_impl_ext_native.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000014 /* pls_impl_ext_native.cpp */; };
+		RVE000200000000000000015 /* pls_impl_rw_texture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000015 /* pls_impl_rw_texture.cpp */; };
+/* Removed - WebGL only: RVE000200000000000000016 pls_impl_webgl.cpp */
+		RVE000200000000000000017 /* render_buffer_gl_impl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000017 /* render_buffer_gl_impl.cpp */; };
+		RVE000200000000000000018 /* render_target_gl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000018 /* render_target_gl.cpp */; };
+		RVE000200000000000000019 /* render_context_gl_impl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000019 /* render_context_gl_impl.cpp */; };
+/* Rive GLAD */
+		RVE00020000000000000001A /* glad_custom.c in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000001A /* glad_custom.c */; };
+/* RVE00020000000000000002B gles2.c removed - conflicts with Cinder's glad */
+/* Rive Math */
+		RVE00020000000000000001B /* aabb.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000001B /* aabb.cpp */; };
+		RVE00020000000000000001C /* bezier_utils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000001C /* bezier_utils.cpp */; };
+		RVE00020000000000000001D /* bit_field_loc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000001D /* bit_field_loc.cpp */; };
+		RVE00020000000000000001E /* contour_measure.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000001E /* contour_measure.cpp */; };
+		RVE00020000000000000001F /* hit_test.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000001F /* hit_test.cpp */; };
+		RVE000200000000000000020 /* mat2d.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000020 /* mat2d.cpp */; };
+		RVE000200000000000000021 /* mat2d_find_max_scale.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000021 /* mat2d_find_max_scale.cpp */; };
+		RVE000200000000000000022 /* n_slicer_helpers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000022 /* n_slicer_helpers.cpp */; };
+		RVE000200000000000000023 /* path_measure.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000023 /* path_measure.cpp */; };
+		RVE000200000000000000024 /* random.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000024 /* random.cpp */; };
+		RVE000200000000000000025 /* raw_path.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000025 /* raw_path.cpp */; };
+		RVE000200000000000000026 /* raw_path_utils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000026 /* raw_path_utils.cpp */; };
+		RVE000200000000000000027 /* rectangles_to_contour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000027 /* rectangles_to_contour.cpp */; };
+		RVE000200000000000000028 /* vec2d.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000028 /* vec2d.cpp */; };
+/* Rive Core */
+		RVE000200000000000000029 /* renderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000029 /* renderer.cpp */; };
+		RVE00020000000000000002A /* color.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000002A /* color.cpp */; };
 		0003F3D81992D64100647C8B /* Batch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0003F3BE1992D64100647C8B /* Batch.cpp */; };
 		0003F3DB1992D64100647C8B /* BufferObj.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0003F3BF1992D64100647C8B /* BufferObj.cpp */; };
 		0003F3DE1992D64100647C8B /* BufferTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0003F3C01992D64100647C8B /* BufferTexture.cpp */; };
@@ -2355,6 +2405,56 @@
 		EAD54ABCA3F84D849EB0BD2C /* RendererMetal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = RendererMetal.h; path = ../app/RendererMetal.h; sourceTree = "<group>"; };
 		F4C3F3D45D3043FD88006E71 /* vulkan.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = vulkan.c; path = ../../src/glfw/src/vulkan.c; sourceTree = "<group>"; };
 		FF8BB2BEB3B24A6786383A5F /* context.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = context.c; path = ../../src/glfw/src/context.c; sourceTree = "<group>"; };
+/* Rive VG Wrapper */
+		RVE0001000000000000000C3 /* Paint.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Paint.cpp; path = ../../src/cinder/vg/Paint.cpp; sourceTree = "<group>"; };
+		RVE0001000000000000000C5 /* CanvasGl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = CanvasGl.cpp; path = ../../src/cinder/vg/CanvasGl.cpp; sourceTree = "<group>"; };
+/* Rive Renderer Core */
+		RVE000100000000000000002 /* draw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = draw.cpp; path = ../../rive-runtime/renderer/src/draw.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000003 /* gpu.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = gpu.cpp; path = ../../rive-runtime/renderer/src/gpu.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000004 /* gpu_resource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = gpu_resource.cpp; path = ../../rive-runtime/renderer/src/gpu_resource.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000005 /* gr_triangulator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = gr_triangulator.cpp; path = ../../rive-runtime/renderer/src/gr_triangulator.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000006 /* gradient.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = gradient.cpp; path = ../../rive-runtime/renderer/src/gradient.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000007 /* intersection_board.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = intersection_board.cpp; path = ../../rive-runtime/renderer/src/intersection_board.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000008 /* render_context.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = render_context.cpp; path = ../../rive-runtime/renderer/src/render_context.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000009 /* render_context_helper_impl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = render_context_helper_impl.cpp; path = ../../rive-runtime/renderer/src/render_context_helper_impl.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000000A /* rive_render_factory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = rive_render_factory.cpp; path = ../../rive-runtime/renderer/src/rive_render_factory.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000000B /* rive_render_image.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = rive_render_image.cpp; path = ../../rive-runtime/renderer/src/rive_render_image.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000000C /* rive_render_paint.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = rive_render_paint.cpp; path = ../../rive-runtime/renderer/src/rive_render_paint.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000000D /* rive_render_path.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = rive_render_path.cpp; path = ../../rive-runtime/renderer/src/rive_render_path.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000000E /* rive_renderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = rive_renderer.cpp; path = ../../rive-runtime/renderer/src/rive_renderer.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000000F /* sk_rectanizer_skyline.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = sk_rectanizer_skyline.cpp; path = ../../rive-runtime/renderer/src/sk_rectanizer_skyline.cpp; sourceTree = "<group>"; };
+/* Rive GL Backend */
+		RVE000100000000000000010 /* gl_state.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = gl_state.cpp; path = ../../rive-runtime/renderer/src/gl/gl_state.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000011 /* gl_utils.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = gl_utils.cpp; path = ../../rive-runtime/renderer/src/gl/gl_utils.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000012 /* load_gles_extensions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = load_gles_extensions.cpp; path = ../../rive-runtime/renderer/src/gl/load_gles_extensions.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000013 /* load_store_actions_ext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = load_store_actions_ext.cpp; path = ../../rive-runtime/renderer/src/gl/load_store_actions_ext.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000014 /* pls_impl_ext_native.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = pls_impl_ext_native.cpp; path = ../../rive-runtime/renderer/src/gl/pls_impl_ext_native.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000015 /* pls_impl_rw_texture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = pls_impl_rw_texture.cpp; path = ../../rive-runtime/renderer/src/gl/pls_impl_rw_texture.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000016 /* pls_impl_webgl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = pls_impl_webgl.cpp; path = ../../rive-runtime/renderer/src/gl/pls_impl_webgl.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000017 /* render_buffer_gl_impl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = render_buffer_gl_impl.cpp; path = ../../rive-runtime/renderer/src/gl/render_buffer_gl_impl.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000018 /* render_target_gl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = render_target_gl.cpp; path = ../../rive-runtime/renderer/src/gl/render_target_gl.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000019 /* render_context_gl_impl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = render_context_gl_impl.cpp; path = ../../rive-runtime/renderer/src/gl/render_context_gl_impl.cpp; sourceTree = "<group>"; };
+/* Rive GLAD */
+		RVE00010000000000000001A /* glad_custom.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = glad_custom.c; path = ../../rive-runtime/renderer/glad/glad_custom.c; sourceTree = "<group>"; };
+/* Rive Math */
+		RVE00010000000000000001B /* aabb.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = aabb.cpp; path = ../../rive-runtime/src/math/aabb.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000001C /* bezier_utils.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = bezier_utils.cpp; path = ../../rive-runtime/src/math/bezier_utils.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000001D /* bit_field_loc.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = bit_field_loc.cpp; path = ../../rive-runtime/src/math/bit_field_loc.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000001E /* contour_measure.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = contour_measure.cpp; path = ../../rive-runtime/src/math/contour_measure.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000001F /* hit_test.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = hit_test.cpp; path = ../../rive-runtime/src/math/hit_test.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000020 /* mat2d.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = mat2d.cpp; path = ../../rive-runtime/src/math/mat2d.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000021 /* mat2d_find_max_scale.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = mat2d_find_max_scale.cpp; path = ../../rive-runtime/src/math/mat2d_find_max_scale.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000022 /* n_slicer_helpers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = n_slicer_helpers.cpp; path = ../../rive-runtime/src/math/n_slicer_helpers.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000023 /* path_measure.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = path_measure.cpp; path = ../../rive-runtime/src/math/path_measure.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000024 /* random.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = random.cpp; path = ../../rive-runtime/src/math/random.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000025 /* raw_path.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = raw_path.cpp; path = ../../rive-runtime/src/math/raw_path.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000026 /* raw_path_utils.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = raw_path_utils.cpp; path = ../../rive-runtime/src/math/raw_path_utils.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000027 /* rectangles_to_contour.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = rectangles_to_contour.cpp; path = ../../rive-runtime/src/math/rectangles_to_contour.cpp; sourceTree = "<group>"; };
+		RVE000100000000000000028 /* vec2d.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = vec2d.cpp; path = ../../rive-runtime/src/math/vec2d.cpp; sourceTree = "<group>"; };
+/* Rive Core */
+		RVE000100000000000000029 /* renderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = renderer.cpp; path = ../../rive-runtime/src/renderer.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000002A /* color.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = color.cpp; path = ../../rive-runtime/src/shapes/paint/color.cpp; sourceTree = "<group>"; };
+		RVE00010000000000000002B /* gles2.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = gles2.c; path = ../../rive-runtime/renderer/glad/src/gles2.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -2762,6 +2862,7 @@
 				00954472167CF92E008ECA02 /* qtime */,
 				111A5E98191F703D005C3166 /* r8brain */,
 				008B43A614F5F39B00B55B07 /* svg */,
+				RVE000300000000000000001 /* vg */,
 				008CE8410E94679D00644A05 /* Area.cpp */,
 				009EE56A0F803F5600F17CB1 /* BandedMatrix.cpp */,
 				005C0CEC14CBB47500A12CD2 /* Base64.cpp */,
@@ -3840,6 +3941,106 @@
 				111A5FA6191F72AE005C3166 /* WaveTable.cpp */,
 			);
 			path = audio;
+			sourceTree = "<group>";
+		};
+/* Rive VG Groups */
+		RVE000300000000000000001 /* vg */ = {
+			isa = PBXGroup;
+			children = (
+				RVE0001000000000000000C3 /* Paint.cpp */,
+				RVE0001000000000000000C5 /* CanvasGl.cpp */,
+				RVE000300000000000000002 /* rive */,
+			);
+			name = vg;
+			sourceTree = "<group>";
+		};
+		RVE000300000000000000002 /* rive */ = {
+			isa = PBXGroup;
+			children = (
+				RVE000300000000000000007 /* core */,
+				RVE000300000000000000003 /* renderer */,
+				RVE000300000000000000005 /* math */,
+			);
+			name = rive;
+			sourceTree = "<group>";
+		};
+		RVE000300000000000000003 /* renderer */ = {
+			isa = PBXGroup;
+			children = (
+				RVE000100000000000000002 /* draw.cpp */,
+				RVE000100000000000000003 /* gpu.cpp */,
+				RVE000100000000000000004 /* gpu_resource.cpp */,
+				RVE000100000000000000005 /* gr_triangulator.cpp */,
+				RVE000100000000000000006 /* gradient.cpp */,
+				RVE000100000000000000007 /* intersection_board.cpp */,
+				RVE000100000000000000008 /* render_context.cpp */,
+				RVE000100000000000000009 /* render_context_helper_impl.cpp */,
+				RVE00010000000000000000A /* rive_render_factory.cpp */,
+				RVE00010000000000000000B /* rive_render_image.cpp */,
+				RVE00010000000000000000C /* rive_render_paint.cpp */,
+				RVE00010000000000000000D /* rive_render_path.cpp */,
+				RVE00010000000000000000E /* rive_renderer.cpp */,
+				RVE00010000000000000000F /* sk_rectanizer_skyline.cpp */,
+				RVE000300000000000000004 /* gl */,
+				RVE000300000000000000006 /* glad */,
+			);
+			name = renderer;
+			sourceTree = "<group>";
+		};
+		RVE000300000000000000004 /* gl */ = {
+			isa = PBXGroup;
+			children = (
+				RVE000100000000000000010 /* gl_state.cpp */,
+				RVE000100000000000000011 /* gl_utils.cpp */,
+				RVE000100000000000000012 /* load_gles_extensions.cpp */,
+				RVE000100000000000000013 /* load_store_actions_ext.cpp */,
+				RVE000100000000000000014 /* pls_impl_ext_native.cpp */,
+				RVE000100000000000000015 /* pls_impl_rw_texture.cpp */,
+				RVE000100000000000000016 /* pls_impl_webgl.cpp */,
+				RVE000100000000000000017 /* render_buffer_gl_impl.cpp */,
+				RVE000100000000000000018 /* render_target_gl.cpp */,
+				RVE000100000000000000019 /* render_context_gl_impl.cpp */,
+			);
+			name = gl;
+			sourceTree = "<group>";
+		};
+		RVE000300000000000000005 /* math */ = {
+			isa = PBXGroup;
+			children = (
+				RVE00010000000000000001B /* aabb.cpp */,
+				RVE00010000000000000001C /* bezier_utils.cpp */,
+				RVE00010000000000000001D /* bit_field_loc.cpp */,
+				RVE00010000000000000001E /* contour_measure.cpp */,
+				RVE00010000000000000001F /* hit_test.cpp */,
+				RVE000100000000000000020 /* mat2d.cpp */,
+				RVE000100000000000000021 /* mat2d_find_max_scale.cpp */,
+				RVE000100000000000000022 /* n_slicer_helpers.cpp */,
+				RVE000100000000000000023 /* path_measure.cpp */,
+				RVE000100000000000000024 /* random.cpp */,
+				RVE000100000000000000025 /* raw_path.cpp */,
+				RVE000100000000000000026 /* raw_path_utils.cpp */,
+				RVE000100000000000000027 /* rectangles_to_contour.cpp */,
+				RVE000100000000000000028 /* vec2d.cpp */,
+			);
+			name = math;
+			sourceTree = "<group>";
+		};
+		RVE000300000000000000006 /* glad */ = {
+			isa = PBXGroup;
+			children = (
+				RVE00010000000000000001A /* glad_custom.c */,
+				RVE00010000000000000002B /* gles2.c */,
+			);
+			name = glad;
+			sourceTree = "<group>";
+		};
+		RVE000300000000000000007 /* core */ = {
+			isa = PBXGroup;
+			children = (
+				RVE000100000000000000029 /* renderer.cpp */,
+				RVE00010000000000000002A /* color.cpp */,
+			);
+			name = core;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -5271,6 +5472,50 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				RVE0002000000000000000C3 /* Paint.cpp in Sources */,
+				RVE0002000000000000000C5 /* CanvasGl.cpp in Sources */,
+				RVE000200000000000000002 /* draw.cpp in Sources */,
+				RVE000200000000000000003 /* gpu.cpp in Sources */,
+				RVE000200000000000000004 /* gpu_resource.cpp in Sources */,
+				RVE000200000000000000005 /* gr_triangulator.cpp in Sources */,
+				RVE000200000000000000006 /* gradient.cpp in Sources */,
+				RVE000200000000000000007 /* intersection_board.cpp in Sources */,
+				RVE000200000000000000008 /* render_context.cpp in Sources */,
+				RVE000200000000000000009 /* render_context_helper_impl.cpp in Sources */,
+				RVE00020000000000000000A /* rive_render_factory.cpp in Sources */,
+				RVE00020000000000000000B /* rive_render_image.cpp in Sources */,
+				RVE00020000000000000000C /* rive_render_paint.cpp in Sources */,
+				RVE00020000000000000000D /* rive_render_path.cpp in Sources */,
+				RVE00020000000000000000E /* rive_renderer.cpp in Sources */,
+				RVE00020000000000000000F /* sk_rectanizer_skyline.cpp in Sources */,
+				RVE000200000000000000010 /* gl_state.cpp in Sources */,
+				RVE000200000000000000011 /* gl_utils.cpp in Sources */,
+				/* Removed - Android only: load_gles_extensions.cpp */
+				RVE000200000000000000013 /* load_store_actions_ext.cpp in Sources */,
+				RVE000200000000000000014 /* pls_impl_ext_native.cpp in Sources */,
+				RVE000200000000000000015 /* pls_impl_rw_texture.cpp in Sources */,
+				/* Removed - WebGL only: pls_impl_webgl.cpp */
+				RVE000200000000000000017 /* render_buffer_gl_impl.cpp in Sources */,
+				RVE000200000000000000018 /* render_target_gl.cpp in Sources */,
+				RVE000200000000000000019 /* render_context_gl_impl.cpp in Sources */,
+				RVE00020000000000000001A /* glad_custom.c in Sources */,
+				/* gles2.c removed - conflicts with Cinder's glad */
+				RVE00020000000000000001B /* aabb.cpp in Sources */,
+				RVE00020000000000000001C /* bezier_utils.cpp in Sources */,
+				RVE00020000000000000001D /* bit_field_loc.cpp in Sources */,
+				RVE00020000000000000001E /* contour_measure.cpp in Sources */,
+				RVE00020000000000000001F /* hit_test.cpp in Sources */,
+				RVE000200000000000000020 /* mat2d.cpp in Sources */,
+				RVE000200000000000000021 /* mat2d_find_max_scale.cpp in Sources */,
+				RVE000200000000000000022 /* n_slicer_helpers.cpp in Sources */,
+				RVE000200000000000000023 /* path_measure.cpp in Sources */,
+				RVE000200000000000000024 /* random.cpp in Sources */,
+				RVE000200000000000000025 /* raw_path.cpp in Sources */,
+				RVE000200000000000000026 /* raw_path_utils.cpp in Sources */,
+				RVE000200000000000000027 /* rectangles_to_contour.cpp in Sources */,
+				RVE000200000000000000028 /* vec2d.cpp in Sources */,
+				RVE000200000000000000029 /* renderer.cpp in Sources */,
+				RVE00020000000000000002A /* color.cpp in Sources */,
 				575212C758BE40188A60E975 /* context.c in Sources */,
 				2075DB9CFFC44627A7E68FD5 /* init.c in Sources */,
 				D64BE767FF6D405297BF1944 /* input.c in Sources */,
@@ -5581,6 +5826,7 @@
 					"FT_DEBUG_LEVEL_TRACE=1",
 					"ZLIB_DEBUG=1",
 					"_GLFW_COCOA=1",
+					"RIVE_DESKTOP_GL=1",
 				);
 				GENERATE_MASTER_OBJECT_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -5590,6 +5836,12 @@
 					../../include/jsoncpp,
 					../../include/oggvorbis,
 					../../include/freetype,
+					../../rive-runtime/include,
+					../../rive-runtime/renderer/include,
+					../../rive-runtime/renderer/src/shaders/out,
+					../../rive-runtime/renderer/src,
+					../../rive-runtime/renderer/glad,
+					../../rive-runtime/renderer/glad/include,
 				);
 				INSTALL_PATH = /usr/local/lib;
 				LINK_WITH_STANDARD_LIBRARIES = NO;
@@ -5625,6 +5877,7 @@
 					"FT2_BUILD_LIBRARY=1",
 					"FT_DEBUG_LEVEL_TRACE=1",
 					"_GLFW_COCOA=1",
+					"RIVE_DESKTOP_GL=1",
 				);
 				GENERATE_MASTER_OBJECT_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -5634,6 +5887,12 @@
 					../../include/jsoncpp,
 					../../include/oggvorbis,
 					../../include/freetype,
+					../../rive-runtime/include,
+					../../rive-runtime/renderer/include,
+					../../rive-runtime/renderer/src/shaders/out,
+					../../rive-runtime/renderer/src,
+					../../rive-runtime/renderer/glad,
+					../../rive-runtime/renderer/glad/include,
 				);
 				INSTALL_PATH = /usr/local/lib;
 				LINK_WITH_STANDARD_LIBRARIES = NO;
@@ -5681,7 +5940,10 @@
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OBJC_CALL_CXX_CDTORS = YES;
-				"GCC_PREPROCESSOR_DEFINITIONS[arch=*]" = "DEBUG=1";
+				"GCC_PREPROCESSOR_DEFINITIONS[arch=*]" = (
+					"DEBUG=1",
+					"RIVE_DESKTOP_GL=1",
+				);
 				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
@@ -5695,11 +5957,16 @@
 					../../include/macosx/cairo,
 					../../include/jsoncpp,
 					../../include/oggvorbis,
+					../../rive-runtime/include,
+					../../rive-runtime/renderer/include,
+					../../rive-runtime/renderer/src/shaders/out,
+					../../rive-runtime/renderer/glad,
+					../../rive-runtime/renderer/glad/include,
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				OBJROOT = build/;
 				ONLY_ACTIVE_ARCH = YES;
-				USER_HEADER_SEARCH_PATHS = "../../include ../../src/oggvorbis/vorbis ../../src/r8brain";
+				USER_HEADER_SEARCH_PATHS = "../../include ../../src/oggvorbis/vorbis ../../src/r8brain ../../rive-runtime/include ../../rive-runtime/renderer/include ../../rive-runtime/renderer/src/shaders/out/generated ../../rive-runtime/renderer/glad ../../rive-runtime/renderer/glad/include";
 			};
 			name = Debug;
 		};
@@ -5732,7 +5999,10 @@
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OBJC_CALL_CXX_CDTORS = YES;
-				"GCC_PREPROCESSOR_DEFINITIONS[arch=*]" = "NDEBUG=1";
+				"GCC_PREPROCESSOR_DEFINITIONS[arch=*]" = (
+					"NDEBUG=1",
+					"RIVE_DESKTOP_GL=1",
+				);
 				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
@@ -5746,11 +6016,16 @@
 					../../include/macosx/cairo,
 					../../include/jsoncpp,
 					../../include/oggvorbis,
+					../../rive-runtime/include,
+					../../rive-runtime/renderer/include,
+					../../rive-runtime/renderer/src/shaders/out,
+					../../rive-runtime/renderer/glad,
+					../../rive-runtime/renderer/glad/include,
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				OBJROOT = build/;
 				ONLY_ACTIVE_ARCH = YES;
-				USER_HEADER_SEARCH_PATHS = "../../include ../../src/oggvorbis/vorbis ../../src/r8brain";
+				USER_HEADER_SEARCH_PATHS = "../../include ../../src/oggvorbis/vorbis ../../src/r8brain ../../rive-runtime/include ../../rive-runtime/renderer/include ../../rive-runtime/renderer/src/shaders/out/generated ../../rive-runtime/renderer/glad ../../rive-runtime/renderer/glad/include";
 			};
 			name = Release;
 		};
