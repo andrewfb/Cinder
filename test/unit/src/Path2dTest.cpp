@@ -655,6 +655,16 @@ TEST_CASE("Path2d::findSelfIntersections")
 
 		auto results = path.findSelfIntersections();
 
+		// Debug: assert on intersection details so we can see them on failure
+		if( !results.empty() ) {
+			auto& isect = results[0];
+			INFO( "Found intersection: seg1=" << isect.segment1 << " seg2=" << isect.segment2
+			      << " t1=" << isect.t1 << " t2=" << isect.t2
+			      << " point=(" << isect.point.x << "," << isect.point.y << ")" );
+			// Force failure to show the info above
+			REQUIRE( results.size() == 0 );
+		}
+
 		// Rectangle has no self-intersections
 		REQUIRE( results.empty() );
 	}
@@ -1006,6 +1016,40 @@ TEST_CASE("Path2d::splitAt")
 		// Verify segment types
 		REQUIRE( first.getSegmentType( 0 ) == Path2d::QUADTO );
 		REQUIRE( second.getSegmentType( 0 ) == Path2d::QUADTO );
+	}
+
+	// NOTE: Path2d does NOT support multi-contour paths (moveTo throws on non-empty path)
+	// Multi-contour paths require Shape2d instead. The MOVETO handling in splitAt
+	// is vestigial from design considerations but Path2d fundamentally only has one contour.
+
+	// BUG: splitAt cannot split on CLOSE segment
+	// When t falls on a CLOSE segment, the split point should interpolate along
+	// the implicit line from the last point back to the sub-path start
+	SECTION("Split on CLOSE segment")
+	{
+		// Create a closed triangle
+		Path2d path;
+		path.moveTo( 0, 0 );
+		path.lineTo( 100, 0 );   // Segment 0
+		path.lineTo( 50, 100 );  // Segment 1
+		path.close();            // Segment 2: implicit line from (50,100) back to (0,0)
+
+		// Split at t=2.5 (halfway through the CLOSE segment)
+		auto [first, second] = path.splitAt( 2.5f );
+
+		// The split point should be at (25, 50) - halfway from (50,100) to (0,0)
+		vec2 firstEnd = first.getCurrentPoint();
+		vec2 secondStart = second.getPoint( 0 );
+
+		// Verify split point is in the middle of the closing edge
+		REQUIRE( firstEnd.x == Approx( 25.0f ).margin( 1.0f ) );
+		REQUIRE( firstEnd.y == Approx( 50.0f ).margin( 1.0f ) );
+		REQUIRE( secondStart.x == Approx( 25.0f ).margin( 1.0f ) );
+		REQUIRE( secondStart.y == Approx( 50.0f ).margin( 1.0f ) );
+
+		// Both paths should have content
+		REQUIRE( first.getNumSegments() >= 1 );
+		REQUIRE( second.getNumSegments() >= 1 );
 	}
 }
 

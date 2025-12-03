@@ -2487,6 +2487,11 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 						if( isect.t1 < ENDPOINT_THRESHOLD && isect.t2 > 1.0 - ENDPOINT_THRESHOLD )
 							continue;
 					}
+					// For CLOSE segment wrapping back to firstDrawable: skip if t1 ≈ 0 and t2 ≈ 1
+					if( isClosed() && mSegments[j] == CLOSE && i == firstDrawable ) {
+						if( isect.t1 < ENDPOINT_THRESHOLD && isect.t2 > 1.0 - ENDPOINT_THRESHOLD )
+							continue;
+					}
 				}
 
 				// For first-last segments (even on open paths): filter out start==end intersection
@@ -2826,7 +2831,9 @@ std::pair<Path2d, Path2d> Path2d::splitAt( float t ) const
 				first.lineTo( subPathStart );  // CLOSE is a line back to subpath start
 				break;
 			case MOVETO:
-				// Note: Path2d typically only has one moveTo at start, but handle it anyway
+				// Start a new contour in first path and update subpath tracking
+				first.moveTo( mPoints[ptIdx] );
+				subPathStart = mPoints[ptIdx];
 				ptIdx += sSegmentTypePointCounts[mSegments[s]];
 				break;
 		}
@@ -2971,12 +2978,13 @@ std::pair<Path2d, Path2d> Path2d::splitAt( float t ) const
 				startPtIdx += 3;
 				break;
 			case CLOSE:
-				// Add a line to the subpath start (don't actually close, as we split it)
-				second.lineTo( subPathStart );
+				// Add a line to the second path's subpath start (not original subPathStart)
+				second.lineTo( secondSubPathStart );
 				break;
 			case MOVETO:
-				// Note: This shouldn't typically happen in a standard Path2d
-				// but handle it for robustness
+				// Start a new contour in second path
+				second.moveTo( mPoints[startPtIdx] );
+				secondSubPathStart = mPoints[startPtIdx];
 				startPtIdx += sSegmentTypePointCounts[mSegments[s]];
 				break;
 		}

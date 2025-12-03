@@ -87,6 +87,9 @@ private:
 		float tolerance = 0.25f;
 		bool removeSelfIntersections = false;
 
+		// Multiple offset curves (evenly spaced up to distance)
+		int numOffsetCurves = 1;
+
 		// Dashing
 		bool enableDashing = false;
 		int dashPreset = 0;
@@ -767,6 +770,10 @@ void BezierOffsetApp::drawImGuiControls()
 			if( ImGui::Checkbox( "Remove Self-Intersections", &active.removeSelfIntersections ) ) {
 				updateResult();
 			}
+
+			if( ImGui::SliderInt( "Num Curves", &active.numOffsetCurves, 1, 20 ) ) {
+				// No updateResult needed - multiple curves drawn on the fly
+			}
 		}
 		else if( active.mode == Mode::STROKE ) {
 			if( ImGui::SliderFloat( "Width", &active.distance, 1.0f, 100.0f, "%.1f" ) ) {
@@ -895,10 +902,20 @@ void BezierOffsetApp::drawImGuiControls()
 
 		ImGui::Spacing();
 		const Shape2d& activeResult = mShapes[mActiveShapeIndex].result;
-		ImGui::Text( "Result: %zu contours", activeResult.getNumContours() );
-		size_t resultPts = 0;
-		for( const auto& c : activeResult.getContours() ) resultPts += c.getNumPoints();
-		ImGui::Text( "  Total points: %zu", resultPts );
+		size_t resultSegs = 0, resultPts = 0;
+		int resultLines = 0, resultQuads = 0, resultCubics = 0;
+		for( const auto& c : activeResult.getContours() ) {
+			resultSegs += c.getNumSegments();
+			resultPts += c.getNumPoints();
+			for( size_t i = 0; i < c.getNumSegments(); ++i ) {
+				auto type = c.getSegmentType( i );
+				if( type == Path2d::LINETO ) resultLines++;
+				else if( type == Path2d::QUADTO ) resultQuads++;
+				else if( type == Path2d::CUBICTO ) resultCubics++;
+			}
+		}
+		ImGui::Text( "Result: %zu contours, %zu segments", activeResult.getNumContours(), resultSegs );
+		ImGui::Text( "  Lines: %d, Quads: %d, Cubics: %d", resultLines, resultQuads, resultCubics );
 	}
 
 	// Instructions
@@ -947,12 +964,41 @@ void BezierOffsetApp::drawContent()
 			bool isActive = (si == mActiveShapeIndex);
 			float alpha = isActive ? 0.5f : 0.3f;
 
-			gl::color( ColorA( mResultColor, alpha ) );
-			gl::draw( entry.result );
+			// Draw multiple offset curves if requested (offset mode only)
+			if( entry.mode == Mode::OFFSET && entry.numOffsetCurves > 1 ) {
+				StrokeJoin joinStyle;
+				switch( entry.joinStyle ) {
+					case 0: joinStyle = StrokeJoin::Bevel; break;
+					case 1: joinStyle = StrokeJoin::Miter; break;
+					default: joinStyle = StrokeJoin::Round; break;
+				}
 
-			gl::color( ColorA( mResultColor.r * 1.3f, mResultColor.g * 1.3f, mResultColor.b * 1.3f, isActive ? 0.8f : 0.5f ) );
-			for( const auto& contour : entry.result.getContours() ) {
-				gl::draw( contour );
+				for( int c = 1; c <= entry.numOffsetCurves; ++c ) {
+					float dist = entry.distance * (float)c / (float)entry.numOffsetCurves;
+					Shape2d curveResult = offset( entry.shape, dist, joinStyle, entry.miterLimit, entry.tolerance, entry.removeSelfIntersections );
+
+					// Blend from original shape color to result color
+					float t = (float)c / (float)entry.numOffsetCurves;
+					Color blendColor(
+						entry.color.r + t * (mResultColor.r - entry.color.r),
+						entry.color.g + t * (mResultColor.g - entry.color.g),
+						entry.color.b + t * (mResultColor.b - entry.color.b)
+					);
+					gl::color( blendColor );
+					for( const auto& contour : curveResult.getContours() ) {
+						gl::draw( contour );
+					}
+				}
+			}
+			else {
+				// Single result (original behavior)
+				gl::color( ColorA( mResultColor, alpha ) );
+				gl::draw( entry.result );
+
+				gl::color( ColorA( mResultColor.r * 1.3f, mResultColor.g * 1.3f, mResultColor.b * 1.3f, isActive ? 0.8f : 0.5f ) );
+				for( const auto& contour : entry.result.getContours() ) {
+					gl::draw( contour );
+				}
 			}
 
 			// Result control points (only for active shape)
