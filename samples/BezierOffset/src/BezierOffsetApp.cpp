@@ -18,6 +18,7 @@ using namespace ci::app;
 using namespace std;
 
 enum class PresetShape {
+	EMPTY,
 	OPEN_LINE,
 	OPEN_CURVE,
 	OPEN_S_CURVE,
@@ -27,6 +28,20 @@ enum class PresetShape {
 	SHARP_ZIGZAG,
 	GLYPH_A,
 	GLYPH_C
+};
+
+// Names for the preset combo box
+static const char* sPresetNames[] = {
+	"Empty (draw your own)",
+	"Line",
+	"Curve",
+	"S-Curve",
+	"Rectangle",
+	"Circle",
+	"Star",
+	"Zigzag",
+	"Glyph 'a'",
+	"Glyph 'C'"
 };
 
 class BezierOffsetApp : public App {
@@ -44,74 +59,88 @@ public:
 private:
 	void drawImGuiControls();
 	void updateResult();
-	void loadPresetShape( PresetShape shape );
+	Shape2d createPresetShape( PresetShape preset );
 	void drawContent();
 	void drawIntersections();
 	void findAllIntersections();
 
 	CanvasUi    mCanvas;
 
-	// Multi-path support
-	struct PathEntry {
-		Path2d path;
+	// Mode for offset/stroke
+	enum class Mode { NONE, OFFSET, STROKE };
+
+	// Multi-shape support - each entry is a Shape2d with its own parameters
+	struct ShapeEntry {
+		Shape2d shape;
+		Shape2d result;  // Computed offset/stroke result
 		Color color;
 		bool visible = true;
+		bool editable = true;  // Single-contour paths are editable, glyphs are not
+
+		// Per-shape mode and parameters
+		Mode mode = Mode::STROKE;
+		float distance = 20.0f;          // Offset distance or stroke width
+		int joinStyle = 2;               // 0=Bevel, 1=Miter, 2=Round
+		float miterLimit = 4.0f;
+		int startCapStyle = 2;           // 0=Butt, 1=Square, 2=Round
+		int endCapStyle = 2;             // 0=Butt, 1=Square, 2=Round
+		float tolerance = 0.25f;
+		bool removeSelfIntersections = false;
+
+		// Dashing
+		bool enableDashing = false;
+		int dashPreset = 0;
+		float dashOn = 20.0f;
+		float dashOff = 10.0f;
+		float dashOn2 = 5.0f;
+		float dashOff2 = 10.0f;
+		float dashOffset = 0.0f;
 	};
-	std::vector<PathEntry>	mPaths;
-	int						mActivePathIndex = 0;
+	std::vector<ShapeEntry>	mShapes;
+	int						mActiveShapeIndex = 0;
+	int                     mSelectedPreset = 3;  // Default to S-Curve
 
-	Path2d&     getActivePath() { return mPaths[mActivePathIndex].path; }
-	const Path2d& getActivePath() const { return mPaths[mActivePathIndex].path; }
+	Shape2d&       getActiveShape() { return mShapes[mActiveShapeIndex].shape; }
+	const Shape2d& getActiveShape() const { return mShapes[mActiveShapeIndex].shape; }
+	bool           isActiveEditable() const { return mShapes[mActiveShapeIndex].editable; }
 
-	Shape2d     mInputShape;   // For multi-contour inputs like glyphs
-	bool        mUseShape = false;
-	Shape2d     mResult;
+	// For editable shapes, get the first (and only) contour
+	Path2d*        getEditablePath();
+	const Path2d*  getEditablePath() const;
+
 	int         mTrackedPoint;
 	int         mHoveredPoint = -1;
-	int         mHoveredPathIndex = -1;  // Which path is being hovered (-1 = none)
-	bool        mHoveringPath = false;   // True if hovering over any path stroke
+	int         mHoveredShapeIndex = -1;  // Which shape is being hovered (-1 = none)
+	bool        mHoveringShape = false;   // True if hovering over any shape stroke
 	bool        mDraggingPoint = false;
-	bool        mDraggingPath = false;
+	bool        mDraggingShape = false;
 	vec2        mDragStartPos;
 
 	// Path-to-path intersections
 	std::vector<Path2d::Intersection>	mPathIntersections;
 	bool								mShowPathIntersections = true;
 
-	// Mode selection
-	enum class Mode { OFFSET, STROKE };
-	Mode        mMode = Mode::STROKE;
-
-	// Offset parameters
-	float       mOffsetDistance = 20.0f;
-	float       mTolerance = 0.25f;
-	int         mNumOffsetCurves = 1;
-	bool        mRemoveSelfIntersections = false;
-
-	// Stroke parameters
-	float       mStrokeWidth = 40.0f;
-	int         mJoinStyle = 2;      // 0=Bevel, 1=Miter, 2=Round
-	float       mMiterLimit = 4.0f;
-	int         mStartCapStyle = 2;  // 0=Butt, 1=Square, 2=Round
-	int         mEndCapStyle = 2;    // 0=Butt, 1=Square, 2=Round
-
-	// Dash pattern parameters
-	bool        mEnableDashing = false;
-	int         mDashPreset = 0;
-	float       mDashOn = 20.0f;
-	float       mDashOff = 10.0f;
-	float       mDashOn2 = 5.0f;
-	float       mDashOff2 = 10.0f;
-	float       mDashOffset = 0.0f;
-
 	// Visualization options
 	bool        mShowOriginal = true;
 	bool        mShowResult = true;
 	bool        mShowOriginalControlPoints = true;
 	bool        mShowResultControlPoints = false;
-	Color       mOriginalColor = Color( 1.0f, 0.5f, 0.25f );
 	Color       mResultColor = Color( 0.25f, 0.6f, 0.9f );
 };
+
+Path2d* BezierOffsetApp::getEditablePath()
+{
+	if( !isActiveEditable() || getActiveShape().empty() )
+		return nullptr;
+	return &getActiveShape().getContours()[0];
+}
+
+const Path2d* BezierOffsetApp::getEditablePath() const
+{
+	if( !isActiveEditable() || getActiveShape().empty() )
+		return nullptr;
+	return &getActiveShape().getContours()[0];
+}
 
 void BezierOffsetApp::setup()
 {
@@ -121,11 +150,113 @@ void BezierOffsetApp::setup()
 	mCanvas.connect( getWindow() );
 	mCanvas.setZoomLimits( 0.1f, 10.0f );
 
-	// Initialize with first path
-	mPaths.push_back( { Path2d(), Color( 1.0f, 0.5f, 0.25f ), true } );
-
 	// Start with an S-curve
-	loadPresetShape( PresetShape::OPEN_S_CURVE );
+	Shape2d initialShape = createPresetShape( PresetShape::OPEN_S_CURVE );
+	ShapeEntry entry;
+	entry.shape = initialShape;
+	entry.color = Color( 1.0f, 0.5f, 0.25f );
+	entry.visible = true;
+	entry.editable = true;
+	mShapes.push_back( entry );
+	updateResult();
+}
+
+Shape2d BezierOffsetApp::createPresetShape( PresetShape preset )
+{
+	Shape2d result;
+	vec2 center = getWindowCenter();
+
+	switch( preset ) {
+		case PresetShape::EMPTY:
+			// Return empty shape - user will draw
+			break;
+
+		case PresetShape::OPEN_LINE:
+			result.moveTo( center + vec2( -150, 0 ) );
+			result.lineTo( center + vec2( 150, 0 ) );
+			break;
+
+		case PresetShape::OPEN_CURVE:
+			result.moveTo( center + vec2( -150, 0 ) );
+			result.curveTo( center + vec2( -50, -100 ), center + vec2( 50, -100 ), center + vec2( 150, 0 ) );
+			break;
+
+		case PresetShape::OPEN_S_CURVE:
+			result.moveTo( center + vec2( -150, 50 ) );
+			result.curveTo( center + vec2( -50, -100 ), center + vec2( 50, 200 ), center + vec2( 150, 50 ) );
+			break;
+
+		case PresetShape::CLOSED_RECT:
+			result.moveTo( center + vec2( -100, -80 ) );
+			result.lineTo( center + vec2( 100, -80 ) );
+			result.lineTo( center + vec2( 100, 80 ) );
+			result.lineTo( center + vec2( -100, 80 ) );
+			result.close();
+			break;
+
+		case PresetShape::CLOSED_CIRCLE: {
+			float radius = 100.0f;
+			float k = 0.5522847498f;
+			float kr = k * radius;
+			result.moveTo( center + vec2( 0, -radius ) );
+			result.curveTo( center + vec2( kr, -radius ), center + vec2( radius, -kr ), center + vec2( radius, 0 ) );
+			result.curveTo( center + vec2( radius, kr ), center + vec2( kr, radius ), center + vec2( 0, radius ) );
+			result.curveTo( center + vec2( -kr, radius ), center + vec2( -radius, kr ), center + vec2( -radius, 0 ) );
+			result.curveTo( center + vec2( -radius, -kr ), center + vec2( -kr, -radius ), center + vec2( 0, -radius ) );
+			result.close();
+			break;
+		}
+
+		case PresetShape::CLOSED_STAR: {
+			float outerRadius = 100.0f;
+			float innerRadius = 40.0f;
+			int points = 5;
+			result.moveTo( center + vec2( 0, -outerRadius ) );
+			for( int i = 1; i < points * 2; ++i ) {
+				float angle = (float)i * (float)M_PI / points - (float)M_PI / 2.0f;
+				float r = (i % 2 == 0) ? outerRadius : innerRadius;
+				result.lineTo( center + vec2( std::cos( angle ), std::sin( angle ) ) * r );
+			}
+			result.close();
+			break;
+		}
+
+		case PresetShape::SHARP_ZIGZAG:
+			result.moveTo( center + vec2( -150, -50 ) );
+			result.lineTo( center + vec2( -100, 50 ) );
+			result.lineTo( center + vec2( -50, -50 ) );
+			result.lineTo( center + vec2( 0, 50 ) );
+			result.lineTo( center + vec2( 50, -50 ) );
+			result.lineTo( center + vec2( 100, 50 ) );
+			result.lineTo( center + vec2( 150, -50 ) );
+			break;
+
+		case PresetShape::GLYPH_A: {
+			Font arial( "Arial", 400.0f );
+			auto glyphs = arial.getGlyphs( "a" );
+			if( !glyphs.empty() ) {
+				result = arial.getGlyphShape( glyphs[0] );
+				Rectf bounds = result.calcBoundingBox();
+				mat3 xform = glm::translate( mat3(), center - bounds.getCenter() );
+				result.transform( xform );
+			}
+			break;
+		}
+
+		case PresetShape::GLYPH_C: {
+			Font arial( "Arial", 400.0f );
+			auto glyphs = arial.getGlyphs( "C" );
+			if( !glyphs.empty() ) {
+				result = arial.getGlyphShape( glyphs[0] );
+				Rectf bounds = result.calcBoundingBox();
+				mat3 xform = glm::translate( mat3(), center - bounds.getCenter() );
+				result.transform( xform );
+			}
+			break;
+		}
+	}
+
+	return result;
 }
 
 void BezierOffsetApp::mouseDown( MouseEvent event )
@@ -139,29 +270,37 @@ void BezierOffsetApp::mouseDown( MouseEvent event )
 			return;
 		}
 
-		// Click on a path/shape to select it and start dragging
-		if( mHoveringPath && mHoveredPathIndex >= 0 ) {
-			// For shapes, just start dragging (no path selection needed)
-			if( !mUseShape && mHoveredPathIndex != mActivePathIndex ) {
-				mActivePathIndex = mHoveredPathIndex;
+		// Click on a shape to select it and start dragging
+		if( mHoveringShape && mHoveredShapeIndex >= 0 ) {
+			if( mHoveredShapeIndex != mActiveShapeIndex ) {
+				mActiveShapeIndex = mHoveredShapeIndex;
 				mHoveredPoint = -1;
 				mTrackedPoint = -1;
 				updateResult();
 			}
-			mDraggingPath = true;
+			mDraggingShape = true;
 			mDragStartPos = pos;
 			return;
 		}
 
-		Path2d& path = getActivePath();
-		if( path.empty() ) {
-			path.moveTo( pos );
+		// Add points only for editable shapes
+		Path2d* path = getEditablePath();
+		if( path ) {
+			if( path->empty() ) {
+				path->moveTo( pos );
+				mTrackedPoint = 0;
+			}
+			else {
+				path->lineTo( pos );
+			}
+			updateResult();
+		}
+		else if( getActiveShape().empty() && isActiveEditable() ) {
+			// Empty editable shape - start a new path
+			getActiveShape().moveTo( pos );
 			mTrackedPoint = 0;
+			updateResult();
 		}
-		else {
-			path.lineTo( pos );
-		}
-		updateResult();
 	}
 }
 
@@ -175,62 +314,62 @@ void BezierOffsetApp::mouseDrag( MouseEvent event )
 		return;
 
 	vec2 pos = mCanvas.toContent( event.getPos() );
-	Path2d& path = getActivePath();
 
 	if( mDraggingPoint && mTrackedPoint >= 0 ) {
-		path.setPoint( mTrackedPoint, pos );
-		updateResult();
+		Path2d* path = getEditablePath();
+		if( path ) {
+			path->setPoint( mTrackedPoint, pos );
+			updateResult();
+		}
 		return;
 	}
 
-	// Handle path/shape dragging - translate all points
-	if( mDraggingPath ) {
+	// Handle shape dragging - translate all contours
+	if( mDraggingShape ) {
 		vec2 delta = pos - mDragStartPos;
-		if( mUseShape ) {
-			mInputShape.translate( delta );
-		}
-		else {
-			for( size_t i = 0; i < path.getNumPoints(); ++i ) {
-				path.setPoint( i, path.getPoint( i ) + delta );
-			}
-		}
+		getActiveShape().translate( delta );
 		mDragStartPos = pos;
 		updateResult();
 		return;
 	}
 
-	if( mTrackedPoint >= 0 ) {
-		path.setPoint( mTrackedPoint, pos );
-	}
-	else if( path.getNumSegments() > 0 ) {
-		vec2 endPt = path.getPoint( path.getNumPoints() - 1 );
-		path.removeSegment( path.getNumSegments() - 1 );
+	// Curve creation while dragging
+	Path2d* path = getEditablePath();
+	if( !path )
+		return;
 
-		Path2d::SegmentType prevType = ( path.getNumSegments() == 0 )
+	if( mTrackedPoint >= 0 ) {
+		path->setPoint( mTrackedPoint, pos );
+	}
+	else if( path->getNumSegments() > 0 ) {
+		vec2 endPt = path->getPoint( path->getNumPoints() - 1 );
+		path->removeSegment( path->getNumSegments() - 1 );
+
+		Path2d::SegmentType prevType = ( path->getNumSegments() == 0 )
 			? Path2d::MOVETO
-			: path.getSegmentType( path.getNumSegments() - 1 );
+			: path->getSegmentType( path->getNumSegments() - 1 );
 
 		if( event.isShiftDown() || prevType == Path2d::MOVETO ) {
-			path.quadTo( pos, endPt );
+			path->quadTo( pos, endPt );
 		}
 		else {
 			vec2 tan1;
 			if( prevType == Path2d::CUBICTO ) {
-				vec2 prevDelta = path.getPoint( path.getNumPoints() - 2 ) - path.getPoint( path.getNumPoints() - 1 );
-				tan1 = path.getPoint( path.getNumPoints() - 1 ) - prevDelta;
+				vec2 prevDelta = path->getPoint( path->getNumPoints() - 2 ) - path->getPoint( path->getNumPoints() - 1 );
+				tan1 = path->getPoint( path->getNumPoints() - 1 ) - prevDelta;
 			}
 			else if( prevType == Path2d::QUADTO ) {
-				vec2 quadTangent = path.getPoint( path.getNumPoints() - 2 );
-				vec2 quadEnd = path.getPoint( path.getNumPoints() - 1 );
+				vec2 quadTangent = path->getPoint( path->getNumPoints() - 2 );
+				vec2 quadEnd = path->getPoint( path->getNumPoints() - 1 );
 				vec2 prevDelta = ( quadTangent + ( quadEnd - quadTangent ) / 3.0f ) - quadEnd;
 				tan1 = quadEnd - prevDelta;
 			}
 			else {
-				tan1 = path.getPoint( path.getNumPoints() - 1 );
+				tan1 = path->getPoint( path->getNumPoints() - 1 );
 			}
-			path.curveTo( tan1, pos, endPt );
+			path->curveTo( tan1, pos, endPt );
 		}
-		mTrackedPoint = (int)path.getNumPoints() - 2;
+		mTrackedPoint = (int)path->getNumPoints() - 2;
 	}
 	updateResult();
 }
@@ -239,29 +378,28 @@ void BezierOffsetApp::mouseUp( MouseEvent event )
 {
 	mTrackedPoint = -1;
 	mDraggingPoint = false;
-	mDraggingPath = false;
+	mDraggingShape = false;
 }
 
 void BezierOffsetApp::mouseMove( MouseEvent event )
 {
 	if( ImGui::GetIO().WantCaptureMouse ) {
 		mHoveredPoint = -1;
-		mHoveringPath = false;
-		mHoveredPathIndex = -1;
+		mHoveringShape = false;
+		mHoveredShapeIndex = -1;
 		return;
 	}
 
 	vec2 pos = mCanvas.toContent( event.getPos() );
-	// Scale hover radius by zoom so it feels consistent at different zoom levels
 	float hoverRadius = 12.0f / mCanvas.getZoom();
 
-	// First check for control point hover on active path (skip for shapes - no point editing)
+	// First check for control point hover on active editable shape
 	float closestDist = hoverRadius;
 	int closestPoint = -1;
-	if( !mUseShape ) {
-		const Path2d& activePath = getActivePath();
-		for( size_t i = 0; i < activePath.getNumPoints(); ++i ) {
-			float dist = glm::distance( pos, activePath.getPoint( i ) );
+	const Path2d* editPath = getEditablePath();
+	if( editPath ) {
+		for( size_t i = 0; i < editPath->getNumPoints(); ++i ) {
+			float dist = glm::distance( pos, editPath->getPoint( i ) );
 			if( dist < closestDist ) {
 				closestDist = dist;
 				closestPoint = (int)i;
@@ -270,33 +408,22 @@ void BezierOffsetApp::mouseMove( MouseEvent event )
 	}
 	mHoveredPoint = closestPoint;
 
-	// Check if hovering over any path stroke (when not near a control point)
-	mHoveringPath = false;
-	mHoveredPathIndex = -1;
+	// Check if hovering over any shape stroke (when not near a control point)
+	mHoveringShape = false;
+	mHoveredShapeIndex = -1;
 	if( mHoveredPoint < 0 ) {
-		float closestPathDist = hoverRadius;
+		float closestShapeDist = hoverRadius;
 
-		// If using a shape, check its contours
-		if( mUseShape && !mInputShape.empty() ) {
-			float shapeDist = mInputShape.calcDistance( pos );
-			if( shapeDist < closestPathDist ) {
-				closestPathDist = shapeDist;
-				mHoveredPathIndex = 0;  // Treat shape as path index 0
-				mHoveringPath = true;
-			}
-		}
-		else {
-			for( int pi = 0; pi < (int)mPaths.size(); ++pi ) {
-				const PathEntry& entry = mPaths[pi];
-				if( !entry.visible || entry.path.empty() || entry.path.getNumSegments() == 0 )
-					continue;
+		for( int si = 0; si < (int)mShapes.size(); ++si ) {
+			const ShapeEntry& entry = mShapes[si];
+			if( !entry.visible || entry.shape.empty() )
+				continue;
 
-				float pathDist = entry.path.calcDistance( pos );
-				if( pathDist < closestPathDist ) {
-					closestPathDist = pathDist;
-					mHoveredPathIndex = pi;
-					mHoveringPath = true;
-				}
+			float shapeDist = entry.shape.calcDistance( pos );
+			if( shapeDist < closestShapeDist ) {
+				closestShapeDist = shapeDist;
+				mHoveredShapeIndex = si;
+				mHoveringShape = true;
 			}
 		}
 	}
@@ -304,33 +431,35 @@ void BezierOffsetApp::mouseMove( MouseEvent event )
 
 void BezierOffsetApp::keyDown( KeyEvent event )
 {
-	Path2d& path = getActivePath();
+	Path2d* path = getEditablePath();
 	switch( event.getChar() ) {
 		case 'x':
 		case 'X':
-			path.clear();
-			mResult.clear();
-			findAllIntersections();
+			if( path ) {
+				path->clear();
+				mShapes[mActiveShapeIndex].result.clear();
+				findAllIntersections();
+			}
 			break;
 		case 'c':
 		case 'C':
-			if( !path.empty() && !path.isClosed() ) {
-				path.close();
+			if( path && !path->empty() && !path->isClosed() ) {
+				path->close();
 				updateResult();
 			}
 			break;
 		case 'd':
 		case 'D':
 			// Dump input and output to console as JSON for comparison
-			{
-				auto dumpPath = []( const Path2d& path, const string& label ) {
+			if( path ) {
+				auto dumpPath = []( const Path2d& p, const string& label ) {
 					cout << label << endl;
-					const auto& pts = path.getPoints();
+					const auto& pts = p.getPoints();
 					size_t ptIdx = 0;
 					cout << "[";
-					for( size_t i = 0; i < path.getNumSegments(); ++i ) {
+					for( size_t i = 0; i < p.getNumSegments(); ++i ) {
 						if( i > 0 ) cout << ",";
-						auto type = path.getSegmentType( i );
+						auto type = p.getSegmentType( i );
 						if( type == Path2d::MOVETO ) {
 							cout << "\n  {\"type\":\"M\",\"p\":[" << pts[ptIdx].x << "," << pts[ptIdx].y << "]}";
 							ptIdx++;
@@ -350,41 +479,40 @@ void BezierOffsetApp::keyDown( KeyEvent event )
 							cout << ",\n  {\"type\":\"Z\"}";
 						}
 					}
-					if( path.isClosed() && (path.getNumSegments() == 0 || path.getSegmentType( path.getNumSegments()-1 ) != Path2d::CLOSE) ) {
+					if( p.isClosed() && (p.getNumSegments() == 0 || p.getSegmentType( p.getNumSegments()-1 ) != Path2d::CLOSE) ) {
 						cout << ",\n  {\"type\":\"Z\"}";
 					}
 					cout << "\n]" << endl;
 				};
 
-				dumpPath( getActivePath(), "=== INPUT PATH ===" );
+				dumpPath( *path, "=== INPUT PATH ===" );
 
+				const ShapeEntry& active = mShapes[mActiveShapeIndex];
 				cout << "\n=== OFFSET PARAMS ===" << endl;
-				float dist = (mMode == Mode::OFFSET) ? mOffsetDistance : mStrokeWidth / 2.0f;
-				cout << "{\"distance\":" << dist << ",\"tolerance\":" << mTolerance << "}" << endl;
+				float dist = (active.mode == Mode::OFFSET) ? active.distance : active.distance / 2.0f;
+				cout << "{\"distance\":" << dist << ",\"tolerance\":" << active.tolerance << "}" << endl;
 
-				cout << "\n=== OUTPUT SHAPE (" << mResult.getNumContours() << " contours) ===" << endl;
-				for( size_t c = 0; c < mResult.getNumContours(); ++c ) {
-					dumpPath( mResult.getContour( c ), "Contour " + to_string( c ) + ":" );
+				cout << "\n=== OUTPUT SHAPE (" << active.result.getNumContours() << " contours) ===" << endl;
+				for( size_t c = 0; c < active.result.getNumContours(); ++c ) {
+					dumpPath( active.result.getContour( c ), "Contour " + to_string( c ) + ":" );
 				}
 			}
 			break;
 		case 'i':
 		case 'I':
 			// Dump self-intersection debug info
-			{
+			if( path && !mShapes.empty() ) {
+				const ShapeEntry& active = mShapes[mActiveShapeIndex];
 				cout << "\n========== SELF-INTERSECTION DEBUG ==========" << endl;
 
-				// Get the offset result WITHOUT removeSelfIntersections
 				StrokeJoin joinStyle;
-				switch( mJoinStyle ) {
+				switch( active.joinStyle ) {
 					case 0: joinStyle = StrokeJoin::Bevel; break;
 					case 1: joinStyle = StrokeJoin::Miter; break;
 					default: joinStyle = StrokeJoin::Round; break;
 				}
 
-				Shape2d rawOffset = mUseShape
-					? offset( mInputShape, mOffsetDistance, joinStyle, mMiterLimit, mTolerance, false )
-					: offset( getActivePath(), mOffsetDistance, joinStyle, mMiterLimit, mTolerance, false );
+				Shape2d rawOffset = offset( *path, active.distance, joinStyle, active.miterLimit, active.tolerance, false );
 
 				cout << "Raw offset has " << rawOffset.getNumContours() << " contour(s)" << endl;
 
@@ -394,7 +522,6 @@ void BezierOffsetApp::keyDown( KeyEvent event )
 					cout << "  Segments: " << contour.getNumSegments() << ", Points: " << contour.getNumPoints() << endl;
 					cout << "  isClosed: " << (contour.isClosed() ? "true" : "false") << endl;
 
-					// Find self-intersections
 					auto isects = contour.findSelfIntersections();
 					cout << "  Self-intersections found: " << isects.size() << endl;
 
@@ -405,40 +532,8 @@ void BezierOffsetApp::keyDown( KeyEvent event )
 						     << " point=(" << si.point.x << "," << si.point.y << ")" << endl;
 					}
 
-					// Show what removeSelfIntersections produces
 					Shape2d cleanedShape = contour.removeSelfIntersections();
 					cout << "  After removeSelfIntersections: " << cleanedShape.getNumContours() << " contours" << endl;
-					for( size_t c = 0; c < cleanedShape.getNumContours(); ++c ) {
-						const auto& cleaned = cleanedShape.getContour( c );
-						cout << "    Contour " << c << ": " << cleaned.getNumSegments() << " segments, "
-						     << cleaned.getNumPoints() << " points" << endl;
-					}
-
-					// Dump the raw contour path
-					cout << "  Raw contour path:" << endl;
-					const auto& pts = contour.getPoints();
-					size_t ptIdx = 0;
-					for( size_t s = 0; s < contour.getNumSegments(); ++s ) {
-						auto type = contour.getSegmentType( s );
-						if( type == Path2d::MOVETO ) {
-							cout << "    M " << pts[ptIdx].x << "," << pts[ptIdx].y << endl;
-							ptIdx++;
-						} else if( type == Path2d::LINETO ) {
-							cout << "    L " << pts[ptIdx].x << "," << pts[ptIdx].y << endl;
-							ptIdx++;
-						} else if( type == Path2d::QUADTO ) {
-							cout << "    Q " << pts[ptIdx].x << "," << pts[ptIdx].y
-							     << " " << pts[ptIdx+1].x << "," << pts[ptIdx+1].y << endl;
-							ptIdx += 2;
-						} else if( type == Path2d::CUBICTO ) {
-							cout << "    C " << pts[ptIdx].x << "," << pts[ptIdx].y
-							     << " " << pts[ptIdx+1].x << "," << pts[ptIdx+1].y
-							     << " " << pts[ptIdx+2].x << "," << pts[ptIdx+2].y << endl;
-							ptIdx += 3;
-						} else if( type == Path2d::CLOSE ) {
-							cout << "    Z" << endl;
-						}
-					}
 				}
 				cout << "==============================================" << endl;
 			}
@@ -446,178 +541,86 @@ void BezierOffsetApp::keyDown( KeyEvent event )
 	}
 }
 
-void BezierOffsetApp::loadPresetShape( PresetShape shape )
+void BezierOffsetApp::updateResult()
 {
-	Path2d& path = getActivePath();
-	path.clear();
-	mInputShape.clear();
-	mUseShape = false;
-	vec2 center = getWindowCenter();
+	if( mShapes.empty() ) {
+		findAllIntersections();
+		return;
+	}
 
-	switch( shape ) {
-		case PresetShape::OPEN_LINE:
-			path.moveTo( center + vec2( -150, 0 ) );
-			path.lineTo( center + vec2( 150, 0 ) );
-			break;
+	ShapeEntry& entry = mShapes[mActiveShapeIndex];
+	const Shape2d& shape = entry.shape;
 
-		case PresetShape::OPEN_CURVE:
-			path.moveTo( center + vec2( -150, 0 ) );
-			path.curveTo( center + vec2( -50, -100 ), center + vec2( 50, -100 ), center + vec2( 150, 0 ) );
-			break;
+	if( shape.empty() || entry.mode == Mode::NONE ) {
+		entry.result.clear();
+		findAllIntersections();
+		return;
+	}
 
-		case PresetShape::OPEN_S_CURVE:
-			path.moveTo( center + vec2( -150, 50 ) );
-			path.curveTo( center + vec2( -50, -100 ), center + vec2( 50, 200 ), center + vec2( 150, 50 ) );
-			break;
-
-		case PresetShape::CLOSED_RECT:
-			path.moveTo( center + vec2( -100, -80 ) );
-			path.lineTo( center + vec2( 100, -80 ) );
-			path.lineTo( center + vec2( 100, 80 ) );
-			path.lineTo( center + vec2( -100, 80 ) );
-			path.close();
-			break;
-
-		case PresetShape::CLOSED_CIRCLE: {
-			float radius = 100.0f;
-			float k = 0.5522847498f;
-			float kr = k * radius;
-			path.moveTo( center + vec2( 0, -radius ) );
-			path.curveTo( center + vec2( kr, -radius ), center + vec2( radius, -kr ), center + vec2( radius, 0 ) );
-			path.curveTo( center + vec2( radius, kr ), center + vec2( kr, radius ), center + vec2( 0, radius ) );
-			path.curveTo( center + vec2( -kr, radius ), center + vec2( -radius, kr ), center + vec2( -radius, 0 ) );
-			path.curveTo( center + vec2( -radius, -kr ), center + vec2( -kr, -radius ), center + vec2( 0, -radius ) );
-			path.close();
-			break;
-		}
-
-		case PresetShape::CLOSED_STAR: {
-			float outerRadius = 100.0f;
-			float innerRadius = 40.0f;
-			int points = 5;
-			path.moveTo( center + vec2( 0, -outerRadius ) );
-			for( int i = 1; i < points * 2; ++i ) {
-				float angle = (float)i * (float)M_PI / points - (float)M_PI / 2.0f;
-				float r = (i % 2 == 0) ? outerRadius : innerRadius;
-				path.lineTo( center + vec2( std::cos( angle ), std::sin( angle ) ) * r );
-			}
-			path.close();
-			break;
-		}
-
-		case PresetShape::SHARP_ZIGZAG:
-			path.moveTo( center + vec2( -150, -50 ) );
-			path.lineTo( center + vec2( -100, 50 ) );
-			path.lineTo( center + vec2( -50, -50 ) );
-			path.lineTo( center + vec2( 0, 50 ) );
-			path.lineTo( center + vec2( 50, -50 ) );
-			path.lineTo( center + vec2( 100, 50 ) );
-			path.lineTo( center + vec2( 150, -50 ) );
-			break;
-
-		case PresetShape::GLYPH_A: {
-			Font arial( "Arial", 400.0f );
-			auto glyphs = arial.getGlyphs( "a" );
-			if( !glyphs.empty() ) {
-				mInputShape = arial.getGlyphShape( glyphs[0] );
-				// Center the glyph
-				Rectf bounds = mInputShape.calcBoundingBox();
-				mat3 xform = glm::translate( mat3(), center - bounds.getCenter() );
-				mInputShape.transform( xform );
-				mUseShape = true;
-			}
-			break;
-		}
-
-		case PresetShape::GLYPH_C: {
-			Font arial( "Arial", 400.0f );
-			auto glyphs = arial.getGlyphs( "C" );
-			if( !glyphs.empty() ) {
-				mInputShape = arial.getGlyphShape( glyphs[0] );
-				// Center the glyph
-				Rectf bounds = mInputShape.calcBoundingBox();
-				mat3 xform = glm::translate( mat3(), center - bounds.getCenter() );
-				mInputShape.transform( xform );
-				mUseShape = true;
-			}
+	// Check if shape has any segments
+	bool hasSegments = false;
+	for( const auto& contour : shape.getContours() ) {
+		if( contour.getNumSegments() > 0 ) {
+			hasSegments = true;
 			break;
 		}
 	}
-
-	updateResult();
-}
-
-void BezierOffsetApp::updateResult()
-{
-	const Path2d& path = getActivePath();
-	bool hasInput = mUseShape ? !mInputShape.empty() : (!path.empty() && path.getNumSegments() > 0);
-	if( !hasInput ) {
-		mResult.clear();
+	if( !hasSegments ) {
+		entry.result.clear();
 		findAllIntersections();
 		return;
 	}
 
 	StrokeJoin joinStyle;
-	switch( mJoinStyle ) {
+	switch( entry.joinStyle ) {
 		case 0: joinStyle = StrokeJoin::Bevel; break;
 		case 1: joinStyle = StrokeJoin::Miter; break;
 		default: joinStyle = StrokeJoin::Round; break;
 	}
 
 	StrokeCap startCap, endCap;
-	switch( mStartCapStyle ) {
+	switch( entry.startCapStyle ) {
 		case 0: startCap = StrokeCap::Butt; break;
 		case 1: startCap = StrokeCap::Square; break;
 		default: startCap = StrokeCap::Round; break;
 	}
-	switch( mEndCapStyle ) {
+	switch( entry.endCapStyle ) {
 		case 0: endCap = StrokeCap::Butt; break;
 		case 1: endCap = StrokeCap::Square; break;
 		default: endCap = StrokeCap::Round; break;
 	}
 
-	if( mMode == Mode::OFFSET ) {
-		if( mUseShape ) {
-			mResult = offset( mInputShape, mOffsetDistance, joinStyle, mMiterLimit, mTolerance, mRemoveSelfIntersections );
-		}
-		else {
-			mResult = offset( path, mOffsetDistance, joinStyle, mMiterLimit, mTolerance, mRemoveSelfIntersections );
-		}
+	if( entry.mode == Mode::OFFSET ) {
+		entry.result = offset( shape, entry.distance, joinStyle, entry.miterLimit, entry.tolerance, entry.removeSelfIntersections );
 	}
 	else {
-		StrokeStyle style( mStrokeWidth );
-		style.withJoin( joinStyle ).withMiterLimit( mMiterLimit );
+		StrokeStyle style( entry.distance );
+		style.withJoin( joinStyle ).withMiterLimit( entry.miterLimit );
 		style.withStartCap( startCap ).withEndCap( endCap );
 
-		if( mEnableDashing ) {
+		if( entry.enableDashing ) {
 			vector<float> pattern;
-			switch( mDashPreset ) {
-				case 0: pattern = { mDashOn, mDashOff }; break;
-				case 1: pattern = { mDashOn, mDashOff }; break;
-				case 2: pattern = { mDashOn, mDashOff, mDashOn2, mDashOff }; break;
-				case 3: pattern = { mDashOn, mDashOff, mDashOn2, mDashOff, mDashOn2, mDashOff }; break;
-				case 4: pattern = { mDashOn, mDashOff, mDashOn2, mDashOff2 }; break;
+			switch( entry.dashPreset ) {
+				case 0: pattern = { entry.dashOn, entry.dashOff }; break;
+				case 1: pattern = { entry.dashOn, entry.dashOff }; break;
+				case 2: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff }; break;
+				case 3: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff, entry.dashOn2, entry.dashOff }; break;
+				case 4: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff2 }; break;
 			}
-			style.withDashes( mDashOffset, pattern );
+			style.withDashes( entry.dashOffset, pattern );
 		}
 
-		if( mUseShape ) {
-			mResult = stroke( mInputShape, style, mTolerance );
-		}
-		else {
-			mResult = stroke( path, style, mTolerance );
-		}
+		entry.result = stroke( shape, style, entry.tolerance );
 
-		// Apply self-intersection removal if enabled
-		if( mRemoveSelfIntersections && !mResult.empty() ) {
+		if( entry.removeSelfIntersections && !entry.result.empty() ) {
 			Shape2d cleaned;
-			for( const auto& contour : mResult.getContours() ) {
+			for( const auto& contour : entry.result.getContours() ) {
 				Shape2d contourCleaned = contour.removeSelfIntersections();
 				for( const auto& c : contourCleaned.getContours() ) {
 					cleaned.appendContour( c );
 				}
 			}
-			mResult = cleaned;
+			entry.result = cleaned;
 		}
 	}
 
@@ -628,25 +631,22 @@ void BezierOffsetApp::drawImGuiControls()
 {
 	ImGui::Begin( "Bezier Offset Controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize );
 
-	// Path Management
-	ImGui::TextColored( ImVec4( 0.6f, 1.0f, 0.6f, 1.0f ), "Paths" );
+	// Shape Management
+	ImGui::TextColored( ImVec4( 0.6f, 1.0f, 0.6f, 1.0f ), "Shapes" );
 	ImGui::Separator();
 
-	// Show active path info (click on canvas to select)
-	string activeLabel = "Path " + to_string( mActivePathIndex + 1 );
-	if( mPaths[mActivePathIndex].path.empty() ) activeLabel += " (empty)";
-	else activeLabel += " (" + to_string( mPaths[mActivePathIndex].path.getNumSegments() ) + " segs)";
-	ImGui::Text( "%s", activeLabel.c_str() );
-	ImGui::SameLine();
-	ImGui::ColorEdit3( "##pathcolor", &mPaths[mActivePathIndex].color[0], ImGuiColorEditFlags_NoInputs );
-	ImGui::SameLine();
-	ImGui::Checkbox( "##visible", &mPaths[mActivePathIndex].visible );
-	if( ImGui::IsItemHovered() ) {
-		ImGui::SetTooltip( "Toggle visibility" );
-	}
+	// Preset selector
+	ImGui::SetNextItemWidth( 160 );
+	ImGui::Combo( "Preset", &mSelectedPreset, sPresetNames, IM_ARRAYSIZE( sPresetNames ) );
 
-	// Add/Remove buttons
-	if( ImGui::Button( "Add Path" ) ) {
+	// Add button
+	if( ImGui::Button( "Add Shape" ) ) {
+		PresetShape preset = static_cast<PresetShape>( mSelectedPreset );
+		Shape2d newShape = createPresetShape( preset );
+
+		// Determine if editable (single contour, not a glyph)
+		bool editable = (preset != PresetShape::GLYPH_A && preset != PresetShape::GLYPH_C);
+
 		// Generate a distinct color
 		static Color colors[] = {
 			Color( 1.0f, 0.5f, 0.25f ),
@@ -655,243 +655,198 @@ void BezierOffsetApp::drawImGuiControls()
 			Color( 0.4f, 0.9f, 0.4f ),
 			Color( 0.9f, 0.9f, 0.3f )
 		};
-		Color newColor = colors[mPaths.size() % 5];
-		mPaths.push_back( { Path2d(), newColor, true } );
-		mActivePathIndex = (int)mPaths.size() - 1;
+		Color newColor = colors[mShapes.size() % 5];
+
+		ShapeEntry newEntry;
+		newEntry.shape = newShape;
+		newEntry.color = newColor;
+		newEntry.visible = true;
+		newEntry.editable = editable;
+		mShapes.push_back( newEntry );
+		mActiveShapeIndex = (int)mShapes.size() - 1;
 		mHoveredPoint = -1;
 		mTrackedPoint = -1;
-	}
-	ImGui::SameLine();
-	ImGui::BeginDisabled( mPaths.size() <= 1 );
-	if( ImGui::Button( "Remove Path" ) ) {
-		mPaths.erase( mPaths.begin() + mActivePathIndex );
-		if( mActivePathIndex >= (int)mPaths.size() ) {
-			mActivePathIndex = (int)mPaths.size() - 1;
-		}
-		mHoveredPoint = -1;
-		mTrackedPoint = -1;
-		findAllIntersections();
-	}
-	ImGui::EndDisabled();
-
-	ImGui::Spacing();
-	ImGui::Separator();
-
-	// Mode selection
-	ImGui::TextColored( ImVec4( 1.0f, 1.0f, 0.2f, 1.0f ), "Mode" );
-	ImGui::Separator();
-
-	const char* modes[] = { "Offset", "Stroke" };
-	int modeIdx = (mMode == Mode::OFFSET) ? 0 : 1;
-	if( ImGui::Combo( "##mode", &modeIdx, modes, 2 ) ) {
-		mMode = (modeIdx == 0) ? Mode::OFFSET : Mode::STROKE;
 		updateResult();
 	}
 
 	ImGui::Spacing();
-	ImGui::Separator();
 
-	if( mMode == Mode::OFFSET ) {
-		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Offset Parameters" );
-		ImGui::Separator();
+	// List of shapes with remove buttons
+	for( int i = 0; i < (int)mShapes.size(); ++i ) {
+		ImGui::PushID( i );
 
-		if( ImGui::SliderFloat( "Distance", &mOffsetDistance, -100.0f, 100.0f, "%.1f" ) ) {
-			updateResult();
-		}
+		bool isActive = (i == mActiveShapeIndex);
+		ShapeEntry& entry = mShapes[i];
 
-		if( ImGui::SliderFloat( "Tolerance", &mTolerance, 0.01f, 2.0f, "%.2f", ImGuiSliderFlags_Logarithmic ) ) {
-			updateResult();
-		}
-
-		ImGui::SliderInt( "Num Curves", &mNumOffsetCurves, 1, 10 );
-
-		ImGui::Spacing();
-		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Join Style" );
-		ImGui::Separator();
-
-		const char* joinStyles[] = { "Bevel", "Miter", "Round" };
-		if( ImGui::Combo( "##offsetjoin", &mJoinStyle, joinStyles, 3 ) ) {
-			updateResult();
-		}
-
-		if( mJoinStyle == 1 ) {
-			if( ImGui::SliderFloat( "Miter Limit", &mMiterLimit, 1.0f, 10.0f, "%.1f" ) ) {
-				updateResult();
-			}
-		}
-
-		ImGui::Spacing();
-		if( ImGui::Checkbox( "Remove Self-Intersections", &mRemoveSelfIntersections ) ) {
-			updateResult();
-		}
-		if( ImGui::IsItemHovered() ) {
-			ImGui::SetTooltip( "Remove loops that occur at sharp corners\nwhen the offset distance exceeds the curve radius" );
-		}
-	}
-	else {
-		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Stroke Parameters" );
-		ImGui::Separator();
-
-		if( ImGui::SliderFloat( "Width", &mStrokeWidth, 1.0f, 100.0f, "%.1f" ) ) {
-			updateResult();
-		}
-
-		if( ImGui::SliderFloat( "Tolerance", &mTolerance, 0.01f, 2.0f, "%.2f", ImGuiSliderFlags_Logarithmic ) ) {
-			updateResult();
-		}
-
-		ImGui::Spacing();
-		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Join Style" );
-		ImGui::Separator();
-
-		const char* joinStyles[] = { "Bevel", "Miter", "Round" };
-		if( ImGui::Combo( "##join", &mJoinStyle, joinStyles, 3 ) ) {
-			updateResult();
-		}
-
-		if( mJoinStyle == 1 ) {
-			if( ImGui::SliderFloat( "Miter Limit", &mMiterLimit, 1.0f, 10.0f, "%.1f" ) ) {
-				updateResult();
-			}
-		}
-
-		// Cap Style - applies to both strokes and each dash segment
-		ImGui::Spacing();
-		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Cap Style" );
-		ImGui::Separator();
-
-		const char* capStyles[] = { "Butt", "Square", "Round" };
-		if( ImGui::Combo( "Start Cap", &mStartCapStyle, capStyles, 3 ) ) {
-			updateResult();
-		}
-		if( ImGui::Combo( "End Cap", &mEndCapStyle, capStyles, 3 ) ) {
-			updateResult();
-		}
-
-		// Dash Pattern
-		ImGui::Spacing();
-		ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Dash Pattern" );
-		ImGui::Separator();
-
-		if( ImGui::Checkbox( "Enable Dashing", &mEnableDashing ) ) {
-			updateResult();
-		}
-
-		ImGui::BeginDisabled( !mEnableDashing );
-
-		const char* dashPresets[] = { "Dashed", "Dotted", "Dash-Dot", "Dash-Dot-Dot", "Custom" };
-		if( ImGui::Combo( "Preset", &mDashPreset, dashPresets, 5 ) ) {
-			switch( mDashPreset ) {
-				case 0: mDashOn = 20.0f; mDashOff = 10.0f; break;
-				case 1: mDashOn = 2.0f; mDashOff = 8.0f; break;
-				case 2: mDashOn = 20.0f; mDashOff = 10.0f; mDashOn2 = 2.0f; break;
-				case 3: mDashOn = 20.0f; mDashOff = 8.0f; mDashOn2 = 2.0f; break;
-			}
-			updateResult();
-		}
-
-		if( mDashPreset <= 1 ) {
-			if( ImGui::SliderFloat( "On", &mDashOn, 1.0f, 50.0f ) ) updateResult();
-			if( ImGui::SliderFloat( "Off", &mDashOff, 1.0f, 50.0f ) ) updateResult();
-		}
-		else if( mDashPreset <= 3 ) {
-			if( ImGui::SliderFloat( "Dash", &mDashOn, 1.0f, 50.0f ) ) updateResult();
-			if( ImGui::SliderFloat( "Gap", &mDashOff, 1.0f, 50.0f ) ) updateResult();
-			if( ImGui::SliderFloat( "Dot", &mDashOn2, 1.0f, 20.0f ) ) updateResult();
-		}
+		// Selectable row
+		string label = "Shape " + to_string( i + 1 );
+		if( entry.shape.empty() ) label += " (empty)";
 		else {
-			if( ImGui::SliderFloat( "On 1", &mDashOn, 1.0f, 50.0f ) ) updateResult();
-			if( ImGui::SliderFloat( "Off 1", &mDashOff, 1.0f, 50.0f ) ) updateResult();
-			if( ImGui::SliderFloat( "On 2", &mDashOn2, 1.0f, 50.0f ) ) updateResult();
-			if( ImGui::SliderFloat( "Off 2", &mDashOff2, 1.0f, 50.0f ) ) updateResult();
+			size_t totalSegs = 0;
+			for( const auto& c : entry.shape.getContours() ) totalSegs += c.getNumSegments();
+			label += " (" + to_string( totalSegs ) + " segs)";
 		}
+		if( !entry.editable ) label += " [glyph]";
 
-		if( ImGui::SliderFloat( "Offset", &mDashOffset, 0.0f, 100.0f ) ) {
+		if( ImGui::Selectable( label.c_str(), isActive, ImGuiSelectableFlags_None, ImVec2( 140, 0 ) ) ) {
+			mActiveShapeIndex = i;
+			mHoveredPoint = -1;
+			mTrackedPoint = -1;
 			updateResult();
 		}
 
-		// Pattern preview
-		ImGui::Text( "Preview:" );
-		ImVec2 previewPos = ImGui::GetCursorScreenPos();
-		ImDrawList* drawList = ImGui::GetWindowDrawList();
-		float previewWidth = ImGui::GetContentRegionAvail().x - 10.0f;
-		float previewHeight = 16.0f;
+		ImGui::SameLine();
+		ImGui::ColorEdit3( "##color", &entry.color[0], ImGuiColorEditFlags_NoInputs );
 
-		drawList->AddRectFilled( previewPos,
-			ImVec2( previewPos.x + previewWidth, previewPos.y + previewHeight ),
-			IM_COL32( 40, 40, 40, 255 ) );
+		ImGui::SameLine();
+		ImGui::Checkbox( "##visible", &entry.visible );
+		if( ImGui::IsItemHovered() ) ImGui::SetTooltip( "Visible" );
 
-		vector<float> pattern;
-		switch( mDashPreset ) {
-			case 0: case 1: pattern = { mDashOn, mDashOff }; break;
-			case 2: pattern = { mDashOn, mDashOff, mDashOn2, mDashOff }; break;
-			case 3: pattern = { mDashOn, mDashOff, mDashOn2, mDashOff, mDashOn2, mDashOff }; break;
-			case 4: pattern = { mDashOn, mDashOff, mDashOn2, mDashOff2 }; break;
-		}
-
-		float patternTotal = 0;
-		for( float v : pattern ) patternTotal += v;
-
-		if( patternTotal > 0 ) {
-			float scale = min( 1.0f, previewWidth / (patternTotal * 3.0f) );
-			float x = previewPos.x - mDashOffset * scale;
-			bool on = true;
-
-			for( int repeat = 0; repeat < 10 && x < previewPos.x + previewWidth; ++repeat ) {
-				for( float len : pattern ) {
-					float scaledLen = len * scale;
-					if( on && x + scaledLen > previewPos.x ) {
-						drawList->AddRectFilled(
-							ImVec2( max( x, previewPos.x ), previewPos.y + 2.0f ),
-							ImVec2( min( x + scaledLen, previewPos.x + previewWidth ), previewPos.y + previewHeight - 2.0f ),
-							IM_COL32( 100, 180, 255, 255 ) );
-					}
-					x += scaledLen;
-					on = !on;
-					if( x > previewPos.x + previewWidth ) break;
-				}
+		ImGui::SameLine();
+		ImGui::BeginDisabled( mShapes.size() <= 1 );
+		if( ImGui::SmallButton( "X" ) ) {
+			mShapes.erase( mShapes.begin() + i );
+			if( mActiveShapeIndex >= (int)mShapes.size() ) {
+				mActiveShapeIndex = (int)mShapes.size() - 1;
 			}
+			else if( mActiveShapeIndex > i ) {
+				mActiveShapeIndex--;
+			}
+			mHoveredPoint = -1;
+			mTrackedPoint = -1;
+			findAllIntersections();
+			ImGui::PopID();
+			ImGui::EndDisabled();
+			break;  // Exit loop since we modified the vector
 		}
-		ImGui::Dummy( ImVec2( previewWidth, previewHeight ) );
-
 		ImGui::EndDisabled();
+		if( ImGui::IsItemHovered() ) ImGui::SetTooltip( "Remove" );
 
-		ImGui::Spacing();
-		if( ImGui::Checkbox( "Remove Self-Intersections", &mRemoveSelfIntersections ) ) {
-			updateResult();
-		}
-		if( ImGui::IsItemHovered() ) {
-			ImGui::SetTooltip( "Remove loops that occur at sharp corners\nwhen the stroke width exceeds the curve radius" );
-		}
+		ImGui::PopID();
 	}
 
-	// Presets
 	ImGui::Spacing();
 	ImGui::Separator();
-	ImGui::TextColored( ImVec4( 1.0f, 0.5f, 0.2f, 1.0f ), "Presets" );
 
-	if( ImGui::Button( "Line" ) ) loadPresetShape( PresetShape::OPEN_LINE );
-	ImGui::SameLine();
-	if( ImGui::Button( "Curve" ) ) loadPresetShape( PresetShape::OPEN_CURVE );
-	ImGui::SameLine();
-	if( ImGui::Button( "S-Curve" ) ) loadPresetShape( PresetShape::OPEN_S_CURVE );
+	// Per-shape mode and parameters (for active shape)
+	if( !mShapes.empty() ) {
+		ShapeEntry& active = mShapes[mActiveShapeIndex];
 
-	if( ImGui::Button( "Rect" ) ) loadPresetShape( PresetShape::CLOSED_RECT );
-	ImGui::SameLine();
-	if( ImGui::Button( "Circle" ) ) loadPresetShape( PresetShape::CLOSED_CIRCLE );
-	ImGui::SameLine();
-	if( ImGui::Button( "Star" ) ) loadPresetShape( PresetShape::CLOSED_STAR );
+		ImGui::TextColored( ImVec4( 1.0f, 1.0f, 0.2f, 1.0f ), "Active Shape Settings" );
+		ImGui::Separator();
 
-	if( ImGui::Button( "Zigzag (Join Test)" ) ) {
-		loadPresetShape( PresetShape::SHARP_ZIGZAG );
-	}
+		const char* modes[] = { "None", "Offset", "Stroke" };
+		int modeIdx = (active.mode == Mode::NONE) ? 0 : (active.mode == Mode::OFFSET) ? 1 : 2;
+		if( ImGui::Combo( "Mode", &modeIdx, modes, 3 ) ) {
+			active.mode = (modeIdx == 0) ? Mode::NONE : (modeIdx == 1) ? Mode::OFFSET : Mode::STROKE;
+			updateResult();
+		}
 
-	if( ImGui::Button( "Glyph 'a'" ) ) {
-		loadPresetShape( PresetShape::GLYPH_A );
-	}
-	ImGui::SameLine();
-	if( ImGui::Button( "Glyph 'C'" ) ) {
-		loadPresetShape( PresetShape::GLYPH_C );
+		ImGui::Spacing();
+
+		if( active.mode == Mode::OFFSET ) {
+			if( ImGui::SliderFloat( "Distance", &active.distance, -100.0f, 100.0f, "%.1f" ) ) {
+				updateResult();
+			}
+
+			if( ImGui::SliderFloat( "Tolerance", &active.tolerance, 0.01f, 2.0f, "%.2f", ImGuiSliderFlags_Logarithmic ) ) {
+				updateResult();
+			}
+
+			const char* joinStyles[] = { "Bevel", "Miter", "Round" };
+			if( ImGui::Combo( "Join", &active.joinStyle, joinStyles, 3 ) ) {
+				updateResult();
+			}
+
+			if( active.joinStyle == 1 ) {
+				if( ImGui::SliderFloat( "Miter Limit", &active.miterLimit, 1.0f, 10.0f, "%.1f" ) ) {
+					updateResult();
+				}
+			}
+
+			if( ImGui::Checkbox( "Remove Self-Intersections", &active.removeSelfIntersections ) ) {
+				updateResult();
+			}
+		}
+		else if( active.mode == Mode::STROKE ) {
+			if( ImGui::SliderFloat( "Width", &active.distance, 1.0f, 100.0f, "%.1f" ) ) {
+				updateResult();
+			}
+
+			if( ImGui::SliderFloat( "Tolerance", &active.tolerance, 0.01f, 2.0f, "%.2f", ImGuiSliderFlags_Logarithmic ) ) {
+				updateResult();
+			}
+
+			const char* joinStyles[] = { "Bevel", "Miter", "Round" };
+			if( ImGui::Combo( "Join", &active.joinStyle, joinStyles, 3 ) ) {
+				updateResult();
+			}
+
+			if( active.joinStyle == 1 ) {
+				if( ImGui::SliderFloat( "Miter Limit", &active.miterLimit, 1.0f, 10.0f, "%.1f" ) ) {
+					updateResult();
+				}
+			}
+
+			const char* capStyles[] = { "Butt", "Square", "Round" };
+			if( ImGui::Combo( "Start Cap", &active.startCapStyle, capStyles, 3 ) ) {
+				updateResult();
+			}
+			if( ImGui::Combo( "End Cap", &active.endCapStyle, capStyles, 3 ) ) {
+				updateResult();
+			}
+
+			if( ImGui::Checkbox( "Remove Self-Intersections", &active.removeSelfIntersections ) ) {
+				updateResult();
+			}
+		}
+
+		// Dash Pattern (stroke mode only)
+		if( active.mode == Mode::STROKE ) {
+			ImGui::Spacing();
+			ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Dash Pattern" );
+			ImGui::Separator();
+
+			if( ImGui::Checkbox( "Enable Dashing", &active.enableDashing ) ) {
+				updateResult();
+			}
+
+			ImGui::BeginDisabled( !active.enableDashing );
+
+			const char* dashPresets[] = { "Dashed", "Dotted", "Dash-Dot", "Dash-Dot-Dot", "Custom" };
+			if( ImGui::Combo( "Dash Preset", &active.dashPreset, dashPresets, 5 ) ) {
+				switch( active.dashPreset ) {
+					case 0: active.dashOn = 20.0f; active.dashOff = 10.0f; break;
+					case 1: active.dashOn = 2.0f; active.dashOff = 8.0f; break;
+					case 2: active.dashOn = 20.0f; active.dashOff = 10.0f; active.dashOn2 = 2.0f; break;
+					case 3: active.dashOn = 20.0f; active.dashOff = 8.0f; active.dashOn2 = 2.0f; break;
+				}
+				updateResult();
+			}
+
+			if( active.dashPreset <= 1 ) {
+				if( ImGui::SliderFloat( "On", &active.dashOn, 1.0f, 50.0f ) ) updateResult();
+				if( ImGui::SliderFloat( "Off", &active.dashOff, 1.0f, 50.0f ) ) updateResult();
+			}
+			else if( active.dashPreset <= 3 ) {
+				if( ImGui::SliderFloat( "Dash", &active.dashOn, 1.0f, 50.0f ) ) updateResult();
+				if( ImGui::SliderFloat( "Gap", &active.dashOff, 1.0f, 50.0f ) ) updateResult();
+				if( ImGui::SliderFloat( "Dot", &active.dashOn2, 1.0f, 20.0f ) ) updateResult();
+			}
+			else {
+				if( ImGui::SliderFloat( "On 1", &active.dashOn, 1.0f, 50.0f ) ) updateResult();
+				if( ImGui::SliderFloat( "Off 1", &active.dashOff, 1.0f, 50.0f ) ) updateResult();
+				if( ImGui::SliderFloat( "On 2", &active.dashOn2, 1.0f, 50.0f ) ) updateResult();
+				if( ImGui::SliderFloat( "Off 2", &active.dashOff2, 1.0f, 50.0f ) ) updateResult();
+			}
+
+			if( ImGui::SliderFloat( "Offset", &active.dashOffset, 0.0f, 100.0f ) ) {
+				updateResult();
+			}
+
+			ImGui::EndDisabled();
+		}
+
 	}
 
 	// Visualization
@@ -901,23 +856,12 @@ void BezierOffsetApp::drawImGuiControls()
 	ImGui::Separator();
 
 	ImGui::Checkbox( "Show Original", &mShowOriginal );
-	if( mShowOriginal ) {
-		ImGui::SameLine();
-		ImGui::ColorEdit3( "##origcolor", &mOriginalColor[0], ImGuiColorEditFlags_NoInputs );
-	}
-
 	ImGui::Checkbox( "Show Result", &mShowResult );
-	if( mShowResult ) {
-		ImGui::SameLine();
-		ImGui::ColorEdit3( "##resultcolor", &mResultColor[0], ImGuiColorEditFlags_NoInputs );
-	}
-
 	ImGui::Checkbox( "Original Control Points", &mShowOriginalControlPoints );
 	ImGui::Checkbox( "Result Control Points", &mShowResultControlPoints );
 
-	// Path-to-path intersection toggle
-	if( mPaths.size() > 1 ) {
-		if( ImGui::Checkbox( "Show Path Intersections", &mShowPathIntersections ) ) {
+	if( mShapes.size() > 1 ) {
+		if( ImGui::Checkbox( "Show Shape Intersections", &mShowPathIntersections ) ) {
 			findAllIntersections();
 		}
 		if( !mPathIntersections.empty() ) {
@@ -926,51 +870,35 @@ void BezierOffsetApp::drawImGuiControls()
 		}
 	}
 
-	// Path info
-	const Path2d& path = getActivePath();
-	bool hasInput = mUseShape ? !mInputShape.empty() : !path.empty();
-	if( hasInput ) {
+	// Shape info
+	const Shape2d& shape = getActiveShape();
+	if( !shape.empty() ) {
 		ImGui::Spacing();
 		ImGui::Separator();
-		ImGui::TextColored( ImVec4( 0.2f, 1.0f, 0.2f, 1.0f ), "Path Info" );
+		ImGui::TextColored( ImVec4( 0.2f, 1.0f, 0.2f, 1.0f ), "Shape Info" );
 		ImGui::Separator();
 
-		if( mUseShape ) {
-			size_t totalSegs = 0, totalPts = 0;
-			int lineCount = 0, quadCount = 0, cubicCount = 0;
-			for( const auto& contour : mInputShape.getContours() ) {
-				totalSegs += contour.getNumSegments();
-				totalPts += contour.getNumPoints();
-				for( size_t i = 0; i < contour.getNumSegments(); ++i ) {
-					auto type = contour.getSegmentType( i );
-					if( type == Path2d::LINETO ) lineCount++;
-					else if( type == Path2d::QUADTO ) quadCount++;
-					else if( type == Path2d::CUBICTO ) cubicCount++;
-				}
-			}
-			ImGui::Text( "Original: %zu contours, %zu segments, %zu points",
-				mInputShape.getNumContours(), totalSegs, totalPts );
-			ImGui::Text( "  Lines: %d, Quads: %d, Cubics: %d", lineCount, quadCount, cubicCount );
-		}
-		else {
-			int lineCount = 0, quadCount = 0, cubicCount = 0;
-			for( size_t i = 0; i < path.getNumSegments(); ++i ) {
-				auto type = path.getSegmentType( i );
+		size_t totalSegs = 0, totalPts = 0;
+		int lineCount = 0, quadCount = 0, cubicCount = 0;
+		for( const auto& contour : shape.getContours() ) {
+			totalSegs += contour.getNumSegments();
+			totalPts += contour.getNumPoints();
+			for( size_t i = 0; i < contour.getNumSegments(); ++i ) {
+				auto type = contour.getSegmentType( i );
 				if( type == Path2d::LINETO ) lineCount++;
 				else if( type == Path2d::QUADTO ) quadCount++;
 				else if( type == Path2d::CUBICTO ) cubicCount++;
 			}
-
-			ImGui::Text( "Original: %zu segments, %zu points", path.getNumSegments(), path.getNumPoints() );
-			ImGui::Text( "  Lines: %d, Quads: %d, Cubics: %d", lineCount, quadCount, cubicCount );
-			ImGui::Text( "  Closed: %s", path.isClosed() ? "Yes" : "No" );
 		}
+		ImGui::Text( "Original: %zu contours, %zu segments", shape.getNumContours(), totalSegs );
+		ImGui::Text( "  Lines: %d, Quads: %d, Cubics: %d", lineCount, quadCount, cubicCount );
 
 		ImGui::Spacing();
-		ImGui::Text( "Result: %zu contours", mResult.getNumContours() );
-		size_t totalPts = 0;
-		for( const auto& c : mResult.getContours() ) totalPts += c.getNumPoints();
-		ImGui::Text( "  Total points: %zu", totalPts );
+		const Shape2d& activeResult = mShapes[mActiveShapeIndex].result;
+		ImGui::Text( "Result: %zu contours", activeResult.getNumContours() );
+		size_t resultPts = 0;
+		for( const auto& c : activeResult.getContours() ) resultPts += c.getNumPoints();
+		ImGui::Text( "  Total points: %zu", resultPts );
 	}
 
 	// Instructions
@@ -978,7 +906,7 @@ void BezierOffsetApp::drawImGuiControls()
 	ImGui::Separator();
 	ImGui::TextColored( ImVec4( 0.8f, 0.8f, 0.8f, 1.0f ), "Controls" );
 	ImGui::Separator();
-	ImGui::BulletText( "Click path to select & drag" );
+	ImGui::BulletText( "Click shape to select & drag" );
 	ImGui::BulletText( "Click empty to add points" );
 	ImGui::BulletText( "Drag to create curves" );
 	ImGui::BulletText( "Drag points to edit" );
@@ -997,7 +925,6 @@ void BezierOffsetApp::draw()
 	gl::clear( Color( 0.1f, 0.1f, 0.15f ) );
 	gl::enableAlphaBlending();
 
-	// Apply canvas transform and draw content
 	{
 		gl::ScopedModelMatrix scpMatrix( mCanvas.getModelMatrix() );
 		drawContent();
@@ -1008,88 +935,92 @@ void BezierOffsetApp::draw()
 
 void BezierOffsetApp::drawContent()
 {
-	// Scale point sizes by inverse zoom so they appear constant on screen
 	float pointScale = 1.0f / mCanvas.getZoom();
 
-	// Draw result
-	if( mShowResult && !mResult.empty() ) {
-		Shape2d lastOffsetResult;  // Track last curve for control points
+	// Draw results for all visible shapes
+	if( mShowResult ) {
+		for( int si = 0; si < (int)mShapes.size(); ++si ) {
+			const ShapeEntry& entry = mShapes[si];
+			if( !entry.visible || entry.result.empty() )
+				continue;
 
-		if( mMode == Mode::OFFSET && mNumOffsetCurves > 1 ) {
-			// Draw multiple offset curves
-			Join joinStyle;
-			switch( mJoinStyle ) {
-				case 0: joinStyle = Join::Bevel; break;
-				case 1: joinStyle = Join::Miter; break;
-				default: joinStyle = Join::Round; break;
-			}
+			bool isActive = (si == mActiveShapeIndex);
+			float alpha = isActive ? 0.5f : 0.3f;
 
-			for( int i = 0; i < mNumOffsetCurves; ++i ) {
-				float t = (float)(i + 1) / (float)mNumOffsetCurves;
-				float distance = mOffsetDistance * t;
+			gl::color( ColorA( mResultColor, alpha ) );
+			gl::draw( entry.result );
 
-				Shape2d offsetResult = mUseShape
-					? offset( mInputShape, distance, joinStyle, mMiterLimit, mTolerance, mRemoveSelfIntersections )
-					: offset( getActivePath(), distance, joinStyle, mMiterLimit, mTolerance, mRemoveSelfIntersections );
-
-				Color gradColor = mOriginalColor * (1.0f - t) + mResultColor * t;
-				float alpha = (mNumOffsetCurves > 3) ? (0.3f + 0.7f * t) : 0.7f;
-
-				gl::color( ColorA( gradColor, alpha * 0.5f ) );
-				gl::draw( offsetResult );
-
-				gl::color( ColorA( gradColor, alpha ) );
-				for( const auto& contour : offsetResult.getContours() ) {
-					gl::draw( contour );
-				}
-
-				// Keep track of the last (outermost) curve
-				if( i == mNumOffsetCurves - 1 ) {
-					lastOffsetResult = offsetResult;
-				}
-			}
-		}
-		else {
-			gl::color( ColorA( mResultColor, 0.5f ) );
-			gl::draw( mResult );
-
-			gl::color( ColorA( mResultColor.r * 1.3f, mResultColor.g * 1.3f, mResultColor.b * 1.3f, 0.8f ) );
-			for( const auto& contour : mResult.getContours() ) {
+			gl::color( ColorA( mResultColor.r * 1.3f, mResultColor.g * 1.3f, mResultColor.b * 1.3f, isActive ? 0.8f : 0.5f ) );
+			for( const auto& contour : entry.result.getContours() ) {
 				gl::draw( contour );
 			}
 
-			lastOffsetResult = mResult;
-		}
-
-		// Result control points - green outline circles (drawn on last/outermost curve)
-		if( mShowResultControlPoints && !lastOffsetResult.empty() ) {
-			gl::color( Color( 0.2f, 0.9f, 0.2f ) );
-			for( const auto& contour : lastOffsetResult.getContours() ) {
-				for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
-					gl::drawStrokedCircle( contour.getPoint( i ), 3.0f * pointScale );
+			// Result control points (only for active shape)
+			if( mShowResultControlPoints && isActive ) {
+				gl::color( Color( 0.2f, 0.9f, 0.2f ) );
+				for( const auto& contour : entry.result.getContours() ) {
+					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
+						gl::drawStrokedCircle( contour.getPoint( i ), 3.0f * pointScale );
+					}
 				}
 			}
 		}
 	}
 
-	// Draw original path or shape
+	// Draw original shapes
 	if( mShowOriginal ) {
-		if( mUseShape && !mInputShape.empty() ) {
-			// Use highlighted color when hovering over shape
-			Color drawColor = mOriginalColor;
-			if( mHoveringPath || mDraggingPath ) {
-				drawColor = Color( 1.0f, 1.0f, 0.4f );  // Yellow tint when hovered/dragging
+		for( int si = 0; si < (int)mShapes.size(); ++si ) {
+			const ShapeEntry& entry = mShapes[si];
+			if( !entry.visible || entry.shape.empty() )
+				continue;
+
+			bool isActive = (si == mActiveShapeIndex);
+			bool isHovered = (si == mHoveredShapeIndex) || (isActive && mDraggingShape);
+			float alpha = isActive ? 1.0f : 0.6f;
+
+			// Determine draw color
+			Color drawColor = entry.color;
+			if( isHovered && !isActive ) {
+				drawColor = Color( 1.0f, 1.0f, 0.4f );  // Yellow for hover
+				alpha = 1.0f;
 			}
-			gl::color( drawColor );
-			gl::lineWidth( 2.0f );
-			for( const auto& contour : mInputShape.getContours() ) {
+			else if( isHovered && isActive ) {
+				drawColor = Color(
+					glm::min( entry.color.r * 1.5f, 1.0f ),
+					glm::min( entry.color.g * 1.5f, 1.0f ),
+					glm::min( entry.color.b * 1.0f, 1.0f )
+				);
+			}
+
+			gl::color( ColorA( drawColor, alpha ) );
+			gl::lineWidth( isActive ? 2.0f : 1.5f );
+
+			for( const auto& contour : entry.shape.getContours() ) {
 				gl::draw( contour );
 			}
-			gl::lineWidth( 1.0f );
 
-			// Original control points for shape
-			if( mShowOriginalControlPoints ) {
-				for( const auto& contour : mInputShape.getContours() ) {
+			// Control points (only for active editable shape)
+			if( mShowOriginalControlPoints && isActive && entry.editable ) {
+				for( const auto& contour : entry.shape.getContours() ) {
+					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
+						bool ptHovered = ((int)i == mHoveredPoint);
+
+						if( ptHovered ) {
+							gl::color( Color( 1, 1, 1 ) );
+							gl::drawSolidCircle( contour.getPoint( i ), 6.0f * pointScale );
+							gl::color( Color( 0.2f, 1.0f, 0.2f ) );
+							gl::drawSolidCircle( contour.getPoint( i ), 4.5f * pointScale );
+						}
+						else {
+							gl::color( Color( 1, 1, 0 ) );
+							gl::drawSolidCircle( contour.getPoint( i ), 3.5f * pointScale );
+						}
+					}
+				}
+			}
+			// Show control points for non-editable shapes too (but not hoverable)
+			else if( mShowOriginalControlPoints && isActive && !entry.editable ) {
+				for( const auto& contour : entry.shape.getContours() ) {
 					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
 						gl::color( Color( 1, 1, 0 ) );
 						gl::drawSolidCircle( contour.getPoint( i ), 3.5f * pointScale );
@@ -1097,60 +1028,9 @@ void BezierOffsetApp::drawContent()
 				}
 			}
 		}
-		else {
-			// Draw all paths
-			for( int pi = 0; pi < (int)mPaths.size(); ++pi ) {
-				const PathEntry& entry = mPaths[pi];
-				if( !entry.visible || entry.path.empty() )
-					continue;
-
-				bool isActive = ( pi == mActivePathIndex );
-				bool isHovered = ( pi == mHoveredPathIndex ) || ( isActive && mDraggingPath );
-				float alpha = isActive ? 1.0f : 0.6f;
-
-				// Change color when hovered (gl::lineWidth > 1.0 doesn't work reliably on macOS)
-				Color drawColor = entry.color;
-				if( isHovered && !isActive ) {
-					// Highlight hovered path with yellow tint
-					drawColor = Color( 1.0f, 1.0f, 0.4f );
-					alpha = 1.0f;
-				}
-				else if( isHovered && isActive ) {
-					// Brighten active path when dragging
-					drawColor = Color(
-						glm::min( entry.color.r * 1.5f, 1.0f ),
-						glm::min( entry.color.g * 1.5f, 1.0f ),
-						glm::min( entry.color.b * 1.0f, 1.0f )
-					);
-				}
-
-				gl::color( ColorA( drawColor, alpha ) );
-				gl::lineWidth( isActive ? 2.0f : 1.5f );
-				gl::draw( entry.path );
-
-				// Control points (only for active path)
-				if( mShowOriginalControlPoints && isActive ) {
-					for( size_t i = 0; i < entry.path.getNumPoints(); ++i ) {
-						bool ptHovered = ((int)i == mHoveredPoint);
-
-						if( ptHovered ) {
-							gl::color( Color( 1, 1, 1 ) );
-							gl::drawSolidCircle( entry.path.getPoint( i ), 6.0f * pointScale );
-							gl::color( Color( 0.2f, 1.0f, 0.2f ) );
-							gl::drawSolidCircle( entry.path.getPoint( i ), 4.5f * pointScale );
-						}
-						else {
-							gl::color( Color( 1, 1, 0 ) );
-							gl::drawSolidCircle( entry.path.getPoint( i ), 3.5f * pointScale );
-						}
-					}
-				}
-			}
-			gl::lineWidth( 1.0f );
-		}
+		gl::lineWidth( 1.0f );
 	}
 
-	// Draw path-to-path intersections
 	drawIntersections();
 }
 
@@ -1161,41 +1041,22 @@ void BezierOffsetApp::findAllIntersections()
 	if( !mShowPathIntersections )
 		return;
 
-	// Find intersections between all pairs of paths in mPaths
-	for( size_t i = 0; i < mPaths.size(); ++i ) {
-		if( mPaths[i].path.empty() || !mPaths[i].visible )
+	// Find intersections between all pairs of shapes
+	for( size_t i = 0; i < mShapes.size(); ++i ) {
+		if( mShapes[i].shape.empty() || !mShapes[i].visible )
 			continue;
 
-		for( size_t j = i + 1; j < mPaths.size(); ++j ) {
-			if( mPaths[j].path.empty() || !mPaths[j].visible )
+		for( size_t j = i + 1; j < mShapes.size(); ++j ) {
+			if( mShapes[j].shape.empty() || !mShapes[j].visible )
 				continue;
 
-			auto isects = mPaths[i].path.findIntersections( mPaths[j].path );
-			mPathIntersections.insert( mPathIntersections.end(), isects.begin(), isects.end() );
-		}
-	}
-
-	// Find intersections between mResult (offset/stroke result) and the source
-	if( !mResult.empty() ) {
-		if( mUseShape && !mInputShape.empty() ) {
-			// Find intersections with all contours of the input shape
-			for( size_t ci = 0; ci < mInputShape.getNumContours(); ++ci ) {
-				const Path2d& contour = mInputShape.getContour( ci );
-				if( contour.empty() )
-					continue;
-				auto shapeIsects = mResult.findIntersections( contour );
-				for( const auto& si : shapeIsects ) {
-					mPathIntersections.push_back( { si.t1, si.t2, si.point, si.segment1, si.segment2 } );
-				}
-			}
-		}
-		else if( !mPaths.empty() && !mPaths[0].path.empty() && mPaths[0].visible ) {
-			auto shapeIsects = mResult.findIntersections( mPaths[0].path );
-			for( const auto& si : shapeIsects ) {
+			auto isects = mShapes[i].shape.findIntersections( mShapes[j].shape );
+			for( const auto& si : isects ) {
 				mPathIntersections.push_back( { si.t1, si.t2, si.point, si.segment1, si.segment2 } );
 			}
 		}
 	}
+
 }
 
 void BezierOffsetApp::drawIntersections()
@@ -1206,11 +1067,9 @@ void BezierOffsetApp::drawIntersections()
 	float pointScale = 1.0f / mCanvas.getZoom();
 
 	for( const auto& isect : mPathIntersections ) {
-		// Outer ring (white)
 		gl::color( Color( 1, 1, 1 ) );
 		gl::drawSolidCircle( isect.point, 7.0f * pointScale );
 
-		// Inner circle (magenta)
 		gl::color( Color( 1, 0, 1 ) );
 		gl::drawSolidCircle( isect.point, 5.0f * pointScale );
 	}
