@@ -32,6 +32,7 @@
 #include <cfloat>
 #include <functional>
 #include <vector>
+#include <algorithm>
 #if defined( CINDER_MSW )
 	#undef min
 	#undef max
