@@ -163,7 +163,6 @@ void RendererImplGlfwGl::defaultResize() const
 	int width = 0;
 	int height = 0;
 	glfwGetFramebufferSize( mGlfwWindow, &width, &height );
-CI_LOG_I( "Viewport: " << width << height );
 	gl::viewport( 0, 0, width, height );
 	gl::setMatricesWindow( width, height );
 }
