@@ -26,7 +26,7 @@ enum class PresetShape {
 	CLOSED_STAR,
 	SHARP_ZIGZAG,
 	GLYPH_A,
-	GLYPH_S
+	GLYPH_C
 };
 
 class BezierOffsetApp : public App {
@@ -139,10 +139,10 @@ void BezierOffsetApp::mouseDown( MouseEvent event )
 			return;
 		}
 
-		// Click on a path to select it and start dragging
+		// Click on a path/shape to select it and start dragging
 		if( mHoveringPath && mHoveredPathIndex >= 0 ) {
-			// Select the clicked path as active
-			if( mHoveredPathIndex != mActivePathIndex ) {
+			// For shapes, just start dragging (no path selection needed)
+			if( !mUseShape && mHoveredPathIndex != mActivePathIndex ) {
 				mActivePathIndex = mHoveredPathIndex;
 				mHoveredPoint = -1;
 				mTrackedPoint = -1;
@@ -183,11 +183,16 @@ void BezierOffsetApp::mouseDrag( MouseEvent event )
 		return;
 	}
 
-	// Handle path dragging - translate all points
+	// Handle path/shape dragging - translate all points
 	if( mDraggingPath ) {
 		vec2 delta = pos - mDragStartPos;
-		for( size_t i = 0; i < path.getNumPoints(); ++i ) {
-			path.setPoint( i, path.getPoint( i ) + delta );
+		if( mUseShape ) {
+			mInputShape.translate( delta );
+		}
+		else {
+			for( size_t i = 0; i < path.getNumPoints(); ++i ) {
+				path.setPoint( i, path.getPoint( i ) + delta );
+			}
 		}
 		mDragStartPos = pos;
 		updateResult();
@@ -250,15 +255,17 @@ void BezierOffsetApp::mouseMove( MouseEvent event )
 	// Scale hover radius by zoom so it feels consistent at different zoom levels
 	float hoverRadius = 12.0f / mCanvas.getZoom();
 
-	// First check for control point hover on active path
+	// First check for control point hover on active path (skip for shapes - no point editing)
 	float closestDist = hoverRadius;
 	int closestPoint = -1;
-	const Path2d& activePath = getActivePath();
-	for( size_t i = 0; i < activePath.getNumPoints(); ++i ) {
-		float dist = glm::distance( pos, activePath.getPoint( i ) );
-		if( dist < closestDist ) {
-			closestDist = dist;
-			closestPoint = (int)i;
+	if( !mUseShape ) {
+		const Path2d& activePath = getActivePath();
+		for( size_t i = 0; i < activePath.getNumPoints(); ++i ) {
+			float dist = glm::distance( pos, activePath.getPoint( i ) );
+			if( dist < closestDist ) {
+				closestDist = dist;
+				closestPoint = (int)i;
+			}
 		}
 	}
 	mHoveredPoint = closestPoint;
@@ -268,16 +275,28 @@ void BezierOffsetApp::mouseMove( MouseEvent event )
 	mHoveredPathIndex = -1;
 	if( mHoveredPoint < 0 ) {
 		float closestPathDist = hoverRadius;
-		for( int pi = 0; pi < (int)mPaths.size(); ++pi ) {
-			const PathEntry& entry = mPaths[pi];
-			if( !entry.visible || entry.path.empty() || entry.path.getNumSegments() == 0 )
-				continue;
 
-			float pathDist = entry.path.calcDistance( pos );
-			if( pathDist < closestPathDist ) {
-				closestPathDist = pathDist;
-				mHoveredPathIndex = pi;
+		// If using a shape, check its contours
+		if( mUseShape && !mInputShape.empty() ) {
+			float shapeDist = mInputShape.calcDistance( pos );
+			if( shapeDist < closestPathDist ) {
+				closestPathDist = shapeDist;
+				mHoveredPathIndex = 0;  // Treat shape as path index 0
 				mHoveringPath = true;
+			}
+		}
+		else {
+			for( int pi = 0; pi < (int)mPaths.size(); ++pi ) {
+				const PathEntry& entry = mPaths[pi];
+				if( !entry.visible || entry.path.empty() || entry.path.getNumSegments() == 0 )
+					continue;
+
+				float pathDist = entry.path.calcDistance( pos );
+				if( pathDist < closestPathDist ) {
+					closestPathDist = pathDist;
+					mHoveredPathIndex = pi;
+					mHoveringPath = true;
+				}
 			}
 		}
 	}
@@ -510,9 +529,9 @@ void BezierOffsetApp::loadPresetShape( PresetShape shape )
 			break;
 		}
 
-		case PresetShape::GLYPH_S: {
+		case PresetShape::GLYPH_C: {
 			Font arial( "Arial", 400.0f );
-			auto glyphs = arial.getGlyphs( "s" );
+			auto glyphs = arial.getGlyphs( "C" );
 			if( !glyphs.empty() ) {
 				mInputShape = arial.getGlyphShape( glyphs[0] );
 				// Center the glyph
@@ -871,8 +890,8 @@ void BezierOffsetApp::drawImGuiControls()
 		loadPresetShape( PresetShape::GLYPH_A );
 	}
 	ImGui::SameLine();
-	if( ImGui::Button( "Glyph 's'" ) ) {
-		loadPresetShape( PresetShape::GLYPH_S );
+	if( ImGui::Button( "Glyph 'C'" ) ) {
+		loadPresetShape( PresetShape::GLYPH_C );
 	}
 
 	// Visualization
@@ -994,6 +1013,8 @@ void BezierOffsetApp::drawContent()
 
 	// Draw result
 	if( mShowResult && !mResult.empty() ) {
+		Shape2d lastOffsetResult;  // Track last curve for control points
+
 		if( mMode == Mode::OFFSET && mNumOffsetCurves > 1 ) {
 			// Draw multiple offset curves
 			Join joinStyle;
@@ -1021,6 +1042,11 @@ void BezierOffsetApp::drawContent()
 				for( const auto& contour : offsetResult.getContours() ) {
 					gl::draw( contour );
 				}
+
+				// Keep track of the last (outermost) curve
+				if( i == mNumOffsetCurves - 1 ) {
+					lastOffsetResult = offsetResult;
+				}
 			}
 		}
 		else {
@@ -1032,13 +1058,15 @@ void BezierOffsetApp::drawContent()
 				gl::draw( contour );
 			}
 
-			// Result control points - green outline circles
-			if( mShowResultControlPoints ) {
-				gl::color( Color( 0.2f, 0.9f, 0.2f ) );
-				for( const auto& contour : mResult.getContours() ) {
-					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
-						gl::drawStrokedCircle( contour.getPoint( i ), 3.0f * pointScale );
-					}
+			lastOffsetResult = mResult;
+		}
+
+		// Result control points - green outline circles (drawn on last/outermost curve)
+		if( mShowResultControlPoints && !lastOffsetResult.empty() ) {
+			gl::color( Color( 0.2f, 0.9f, 0.2f ) );
+			for( const auto& contour : lastOffsetResult.getContours() ) {
+				for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
+					gl::drawStrokedCircle( contour.getPoint( i ), 3.0f * pointScale );
 				}
 			}
 		}
@@ -1047,7 +1075,12 @@ void BezierOffsetApp::drawContent()
 	// Draw original path or shape
 	if( mShowOriginal ) {
 		if( mUseShape && !mInputShape.empty() ) {
-			gl::color( mOriginalColor );
+			// Use highlighted color when hovering over shape
+			Color drawColor = mOriginalColor;
+			if( mHoveringPath || mDraggingPath ) {
+				drawColor = Color( 1.0f, 1.0f, 0.4f );  // Yellow tint when hovered/dragging
+			}
+			gl::color( drawColor );
 			gl::lineWidth( 2.0f );
 			for( const auto& contour : mInputShape.getContours() ) {
 				gl::draw( contour );
@@ -1125,10 +1158,10 @@ void BezierOffsetApp::findAllIntersections()
 {
 	mPathIntersections.clear();
 
-	if( !mShowPathIntersections || mPaths.size() < 2 )
+	if( !mShowPathIntersections )
 		return;
 
-	// Find intersections between all pairs of paths
+	// Find intersections between all pairs of paths in mPaths
 	for( size_t i = 0; i < mPaths.size(); ++i ) {
 		if( mPaths[i].path.empty() || !mPaths[i].visible )
 			continue;
@@ -1139,6 +1172,28 @@ void BezierOffsetApp::findAllIntersections()
 
 			auto isects = mPaths[i].path.findIntersections( mPaths[j].path );
 			mPathIntersections.insert( mPathIntersections.end(), isects.begin(), isects.end() );
+		}
+	}
+
+	// Find intersections between mResult (offset/stroke result) and the source
+	if( !mResult.empty() ) {
+		if( mUseShape && !mInputShape.empty() ) {
+			// Find intersections with all contours of the input shape
+			for( size_t ci = 0; ci < mInputShape.getNumContours(); ++ci ) {
+				const Path2d& contour = mInputShape.getContour( ci );
+				if( contour.empty() )
+					continue;
+				auto shapeIsects = mResult.findIntersections( contour );
+				for( const auto& si : shapeIsects ) {
+					mPathIntersections.push_back( { si.t1, si.t2, si.point, si.segment1, si.segment2 } );
+				}
+			}
+		}
+		else if( !mPaths.empty() && !mPaths[0].path.empty() && mPaths[0].visible ) {
+			auto shapeIsects = mResult.findIntersections( mPaths[0].path );
+			for( const auto& si : shapeIsects ) {
+				mPathIntersections.push_back( { si.t1, si.t2, si.point, si.segment1, si.segment2 } );
+			}
 		}
 	}
 }

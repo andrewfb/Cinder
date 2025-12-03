@@ -235,6 +235,12 @@ class CI_API Path2d {
 	//! @return Vector of intersection results, where t1/segment1 refer to this path and t2/segment2 refer to \a other
 	std::vector<Intersection>	findIntersections( const Path2d &other, float tolerance = 1e-4f ) const;
 
+	//! Find all points where this path intersects with any contour of \a shape.
+	//! @param shape The shape to test for intersections with
+	//! @param tolerance Approximation tolerance for intersection detection
+	//! @return Vector of intersection results, where t1/segment1 refer to this path and t2/segment2 refer to the shape's contours
+	std::vector<Intersection>	findIntersections( const Shape2d &shape, float tolerance = 1e-4f ) const;
+
 	//! Split the path at parameter \a t, where the integer part is the segment index
 	//! and the fractional part is the position within that segment [0,1).
 	//! @param t Parameter value where to split (e.g., 1.5 means middle of segment 1)

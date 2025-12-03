@@ -115,6 +115,29 @@ class CI_API Shape2d {
 	//! Returns whether the point \a pt is contained within the boundaries of the Shape2d. If \a evenOddFill is \c true (the default) then Even-Odd fill rule is used, otherwise the Winding fill rule is applied.
 	bool	contains( const vec2 &pt, bool evenOddFill = true ) const;
 
+	//! Result of a shape-to-shape or shape-to-path intersection search
+	struct Intersection {
+		size_t contour1;    //!< Contour index in this shape (or 0 for Path2d)
+		size_t contour2;    //!< Contour index in the other shape (or 0 for Path2d)
+		float t1;           //!< Parameter value on contour1's path (in range [0, numSegments])
+		float t2;           //!< Parameter value on contour2's path (in range [0, numSegments])
+		vec2  point;        //!< The intersection point
+		size_t segment1;    //!< Segment index within contour1
+		size_t segment2;    //!< Segment index within contour2
+	};
+
+	//! Find all points where this shape intersects with \a other.
+	//! @param other The shape to test for intersections with
+	//! @param tolerance Approximation tolerance for intersection detection
+	//! @return Vector of intersection results with contour and segment indices for both shapes
+	std::vector<Intersection>	findIntersections( const Shape2d &other, float tolerance = 1e-4f ) const;
+
+	//! Find all points where this shape intersects with \a path.
+	//! @param path The path to test for intersections with
+	//! @param tolerance Approximation tolerance for intersection detection
+	//! @return Vector of intersection results; contour2 is always 0 for the path
+	std::vector<Intersection>	findIntersections( const Path2d &path, float tolerance = 1e-4f ) const;
+
 	//! Iterates all of the contours and points of a Shape2d.
 	/** Expects a template parameter that implements
 		\code bool operator()( Path2d::SegmentType type, vec2 *points, vec2 *previousPoint ) \endcode.

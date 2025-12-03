@@ -268,18 +268,64 @@ bool Shape2d::contains( const vec2 &pt, bool evenOddFill ) const
 	int onCurveCount = 0;
 	for( auto &cont : mContours )
 		w += cont.calcWinding( pt, &onCurveCount );
-	
+
 	if( evenOddFill )
 		w &= 1;
 	if( w )
 		return true;
-		
+
 	if( onCurveCount <= 1 )
 		return onCurveCount > 0;
 	if( (onCurveCount & 1) || evenOddFill )
 		return (onCurveCount & 1) > 0;
-	
+
 	return false;
+}
+
+vector<Shape2d::Intersection> Shape2d::findIntersections( const Shape2d &other, float tolerance ) const
+{
+	vector<Intersection> result;
+
+	for( size_t i = 0; i < mContours.size(); ++i ) {
+		for( size_t j = 0; j < other.mContours.size(); ++j ) {
+			auto pathIsects = mContours[i].findIntersections( other.mContours[j], tolerance );
+			for( const auto &pi : pathIsects ) {
+				result.push_back( {
+					i,           // contour1
+					j,           // contour2
+					pi.t1,       // t1
+					pi.t2,       // t2
+					pi.point,    // point
+					pi.segment1, // segment1
+					pi.segment2  // segment2
+				} );
+			}
+		}
+	}
+
+	return result;
+}
+
+vector<Shape2d::Intersection> Shape2d::findIntersections( const Path2d &path, float tolerance ) const
+{
+	vector<Intersection> result;
+
+	for( size_t i = 0; i < mContours.size(); ++i ) {
+		auto pathIsects = mContours[i].findIntersections( path, tolerance );
+		for( const auto &pi : pathIsects ) {
+			result.push_back( {
+				i,           // contour1
+				0,           // contour2 (always 0 for Path2d)
+				pi.t1,       // t1
+				pi.t2,       // t2
+				pi.point,    // point
+				pi.segment1, // segment1
+				pi.segment2  // segment2
+			} );
+		}
+	}
+
+	return result;
 }
 
 } // namespace cinder

@@ -2764,6 +2764,18 @@ std::vector<Path2d::Intersection> Path2d::findIntersections( const Path2d &other
 	return results;
 }
 
+std::vector<Path2d::Intersection> Path2d::findIntersections( const Shape2d &shape, float tolerance ) const
+{
+	std::vector<Intersection> results;
+
+	for( size_t i = 0; i < shape.getNumContours(); ++i ) {
+		auto contourIsects = findIntersections( shape.getContour( i ), tolerance );
+		results.insert( results.end(), contourIsects.begin(), contourIsects.end() );
+	}
+
+	return results;
+}
+
 //=============================================================================
 // Path Splitting
 //=============================================================================
