@@ -36,7 +36,7 @@
     }
 #else
     // For GLFW's glfwGetProcAddress on other platforms
-    #include "GLFW/glfw3.h"
+    #include "glfw/glfw3.h"
 #endif
 
 using namespace rive;
