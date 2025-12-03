@@ -5838,6 +5838,7 @@
 					../../include/freetype,
 					../../include/cinder/vg/rive,
 					../../include/cinder/vg/rive/glad,
+					../../src/cinder/vg/rive,
 					../../src/cinder/vg/rive/renderer,
 				);
 				INSTALL_PATH = /usr/local/lib;
@@ -5886,6 +5887,7 @@
 					../../include/freetype,
 					../../include/cinder/vg/rive,
 					../../include/cinder/vg/rive/glad,
+					../../src/cinder/vg/rive,
 					../../src/cinder/vg/rive/renderer,
 				);
 				INSTALL_PATH = /usr/local/lib;
