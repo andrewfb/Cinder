@@ -7,7 +7,8 @@
 
 #include "rive/renderer.hpp"
 #include "rive/text_engine.hpp"
-#include "rive/audio/audio_source.hpp"
+// CINDER_VG: Audio support removed
+// #include "rive/audio/audio_source.hpp"
 #include "rive/refcnt.hpp"
 #include "rive/span.hpp"
 #include "rive/math/aabb.hpp"
@@ -19,6 +20,7 @@ namespace rive
 {
 
 class RawPath;
+class AudioSource; // CINDER_VG: Forward declaration
 
 class Factory
 {

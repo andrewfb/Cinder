@@ -16,7 +16,8 @@
 #include "rive/renderer.hpp"
 #include "rive/text/text_value_run.hpp"
 #include "rive/event.hpp"
-#include "rive/audio/audio_engine.hpp"
+// CINDER_VG: Audio support removed - forward declare instead
+// #include "rive/audio/audio_engine.hpp"
 #include "rive/math/raw_path.hpp"
 #include "rive/typed_children.hpp"
 #include "rive/virtualizing_component.hpp"
@@ -28,6 +29,7 @@
 namespace rive
 {
 class ArtboardComponentList;
+class AudioEngine; // CINDER_VG: Forward declaration
 class ArtboardHost;
 class File;
 class Drawable;
