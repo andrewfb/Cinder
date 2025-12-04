@@ -52,6 +52,9 @@ private:
     bool mSaveScreenshot = false;
     int mFrameCount = 0;
     float mAnimTime = 0;
+    double mLastFrameTime = 0;
+    float mFps = 0;
+    float mFpsSmoothed = 60.0f;
 
     // Cached paths for efficient drawing
     vg::CachedPathRef mStarPath;
@@ -215,7 +218,19 @@ void VectorGraphicsApp::createTestImage()
 void VectorGraphicsApp::update()
 {
     mFrameCount++;
-    mAnimTime += 0.016f; // ~60 FPS
+
+    // Calculate FPS
+    double currentTime = getElapsedSeconds();
+    double deltaTime = currentTime - mLastFrameTime;
+    mLastFrameTime = currentTime;
+
+    if( deltaTime > 0 ) {
+        mFps = 1.0f / deltaTime;
+        // Smooth FPS with exponential moving average
+        mFpsSmoothed = mFpsSmoothed * 0.95f + mFps * 0.05f;
+    }
+
+    mAnimTime += deltaTime;
 
     // Auto-save screenshot on frame 5 to capture after rendering stabilizes
     if( mFrameCount == 5 ) {
@@ -248,8 +263,7 @@ void VectorGraphicsApp::draw()
     gl::clear( Color( 0.15f, 0.15f, 0.18f ) );
 
     if( ! mVgInitialized ) {
-        gl::drawStringCentered( "Vector Graphics not initialized - check console for errors",
-                                 getWindowCenter(), Color::white() );
+        // Fallback - can't use canvas if not initialized
         return;
     }
 
@@ -269,18 +283,22 @@ void VectorGraphicsApp::draw()
     // Draw all vector content
     drawVectorContent();
 
+    // === Draw UI overlay (reset transform to screen space) ===
+    mCanvas->setTransform( mat3( 1.0f ) );
+
+    // FPS indicator
+    {
+        Font fpsFont( "Arial", 16 );
+        vg::Paint fpsPaint;
+        fpsPaint.setColor( ColorAf( 0.0f, 1.0f, 0.0f, 1.0f ) );
+
+        char fpsText[32];
+        snprintf( fpsText, sizeof(fpsText), "FPS: %.0f", mFpsSmoothed );
+        mCanvas->drawString( fpsText, vec2( getWindowWidth() - 80, 20 ), fpsFont, fpsPaint );
+    }
+
     // === End frame ===
     mCanvas->endFrame();
-
-    // Draw UI labels with Cinder (not affected by CanvasUi transform)
-    gl::setMatricesWindow( getWindowSize() );
-
-    gl::drawString( "CanvasGl + Paint API Demo", vec2( 10, 10 ), Color::white() );
-    gl::drawString( "Drag to pan, scroll to zoom (at cursor) | Cmd+0 to reset | 's' screenshot | 'q' quit",
-                    vec2( 10, getWindowHeight() - 20 ), Color::white() );
-
-    float zoom = mCanvasUi.getZoom();
-    gl::drawString( "Zoom: " + std::to_string( int( zoom * 100 ) ) + "%", vec2( 10, 35 ), Color( 0.7f, 0.7f, 0.7f ) );
 
     // Save screenshot if requested
     if( mSaveScreenshot ) {
