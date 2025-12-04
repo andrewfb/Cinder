@@ -201,6 +201,22 @@ RenderContextGLImpl::RenderContextGLImpl(
     m_platformFeatures.clipSpaceBottomUp = true;
     m_platformFeatures.framebufferBottomUp = true;
 
+    // Log atlas type for debugging
+    const char* atlasTypeName = "unknown";
+    switch (m_atlasType) {
+        case AtlasType::r32f: atlasTypeName = "r32f"; break;
+        case AtlasType::r16f: atlasTypeName = "r16f"; break;
+        case AtlasType::r32uiFramebufferFetch: atlasTypeName = "r32uiFramebufferFetch"; break;
+        case AtlasType::r32uiPixelLocalStorage: atlasTypeName = "r32uiPixelLocalStorage"; break;
+        case AtlasType::r32iAtomicTexture: atlasTypeName = "r32iAtomicTexture"; break;
+        case AtlasType::rgba8: atlasTypeName = "rgba8"; break;
+    }
+    fprintf(stderr, "Rive: AtlasType=%s, EXT_color_buffer_half_float=%d, EXT_color_buffer_float=%d, EXT_float_blend=%d\n",
+            atlasTypeName,
+            m_capabilities.EXT_color_buffer_half_float,
+            m_capabilities.EXT_color_buffer_float,
+            m_capabilities.EXT_float_blend);
+
     GLint maxTextureSize;
     glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
     m_platformFeatures.maxTextureSize = maxTextureSize;
@@ -2793,6 +2809,14 @@ std::unique_ptr<RenderContext> RenderContextGLImpl::MakeContext(
     {
         capabilities.EXT_base_instance = true;
     }
+#endif
+
+#ifdef __APPLE__
+    // macOS supports float color buffers and blending in GL 4.1 core profile,
+    // but doesn't advertise the extensions. Force-enable them.
+    capabilities.EXT_color_buffer_half_float = true;
+    capabilities.EXT_color_buffer_float = true;
+    capabilities.EXT_float_blend = true;
 #endif
 
     if (capabilities.ARB_shader_storage_buffer_object)
