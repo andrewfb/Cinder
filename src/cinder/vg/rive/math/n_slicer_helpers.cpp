@@ -1,4 +1,4 @@
-#include "rive/artboard.hpp"
+// CINDER_VG: Removed artboard.hpp - not actually used
 #include "rive/factory.hpp"
 #include "rive/layout/axis.hpp"
 #include "rive/layout/n_sliced_node.hpp"
