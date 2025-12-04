@@ -50,6 +50,7 @@ private:
     CanvasUi mCanvasUi;
     bool mVgInitialized = false;
     bool mSaveScreenshot = false;
+    bool mVsyncEnabled = true;
     int mFrameCount = 0;
     float mAnimTime = 0;
     double mLastFrameTime = 0;
@@ -487,11 +488,11 @@ void VectorGraphicsApp::drawVectorContent()
         // Draw 200 circles at different positions (same size, same paint)
         vg::Paint particlePaint;
         particlePaint.setColor( ColorAf( 0.3f, 0.8f, 1.0f, 0.6f ) );
-        mCanvas->drawCircles( mParticlePositions, 4.0f, particlePaint );
+        mCanvas->drawCircles( mParticlePositions, 20.0f, particlePaint );
 
         // Draw paths with full transforms
         vg::Paint starParticlePaint;
-        starParticlePaint.setColor( ColorAf( 1.0f, 0.9f, 0.2f, 0.7f ) );
+        starParticlePaint.setColor( ColorAf( 1.0f, 0.9f, 0.2f, 1.0f ) );
         mCanvas->drawPaths( mParticleTransforms, mStarPath, starParticlePaint );
     }
 
@@ -529,6 +530,14 @@ void VectorGraphicsApp::keyDown( KeyEvent event )
     }
     else if( event.getChar() == '0' ) {
         mCanvasUi.fitAll();
+    }
+    else if( event.getChar() == 'v' ) {
+        mVsyncEnabled = ! mVsyncEnabled;
+        gl::enableVerticalSync( mVsyncEnabled );
+        CI_LOG_I( "VSync " << ( mVsyncEnabled ? "enabled" : "disabled" ) );
+    }
+    else if( event.getChar() == 'f' ) {
+        setFullScreen( ! isFullScreen() );
     }
 }
 
