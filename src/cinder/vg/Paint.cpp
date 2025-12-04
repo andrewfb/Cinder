@@ -192,6 +192,19 @@ Paint& Paint::setOpacity( float opacity )
     return *this;
 }
 
+Paint& Paint::setImage( const std::shared_ptr<class Image> &image )
+{
+    mType = Type::Image;
+    mImage = image;
+    return *this;
+}
+
+Paint& Paint::setImageTransform( const mat3 &transform )
+{
+    mImageTransform = transform;
+    return *this;
+}
+
 rcp<RenderPaint> Paint::createRivePaint( RenderContext* ctx, bool isStroke ) const
 {
     if( ! ctx ) return nullptr;
@@ -266,9 +279,12 @@ rcp<RenderPaint> Paint::createRivePaint( RenderContext* ctx, bool isStroke ) con
             break;
         }
 
-        case Type::Texture:
-            // TODO: Implement texture support in Phase 5
-            paint->color( toRiveColor( mColor, mOpacity ) );
+        case Type::Image:
+            // Note: Image fills use Rive's image paint path which requires
+            // special handling in drawPath. For now, fallback to solid white.
+            // Full image fill support requires using RiveRenderer::drawPath with
+            // an image-based RenderPaint.
+            paint->color( toRiveColor( ColorAf::white(), mOpacity ) );
             break;
     }
 

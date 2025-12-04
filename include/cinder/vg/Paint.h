@@ -172,11 +172,22 @@ public:
     Paint& setOpacity( float opacity );
     float getOpacity() const { return mOpacity; }
 
+    // === Image Fill ===
+    //! Set an image as the fill pattern (requires vg::Image from Canvas::createImage)
+    Paint& setImage( const std::shared_ptr<class Image> &image );
+    //! Set transform for image fill (for tiling, scaling, rotation)
+    Paint& setImageTransform( const mat3 &transform );
+    //! Get the image (if set)
+    std::shared_ptr<class Image> getImage() const { return mImage; }
+    //! Get the image transform
+    const mat3& getImageTransform() const { return mImageTransform; }
+
     // === Type Queries ===
-    enum class Type { Solid, LinearGradient, RadialGradient, Texture };
+    enum class Type { Solid, LinearGradient, RadialGradient, Image };
     Type getType() const { return mType; }
     bool isSolid() const { return mType == Type::Solid; }
     bool isGradient() const { return mType == Type::LinearGradient || mType == Type::RadialGradient; }
+    bool isImage() const { return mType == Type::Image; }
 
     // === Internal: Create Rive Paint ===
     //! Create a Rive RenderPaint from this Paint (used internally by Canvas)
@@ -209,6 +220,10 @@ private:
     float mFeather = 0;
     BlendMode mBlendMode = BlendMode::SrcOver;
     float mOpacity = 1.0f;
+
+    // Image fill
+    std::shared_ptr<class Image> mImage;
+    mat3 mImageTransform = mat3();
 };
 
 } } // namespace cinder::vg

@@ -29,9 +29,13 @@
 #include "cinder/PolyLine.h"
 #include "cinder/Rect.h"
 #include "cinder/Exception.h"
+#include "cinder/Font.h"
+#include "cinder/Surface.h"
+#include "cinder/gl/Texture.h"
 
 #include <memory>
 #include <vector>
+#include <span>
 
 namespace cinder { namespace vg {
 
@@ -45,7 +49,66 @@ public:
 struct CI_API CanvasOptions {
     bool disablePixelLocalStorage = false;  //!< Disable PLS (required for macOS GL 4.1)
     bool disableFragmentShaderInterlock = false;  //!< Disable FSI (required for macOS GL 4.1)
+    bool useFloatingPointBuffer = false;  //!< Use RGBA16F internal buffer for higher quality gradients/feathering
 };
+
+// Forward declarations
+class Canvas;
+class CachedPath;
+class Image;
+
+using CachedPathRef = std::shared_ptr<CachedPath>;
+using ImageRef = std::shared_ptr<Image>;
+
+// ------------------------------------------------------------------------------------------------
+// CachedPath - Cached path for efficient repeated drawing
+// ------------------------------------------------------------------------------------------------
+
+//! A cached path that can be drawn efficiently multiple times.
+//! Created via Canvas::createPath(). Holds internal GPU-friendly representation.
+class CI_API CachedPath {
+public:
+    virtual ~CachedPath() = default;
+
+    //! Get the original source path (for queries)
+    const Shape2d& getSourceShape() const { return mSourceShape; }
+
+    //! Get axis-aligned bounding box
+    Rectf getBounds() const { return mBounds; }
+
+protected:
+    friend class Canvas;
+    CachedPath() = default;
+
+    Shape2d mSourceShape;
+    Rectf mBounds;
+};
+
+// ------------------------------------------------------------------------------------------------
+// Image - GPU image for drawing
+// ------------------------------------------------------------------------------------------------
+
+//! A GPU image that can be drawn to the canvas.
+//! Created via Canvas::createImage(). Wraps a texture for use with Rive renderer.
+class CI_API Image {
+public:
+    virtual ~Image() = default;
+
+    //! Get the image dimensions
+    ivec2 getSize() const { return mSize; }
+    int getWidth() const { return mSize.x; }
+    int getHeight() const { return mSize.y; }
+
+protected:
+    friend class Canvas;
+    Image() = default;
+
+    ivec2 mSize;
+};
+
+// ------------------------------------------------------------------------------------------------
+// Canvas - Main drawing interface
+// ------------------------------------------------------------------------------------------------
 
 //! Canvas provides the main drawing interface for vector graphics.
 //! This is an abstract base class - use CanvasGl for OpenGL rendering.
@@ -125,7 +188,7 @@ public:
     //! Draw a line (stroked only)
     virtual void drawLine( const vec2 &p0, const vec2 &p1, const Paint &paint ) = 0;
 
-    // === Cinder Path/Shape Integration ===
+    // === Path Drawing (uncached) ===
     //! Fill a Path2d
     virtual void fillPath( const Path2d &path, const Paint &paint, FillRule rule = FillRule::NonZero ) = 0;
 
@@ -143,6 +206,69 @@ public:
 
     //! Fill a closed PolyLine
     virtual void fillPolyLine( const PolyLine2f &polyline, const Paint &paint, FillRule rule = FillRule::NonZero ) = 0;
+
+    // === Cached Path API ===
+    //! Create a cached path from a Path2d. Cached paths are more efficient for repeated drawing.
+    virtual CachedPathRef createPath( const Path2d &path ) = 0;
+
+    //! Create a cached path from a Shape2d
+    virtual CachedPathRef createPath( const Shape2d &shape ) = 0;
+
+    //! Fill a cached path
+    virtual void fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule = FillRule::NonZero ) = 0;
+
+    //! Stroke a cached path
+    virtual void strokePath( const CachedPathRef &path, const Paint &paint ) = 0;
+
+    // === Image API ===
+    //! Create an image from a gl::Texture2d
+    virtual ImageRef createImage( const gl::Texture2dRef &texture ) = 0;
+
+    //! Create an image from a Surface (uploads to GPU)
+    virtual ImageRef createImage( const Surface &surface ) = 0;
+
+    //! Draw an image at a position (1:1 pixel mapping)
+    virtual void drawImage( const ImageRef &image, const vec2 &position ) = 0;
+
+    //! Draw an image scaled to fit a destination rectangle
+    virtual void drawImage( const ImageRef &image, const Rectf &destRect ) = 0;
+
+    //! Draw a portion of an image (srcRect) to a destination rectangle
+    virtual void drawImage( const ImageRef &image, const Rectf &srcRect, const Rectf &destRect ) = 0;
+
+    //! Draw an image mapped to arbitrary mesh geometry
+    //! @param vertices Vertex positions
+    //! @param uvs Texture coordinates (0-1 range)
+    //! @param indices Triangle indices
+    virtual void drawImageMesh( const ImageRef &image,
+                                std::span<const vec2> vertices,
+                                std::span<const vec2> uvs,
+                                std::span<const uint16_t> indices,
+                                float opacity = 1.0f ) = 0;
+
+    // === Text API ===
+    //! Draw a string at a position using Cinder's Font
+    virtual void drawString( const std::string &text, const vec2 &position,
+                             const Font &font, const Paint &paint ) = 0;
+
+    //! Create a cached path from text (for custom effects like stroking text)
+    virtual CachedPathRef createTextPath( const std::string &text, const Font &font ) = 0;
+
+    // === Instanced Drawing API ===
+    //! Draw multiple circles at different positions (same radius, same paint)
+    virtual void drawCircles( std::span<const vec2> positions, float radius, const Paint &paint ) = 0;
+
+    //! Draw multiple circles with full transforms (same radius, same paint)
+    virtual void drawCircles( std::span<const mat3> transforms, float radius, const Paint &paint ) = 0;
+
+    //! Draw multiple rectangles at different positions (same size, same paint)
+    virtual void drawRects( std::span<const vec2> positions, const vec2 &size, const Paint &paint ) = 0;
+
+    //! Draw multiple cached paths at different positions (same paint)
+    virtual void drawPaths( std::span<const vec2> positions, const CachedPathRef &path, const Paint &paint ) = 0;
+
+    //! Draw multiple cached paths with full transforms (same paint)
+    virtual void drawPaths( std::span<const mat3> transforms, const CachedPathRef &path, const Paint &paint ) = 0;
 
 protected:
     Canvas() = default;

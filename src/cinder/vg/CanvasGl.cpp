@@ -13,6 +13,7 @@
 #include "rive/renderer/render_context.hpp"
 #include "rive/renderer/gl/render_context_gl_impl.hpp"
 #include "rive/renderer/gl/render_target_gl.hpp"
+#include "rive/renderer/rive_render_image.hpp"
 #include "rive/math/raw_path.hpp"
 
 // For Rive's GLAD loader initialization
@@ -44,6 +45,22 @@ using namespace rive::gpu;
 
 namespace cinder { namespace vg {
 
+// ------------------------------------------------------------------------------------------------
+// Internal implementation structs (pimpl)
+// ------------------------------------------------------------------------------------------------
+
+struct CachedPathGlImpl {
+    rcp<RenderPath> rivePath;
+};
+
+struct ImageGlImpl {
+    rcp<RiveRenderImage> riveImage;
+};
+
+// ------------------------------------------------------------------------------------------------
+// Helper functions
+// ------------------------------------------------------------------------------------------------
+
 // Helper to convert Cinder mat3 to Rive Mat2D
 static Mat2D toRiveMat( const mat3 &m )
 {
@@ -58,17 +75,74 @@ static rive::FillRule toRiveFillRule( FillRule rule )
 }
 
 // ------------------------------------------------------------------------------------------------
+// CachedPathGl implementation
+// ------------------------------------------------------------------------------------------------
+
+CachedPathGl::CachedPathGl() : mImpl( std::make_unique<CachedPathGlImpl>() ) {}
+
+CachedPathGl::~CachedPathGl() = default;
+
+// ------------------------------------------------------------------------------------------------
+// ImageGl implementation
+// ------------------------------------------------------------------------------------------------
+
+ImageGl::ImageGl() : mImpl( std::make_unique<ImageGlImpl>() ) {}
+
+ImageGl::~ImageGl() = default;
+
+// ------------------------------------------------------------------------------------------------
+// GlyphCache implementation
+// ------------------------------------------------------------------------------------------------
+
+CachedPathRef GlyphCache::getGlyph( CanvasGl* canvas, const Font &font, Font::Glyph glyphIndex )
+{
+    GlyphKey key{ font.getName(), font.getSize(), glyphIndex };
+
+    auto it = mCache.find( key );
+    if( it != mCache.end() ) {
+        return it->second;
+    }
+
+    // Cache miss - create the glyph path
+    try {
+        Shape2d glyphShape = font.getGlyphShape( glyphIndex );
+
+        // Skip empty glyphs (like spaces)
+        if( glyphShape.getContours().empty() ) {
+            mCache[key] = nullptr;
+            return nullptr;
+        }
+
+        auto cachedPath = canvas->createPath( glyphShape );
+        mCache[key] = cachedPath;
+        return cachedPath;
+    }
+    catch( const std::exception& e ) {
+        CI_LOG_W( "Failed to create glyph path for index " << glyphIndex << ": " << e.what() );
+        mCache[key] = nullptr;
+        return nullptr;
+    }
+}
+
+void GlyphCache::clear()
+{
+    mCache.clear();
+}
+
+// ------------------------------------------------------------------------------------------------
 // CanvasGl implementation
 // ------------------------------------------------------------------------------------------------
 
 CanvasGl::CanvasGl( const CanvasOptions &options )
     : mFbo( nullptr )
+    , mUseFloatingPointBuffer( options.useFloatingPointBuffer )
 {
     initializeGl( options );
 }
 
 CanvasGl::CanvasGl( const gl::FboRef &fbo, const CanvasOptions &options )
     : mFbo( fbo )
+    , mUseFloatingPointBuffer( options.useFloatingPointBuffer )
 {
     initializeGl( options );
 }
@@ -107,7 +181,11 @@ void CanvasGl::initializeGl( const CanvasOptions &options )
     // Store the GL-specific pointer for invalidateGLState()
     mRiveContextGl = mRiveContext->static_impl_cast<RenderContextGLImpl>();
 
-    CI_LOG_I( "CanvasGl created successfully" );
+    // Log platform features
+    const auto& features = mRiveContext->platformFeatures();
+    CI_LOG_I( "CanvasGl created - supportsRasterOrderingMode=" << features.supportsRasterOrderingMode
+              << " supportsAtomicMode=" << features.supportsAtomicMode
+              << " supportsClockwiseAtomicMode=" << features.supportsClockwiseAtomicMode );
 }
 
 void CanvasGl::invalidateState()
@@ -227,12 +305,25 @@ void CanvasGl::beginFrame( const ivec2 &size )
     mFrameSize = size;
     mInFrame = true;
 
+    // Create or resize internal floating-point FBO if needed
+    if( mUseFloatingPointBuffer && ! mFbo ) {
+        if( ! mInternalFbo || mInternalFbo->getWidth() != size.x || mInternalFbo->getHeight() != size.y ) {
+            gl::Fbo::Format format;
+            format.colorTexture( gl::Texture::Format()
+                .internalFormat( GL_RGBA16F )
+                .minFilter( GL_LINEAR )
+                .magFilter( GL_LINEAR ) );
+            mInternalFbo = gl::Fbo::create( size.x, size.y, format );
+            CI_LOG_I( "Created internal RGBA16F FBO: " << size.x << "x" << size.y );
+        }
+    }
+
     if( mRiveContext ) {
         RenderContext::FrameDescriptor frameDesc;
         frameDesc.renderTargetWidth = size.x;
         frameDesc.renderTargetHeight = size.y;
-        frameDesc.loadAction = gpu::LoadAction::preserveRenderTarget;
-        frameDesc.clearColor = 0x00000000; // Not used when preserving
+        frameDesc.loadAction = gpu::LoadAction::clear;  // Clear for internal FBO
+        frameDesc.clearColor = 0x00000000;
         frameDesc.clockwiseFillOverride = true; // Enable feathering for any fill rule
 
         // Invalidate GL state since Cinder may have modified it
@@ -260,9 +351,15 @@ void CanvasGl::endFrame()
         GLuint framebufferId = 0;
         int sampleCount = 1;
 
-        if( mFbo ) {
-            framebufferId = mFbo->getId();
-            sampleCount = mFbo->getFormat().getSamples();
+        // Determine the target FBO
+        gl::FboRef targetFbo = mFbo;  // User-provided FBO
+        if( ! targetFbo && mInternalFbo ) {
+            targetFbo = mInternalFbo;  // Use internal floating-point FBO
+        }
+
+        if( targetFbo ) {
+            framebufferId = targetFbo->getId();
+            sampleCount = targetFbo->getFormat().getSamples();
             if( sampleCount == 0 ) sampleCount = 1;
         }
 
@@ -276,6 +373,16 @@ void CanvasGl::endFrame()
 
         // Restore Cinder's expected GL state
         restoreHostState( mFrameSize );
+
+        // If using internal FBO, blit to screen
+        if( mInternalFbo && ! mFbo ) {
+            gl::ScopedViewport vp( mFrameSize );
+            gl::ScopedMatrices matrices;
+            gl::setMatricesWindow( mFrameSize );
+            gl::ScopedBlendPremult blend;
+            gl::ScopedColor color( Color::white() );
+            gl::draw( mInternalFbo->getColorTexture(), Rectf( 0, 0, (float)mFrameSize.x, (float)mFrameSize.y ) );
+        }
     }
 
     mInFrame = false;
@@ -334,6 +441,10 @@ void CanvasGl::resetTransform()
 {
     mTransform = mat3();
 }
+
+// ------------------------------------------------------------------------------------------------
+// Drawing Primitives
+// ------------------------------------------------------------------------------------------------
 
 void CanvasGl::fillRect( const Rectf &rect, const Paint &paint )
 {
@@ -458,6 +569,10 @@ void CanvasGl::drawLine( const vec2 &p0, const vec2 &p1, const Paint &paint )
     drawPathInternal( std::move( rawPath ), paint, false, true );
 }
 
+// ------------------------------------------------------------------------------------------------
+// Path Drawing (uncached)
+// ------------------------------------------------------------------------------------------------
+
 void CanvasGl::fillPath( const Path2d &path, const Paint &paint, FillRule rule )
 {
     if( ! mInFrame || ! mRiveRenderer ) return;
@@ -508,6 +623,442 @@ void CanvasGl::fillPolyLine( const PolyLine2f &polyline, const Paint &paint, Fil
 }
 
 // ------------------------------------------------------------------------------------------------
+// Cached Path API
+// ------------------------------------------------------------------------------------------------
+
+CachedPathRef CanvasGl::createPath( const Path2d &path )
+{
+    Shape2d shape;
+    shape.appendContour( path );
+    return createPath( shape );
+}
+
+CachedPathRef CanvasGl::createPath( const Shape2d &shape )
+{
+    if( ! mRiveContext ) {
+        CI_LOG_W( "Cannot create path without valid context" );
+        return nullptr;
+    }
+
+    // Check for empty shapes (e.g., space characters in fonts)
+    if( shape.getContours().empty() ) {
+        return nullptr;
+    }
+
+    // Check if all contours are empty
+    bool hasPoints = false;
+    for( const auto& contour : shape.getContours() ) {
+        if( contour.getNumPoints() > 0 ) {
+            hasPoints = true;
+            break;
+        }
+    }
+    if( ! hasPoints ) {
+        return nullptr;
+    }
+
+    auto cachedPath = std::make_shared<CachedPathGl>();
+    cachedPath->mSourceShape = shape;
+    cachedPath->mBounds = shape.calcBoundingBox();
+
+    RawPath rawPath = toRivePath( shape );
+    cachedPath->mImpl->rivePath = mRiveContext->makeRenderPath( rawPath, rive::FillRule::nonZero );
+
+    return cachedPath;
+}
+
+void CanvasGl::fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule )
+{
+    if( ! path ) return;
+    auto glPath = std::dynamic_pointer_cast<CachedPathGl>( path );
+    if( glPath ) {
+        drawCachedPathInternal( glPath.get(), paint, true, false, rule );
+    }
+}
+
+void CanvasGl::strokePath( const CachedPathRef &path, const Paint &paint )
+{
+    if( ! path ) return;
+    auto glPath = std::dynamic_pointer_cast<CachedPathGl>( path );
+    if( glPath ) {
+        drawCachedPathInternal( glPath.get(), paint, false, true );
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Image API
+// ------------------------------------------------------------------------------------------------
+
+ImageRef CanvasGl::createImage( const gl::Texture2dRef &texture )
+{
+    if( ! mRiveContextGl || ! texture ) {
+        CI_LOG_W( "Cannot create image without valid context or texture" );
+        return nullptr;
+    }
+
+    auto image = std::make_shared<ImageGl>();
+    image->mTexture = texture;
+    image->mSize = ivec2( texture->getWidth(), texture->getHeight() );
+
+    // Adopt the GL texture into Rive's texture system
+    // Note: We don't want Rive to delete our texture, so we create a copy
+    // For now, let's upload the pixels directly
+    auto riveTexture = mRiveContextGl->adoptImageTexture(
+        texture->getWidth(),
+        texture->getHeight(),
+        texture->getId()
+    );
+
+    image->mImpl->riveImage = make_rcp<RiveRenderImage>( std::move( riveTexture ) );
+
+    return image;
+}
+
+ImageRef CanvasGl::createImage( const Surface &surface )
+{
+    if( ! mRiveContextGl ) {
+        CI_LOG_W( "Cannot create image without valid context" );
+        return nullptr;
+    }
+
+    auto image = std::make_shared<ImageGl>();
+    image->mSize = ivec2( surface.getWidth(), surface.getHeight() );
+
+    // Upload surface data to Rive texture
+    // Convert to RGBA premultiplied if necessary
+    Surface8u rgbaSurface( surface.getWidth(), surface.getHeight(), true, SurfaceChannelOrder::RGBA );
+
+    const uint8_t* srcData = surface.getData();
+    uint8_t* dstData = rgbaSurface.getData();
+
+    bool srcHasAlpha = surface.hasAlpha();
+    int srcPixelInc = surface.getPixelInc();
+    int srcRowBytes = surface.getRowBytes();
+    int dstRowBytes = rgbaSurface.getRowBytes();
+
+    for( int y = 0; y < surface.getHeight(); ++y ) {
+        const uint8_t* srcRow = srcData + y * srcRowBytes;
+        uint8_t* dstRow = dstData + y * dstRowBytes;
+
+        for( int x = 0; x < surface.getWidth(); ++x ) {
+            uint8_t r = srcRow[0];
+            uint8_t g = srcRow[1];
+            uint8_t b = srcRow[2];
+            uint8_t a = srcHasAlpha ? srcRow[3] : 255;
+
+            // Premultiply alpha
+            dstRow[0] = (r * a) / 255;
+            dstRow[1] = (g * a) / 255;
+            dstRow[2] = (b * a) / 255;
+            dstRow[3] = a;
+
+            srcRow += srcPixelInc;
+            dstRow += 4;
+        }
+    }
+
+    auto riveTexture = mRiveContextGl->makeImageTexture(
+        surface.getWidth(),
+        surface.getHeight(),
+        1, // mip levels
+        rgbaSurface.getData()
+    );
+
+    image->mImpl->riveImage = make_rcp<RiveRenderImage>( std::move( riveTexture ) );
+
+    // Also create a Cinder texture for getTexture()
+    image->mTexture = gl::Texture2d::create( surface );
+
+    return image;
+}
+
+void CanvasGl::drawImage( const ImageRef &image, const vec2 &position )
+{
+    if( ! image ) return;
+    Rectf destRect( position, position + vec2( image->getSize() ) );
+    drawImage( image, destRect );
+}
+
+void CanvasGl::drawImage( const ImageRef &image, const Rectf &destRect )
+{
+    if( ! mInFrame || ! mRiveRenderer || ! image ) return;
+
+    auto glImage = std::dynamic_pointer_cast<ImageGl>( image );
+    if( ! glImage || ! glImage->mImpl || ! glImage->mImpl->riveImage ) return;
+
+    mRiveRenderer->save();
+    mRiveRenderer->transform( toRiveMat( mTransform ) );
+
+    // Scale and position the image
+    float sx = destRect.getWidth() / image->getWidth();
+    float sy = destRect.getHeight() / image->getHeight();
+    mRiveRenderer->transform( Mat2D( sx, 0, 0, sy, destRect.x1, destRect.y1 ) );
+
+    mRiveRenderer->drawImage( glImage->mImpl->riveImage.get(), rive::ImageSampler::LinearClamp(), rive::BlendMode::srcOver, 1.0f );
+    mRiveRenderer->restore();
+}
+
+void CanvasGl::drawImage( const ImageRef &image, const Rectf &srcRect, const Rectf &destRect )
+{
+    if( ! mInFrame || ! mRiveRenderer || ! image ) return;
+
+    auto glImage = std::dynamic_pointer_cast<ImageGl>( image );
+    if( ! glImage || ! glImage->mImpl || ! glImage->mImpl->riveImage ) return;
+
+    // Create a mesh for the sub-rectangle
+    float u0 = srcRect.x1 / image->getWidth();
+    float v0 = srcRect.y1 / image->getHeight();
+    float u1 = srcRect.x2 / image->getWidth();
+    float v1 = srcRect.y2 / image->getHeight();
+
+    std::vector<vec2> vertices = {
+        vec2( destRect.x1, destRect.y1 ),
+        vec2( destRect.x2, destRect.y1 ),
+        vec2( destRect.x2, destRect.y2 ),
+        vec2( destRect.x1, destRect.y2 )
+    };
+
+    std::vector<vec2> uvs = {
+        vec2( u0, v0 ),
+        vec2( u1, v0 ),
+        vec2( u1, v1 ),
+        vec2( u0, v1 )
+    };
+
+    std::vector<uint16_t> indices = { 0, 1, 2, 0, 2, 3 };
+
+    drawImageMesh( image, vertices, uvs, indices, 1.0f );
+}
+
+void CanvasGl::drawImageMesh( const ImageRef &image,
+                               std::span<const vec2> vertices,
+                               std::span<const vec2> uvs,
+                               std::span<const uint16_t> indices,
+                               float opacity )
+{
+    if( ! mInFrame || ! mRiveRenderer || ! mRiveContext || ! image ) return;
+    if( vertices.size() != uvs.size() ) return;
+
+    auto glImage = std::dynamic_pointer_cast<ImageGl>( image );
+    if( ! glImage || ! glImage->mImpl || ! glImage->mImpl->riveImage ) return;
+
+    // Create Rive buffers
+    auto vertexBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::vertex,
+        RenderBufferFlags::none, vertices.size() * sizeof( float ) * 2 );
+    auto uvBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::vertex,
+        RenderBufferFlags::none, uvs.size() * sizeof( float ) * 2 );
+    auto indexBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::index,
+        RenderBufferFlags::none, indices.size() * sizeof( uint16_t ) );
+
+    // Map and fill buffers
+    float* vertexData = static_cast<float*>( vertexBuffer->map() );
+    float* uvData = static_cast<float*>( uvBuffer->map() );
+    uint16_t* indexData = static_cast<uint16_t*>( indexBuffer->map() );
+
+    // Apply current transform to vertices
+    for( size_t i = 0; i < vertices.size(); ++i ) {
+        vec3 transformed = mTransform * vec3( vertices[i], 1.0f );
+        vertexData[i * 2] = transformed.x;
+        vertexData[i * 2 + 1] = transformed.y;
+
+        uvData[i * 2] = uvs[i].x;
+        uvData[i * 2 + 1] = uvs[i].y;
+    }
+
+    std::memcpy( indexData, indices.data(), indices.size() * sizeof( uint16_t ) );
+
+    vertexBuffer->unmap();
+    uvBuffer->unmap();
+    indexBuffer->unmap();
+
+    mRiveRenderer->drawImageMesh(
+        glImage->mImpl->riveImage.get(),
+        rive::ImageSampler::LinearClamp(),
+        std::move( vertexBuffer ),
+        std::move( uvBuffer ),
+        std::move( indexBuffer ),
+        static_cast<uint32_t>( vertices.size() ),
+        static_cast<uint32_t>( indices.size() ),
+        rive::BlendMode::srcOver,
+        opacity
+    );
+}
+
+// ------------------------------------------------------------------------------------------------
+// Text API
+// ------------------------------------------------------------------------------------------------
+
+void CanvasGl::drawString( const std::string &text, const vec2 &position,
+                            const Font &font, const Paint &paint )
+{
+    if( ! mInFrame || ! mRiveRenderer || text.empty() ) return;
+
+    // Get glyphs from the font
+    std::vector<Font::Glyph> glyphs = font.getGlyphs( text );
+
+    float x = position.x;
+    float y = position.y;
+
+    for( Font::Glyph glyph : glyphs ) {
+        // Get cached glyph path
+        auto glyphPath = mGlyphCache.getGlyph( this, font, glyph );
+
+        if( glyphPath ) {
+            save();
+            translate( vec2( x, y ) );
+            fillPath( glyphPath, paint );
+            restore();
+        }
+
+        // Advance position
+        Rectf bbox = font.getGlyphBoundingBox( glyph );
+        // Use glyph advance (approximate from bounding box for now)
+        x += bbox.getWidth() + 2.0f; // Add small spacing
+    }
+}
+
+CachedPathRef CanvasGl::createTextPath( const std::string &text, const Font &font )
+{
+    if( text.empty() ) return nullptr;
+
+    Shape2d textShape;
+    std::vector<Font::Glyph> glyphs = font.getGlyphs( text );
+
+    float x = 0;
+    for( Font::Glyph glyph : glyphs ) {
+        Shape2d glyphShape = font.getGlyphShape( glyph );
+
+        // Translate glyph to current position
+        mat3 glyphTransform;
+        glyphTransform[2][0] = x;
+
+        for( const auto& contour : glyphShape.getContours() ) {
+            Path2d transformedContour = contour.transformed( glyphTransform );
+            textShape.appendContour( transformedContour );
+        }
+
+        Rectf bbox = font.getGlyphBoundingBox( glyph );
+        x += bbox.getWidth() + 2.0f;
+    }
+
+    return createPath( textShape );
+}
+
+// ------------------------------------------------------------------------------------------------
+// Instanced Drawing API
+// ------------------------------------------------------------------------------------------------
+
+CachedPathRef CanvasGl::getOrCreateCirclePath( float radius )
+{
+    auto it = mCirclePathCache.find( radius );
+    if( it != mCirclePathCache.end() ) {
+        return it->second;
+    }
+
+    // Create circle path centered at origin
+    Path2d circlePath;
+    circlePath.arc( vec2( 0 ), radius, 0, float( M_PI * 2 ), true );
+    circlePath.close();
+
+    auto cached = createPath( circlePath );
+    mCirclePathCache[radius] = cached;
+    return cached;
+}
+
+CachedPathRef CanvasGl::getOrCreateRectPath( const vec2 &size )
+{
+    // Pack size into uint64 for map key
+    uint32_t w = *reinterpret_cast<const uint32_t*>( &size.x );
+    uint32_t h = *reinterpret_cast<const uint32_t*>( &size.y );
+    uint64_t key = (uint64_t( w ) << 32) | h;
+
+    auto it = mRectPathCache.find( key );
+    if( it != mRectPathCache.end() ) {
+        return it->second;
+    }
+
+    Path2d rectPath;
+    rectPath.moveTo( 0, 0 );
+    rectPath.lineTo( size.x, 0 );
+    rectPath.lineTo( size.x, size.y );
+    rectPath.lineTo( 0, size.y );
+    rectPath.close();
+
+    auto cached = createPath( rectPath );
+    mRectPathCache[key] = cached;
+    return cached;
+}
+
+void CanvasGl::drawCircles( std::span<const vec2> positions, float radius, const Paint &paint )
+{
+    if( ! mInFrame || ! mRiveRenderer ) return;
+
+    auto circlePath = getOrCreateCirclePath( radius );
+    if( ! circlePath ) return;
+
+    for( const vec2& pos : positions ) {
+        save();
+        translate( pos );
+        fillPath( circlePath, paint );
+        restore();
+    }
+}
+
+void CanvasGl::drawCircles( std::span<const mat3> transforms, float radius, const Paint &paint )
+{
+    if( ! mInFrame || ! mRiveRenderer ) return;
+
+    auto circlePath = getOrCreateCirclePath( radius );
+    if( ! circlePath ) return;
+
+    for( const mat3& xform : transforms ) {
+        save();
+        transform( xform );
+        fillPath( circlePath, paint );
+        restore();
+    }
+}
+
+void CanvasGl::drawRects( std::span<const vec2> positions, const vec2 &size, const Paint &paint )
+{
+    if( ! mInFrame || ! mRiveRenderer ) return;
+
+    auto rectPath = getOrCreateRectPath( size );
+    if( ! rectPath ) return;
+
+    for( const vec2& pos : positions ) {
+        save();
+        translate( pos );
+        fillPath( rectPath, paint );
+        restore();
+    }
+}
+
+void CanvasGl::drawPaths( std::span<const vec2> positions, const CachedPathRef &path, const Paint &paint )
+{
+    if( ! mInFrame || ! mRiveRenderer || ! path ) return;
+
+    for( const vec2& pos : positions ) {
+        save();
+        translate( pos );
+        fillPath( path, paint );
+        restore();
+    }
+}
+
+void CanvasGl::drawPaths( std::span<const mat3> transforms, const CachedPathRef &path, const Paint &paint )
+{
+    if( ! mInFrame || ! mRiveRenderer || ! path ) return;
+
+    for( const mat3& xform : transforms ) {
+        save();
+        transform( xform );
+        fillPath( path, paint );
+        restore();
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
 // Internal helpers
 // ------------------------------------------------------------------------------------------------
 
@@ -535,6 +1086,28 @@ void CanvasGl::drawPathInternal( RawPath rawPath, const Paint &paint,
     }
 }
 
+void CanvasGl::drawCachedPathInternal( const CachedPathGl* cachedPath, const Paint &paint,
+                                        bool fill, bool stroke, FillRule rule )
+{
+    if( ! mRiveContext || ! mRiveRenderer || ! cachedPath || ! cachedPath->mImpl || ! cachedPath->mImpl->rivePath ) return;
+
+    if( fill ) {
+        auto rivePaint = paint.createRivePaint( mRiveContext.get(), false );
+        mRiveRenderer->save();
+        mRiveRenderer->transform( toRiveMat( mTransform ) );
+        mRiveRenderer->drawPath( cachedPath->mImpl->rivePath.get(), rivePaint.get() );
+        mRiveRenderer->restore();
+    }
+
+    if( stroke ) {
+        auto rivePaint = paint.createRivePaint( mRiveContext.get(), true );
+        mRiveRenderer->save();
+        mRiveRenderer->transform( toRiveMat( mTransform ) );
+        mRiveRenderer->drawPath( cachedPath->mImpl->rivePath.get(), rivePaint.get() );
+        mRiveRenderer->restore();
+    }
+}
+
 RawPath CanvasGl::toRivePath( const Path2d &path )
 {
     RawPath rawPath;
@@ -554,17 +1127,29 @@ RawPath CanvasGl::toRivePath( const Path2d &path )
     // Track point index starting at 1 (after moveTo)
     size_t pointIndex = 1;
 
+    // Track last point for quad-to-cubic conversion
+    vec2 lastPt = startPt;
+
     for( size_t seg = 0; seg < path.getNumSegments(); ++seg ) {
         switch( path.getSegmentType( seg ) ) {
             case Path2d::LINETO: {
                 vec2 p = path.getPoint( pointIndex++ );
                 rawPath.lineTo( p.x, p.y );
+                lastPt = p;
                 break;
             }
             case Path2d::QUADTO: {
-                vec2 p1 = path.getPoint( pointIndex++ );
-                vec2 p2 = path.getPoint( pointIndex++ );
-                rawPath.quadTo( p1.x, p1.y, p2.x, p2.y );
+                // Convert quadratic bezier to cubic bezier
+                // Rive's computeCoarseArea doesn't support quads (hits RIVE_UNREACHABLE)
+                // Formula: C1 = P0 + 2/3*(P1-P0), C2 = P2 + 2/3*(P1-P2)
+                vec2 p1 = path.getPoint( pointIndex++ );  // Control point
+                vec2 p2 = path.getPoint( pointIndex++ );  // End point
+
+                vec2 c1 = lastPt + (2.0f / 3.0f) * (p1 - lastPt);
+                vec2 c2 = p2 + (2.0f / 3.0f) * (p1 - p2);
+
+                rawPath.cubicTo( c1.x, c1.y, c2.x, c2.y, p2.x, p2.y );
+                lastPt = p2;
                 break;
             }
             case Path2d::CUBICTO: {
@@ -572,10 +1157,12 @@ RawPath CanvasGl::toRivePath( const Path2d &path )
                 vec2 p2 = path.getPoint( pointIndex++ );
                 vec2 p3 = path.getPoint( pointIndex++ );
                 rawPath.cubicTo( p1.x, p1.y, p2.x, p2.y, p3.x, p3.y );
+                lastPt = p3;
                 break;
             }
             case Path2d::CLOSE:
                 rawPath.close();
+                lastPt = startPt;
                 break;
             default:
                 break;
