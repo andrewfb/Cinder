@@ -62,8 +62,7 @@ void SimpleViewerApp::setup()
 	ImGui::GetStyle().FontScaleMain = getWindowContentScale();
 
 	// Create vg::Canvas for Rive rendering
-	vg::CanvasOptions options;
-	mCanvas = vg::createCanvasGl( options );
+	mCanvas = vg::CanvasGl::create();
 
 	// Connect CanvasUi to window for pan/zoom
 	mCanvasUi.connect( getWindow() );

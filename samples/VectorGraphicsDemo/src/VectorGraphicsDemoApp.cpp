@@ -2,6 +2,11 @@
  VectorGraphicsDemo - Interactive demo framework using Cinder's built-in ImGui
 */
 
+// Toggle between direct-to-window rendering (0) and offscreen FBO rendering (1)
+// - Direct to window: Uses MSAA from RendererGl, renders directly to screen
+// - Offscreen FBO: Uses atomic mode with analytical AA, blits result to screen
+#define USE_OFFSCREEN_FBO 0
+
 #include "cinder/app/App.h"
 #include "cinder/app/RendererGl.h"
 #include "cinder/gl/gl.h"
@@ -1012,11 +1017,14 @@ private:
 void VectorGraphicsDemoApp::setup()
 {
     try {
-        vg::CanvasOptions options;
-        options.useFloatingPointBuffer = false;
-        mCanvas = vg::createCanvasGl( options );
-
-        mCanvas = vg::createCanvasGl( options );
+#if USE_OFFSCREEN_FBO
+        // Offscreen mode: atomic rendering with analytical AA
+        // FBO will be created/resized on first begin(size) call
+        mCanvas = vg::CanvasGl::create( 1, 1 );
+#else
+        // Window mode: direct rendering, auto-detects MSAA
+        mCanvas = vg::CanvasGl::create();
+#endif
     } catch( const std::exception &e ) {
         CI_LOG_E( "Canvas init failed: " << e.what() );
         return;
@@ -1083,10 +1091,16 @@ void VectorGraphicsDemoApp::draw()
     if( mDemo ) mDemo->drawUI();
     ImGui::Separator();
     ImGui::Text( "FPS: %.0f", mFps );
+#if USE_OFFSCREEN_FBO
+    ImGui::Text( "Mode: Offscreen FBO (atomic)" );
+#else
+    ImGui::Text( "Mode: Direct to window" );
+#endif
     ImGui::Text( "Keys: 1-9 demos, 0 fit, Q quit" );
     ImGui::End();
 
-    // Canvas
+    // Canvas rendering - both modes use begin(size) now
+    // Offscreen mode will auto-resize FBO if window size changes
     mCanvas->begin( toPixels( getWindowSize() ) );
     mCanvas->setTransform( mCanvasUi.getTransform2d() );
 
@@ -1096,6 +1110,11 @@ void VectorGraphicsDemoApp::draw()
         mCanvas->strokeRect( mDemo->getContentBounds(), bp );
     }
     mCanvas->end();
+
+#if USE_OFFSCREEN_FBO
+    // Blit the offscreen FBO to the window
+    gl::draw( mCanvas->getTexture(), getWindowBounds() );
+#endif
 }
 
 void VectorGraphicsDemoApp::keyDown( KeyEvent event )
@@ -1136,4 +1155,10 @@ void prepareSettings( VectorGraphicsDemoApp::Settings* s )
     s->setWindowSize( 1200, 800 );
 }
 
+#if USE_OFFSCREEN_FBO
+// Offscreen mode: no MSAA needed (atomic mode uses analytical AA)
+CINDER_APP( VectorGraphicsDemoApp, RendererGl, prepareSettings )
+#else
+// Window mode: use MSAA for hardware antialiasing
 CINDER_APP( VectorGraphicsDemoApp, RendererGl( RendererGl::Options().msaa( 16 ) ), prepareSettings )
+#endif

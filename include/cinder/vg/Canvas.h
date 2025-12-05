@@ -47,17 +47,10 @@ public:
     VgExc( const std::string &description ) : Exception( description ) {}
 };
 
-//! Options for canvas creation.
-//! Platform defaults are set automatically - macOS disables PLS/FSI since GL 4.1 doesn't support them.
-struct CI_API CanvasOptions {
-#if defined( CINDER_MAC )
-    bool disablePixelLocalStorage = true;       //!< Disable PLS (required for macOS GL 4.1)
-    bool disableFragmentShaderInterlock = true; //!< Disable FSI (required for macOS GL 4.1)
-#else
-    bool disablePixelLocalStorage = false;      //!< Disable PLS (not needed on most platforms)
-    bool disableFragmentShaderInterlock = false;//!< Disable FSI (not needed on most platforms)
-#endif
-    bool useFloatingPointBuffer = false;        //!< Use RGBA16F internal buffer (may improve gradient/feathering quality)
+//! Rendering mode for CanvasGl
+enum class CI_API RenderMode {
+    Window,     //!< Render to window (auto-detects MSAA, renders directly)
+    Offscreen   //!< Render to offscreen FBO (atomic mode with analytical AA)
 };
 
 // Forward declarations

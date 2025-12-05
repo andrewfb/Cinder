@@ -134,18 +134,63 @@ void GlyphCache::clear()
 // CanvasGl implementation
 // ------------------------------------------------------------------------------------------------
 
-CanvasGl::CanvasGl( const CanvasOptions &options )
-    : mFbo( nullptr )
-    , mUseFloatingPointBuffer( options.useFloatingPointBuffer )
+CanvasGlRef CanvasGl::create()
 {
-    initializeGl( options );
+    // Query window's MSAA sample count
+    GLint samples = 0;
+    glBindFramebuffer( GL_FRAMEBUFFER, 0 );  // Ensure default framebuffer is bound
+    glGetIntegerv( GL_SAMPLES, &samples );
+
+    bool windowHasMsaa = samples > 1;
+    CI_LOG_I( "Window MSAA samples: " << samples << " (MSAA " << (windowHasMsaa ? "enabled" : "disabled") << ")" );
+
+    auto canvas = CanvasGlRef( new CanvasGl( RenderMode::Window ) );
+    canvas->mWindowHasMsaa = windowHasMsaa;
+    return canvas;
 }
 
-CanvasGl::CanvasGl( const gl::FboRef &fbo, const CanvasOptions &options )
-    : mFbo( fbo )
-    , mUseFloatingPointBuffer( options.useFloatingPointBuffer )
+CanvasGlRef CanvasGl::create( int width, int height )
 {
-    initializeGl( options );
+    CI_ASSERT_MSG( width > 0 && height > 0, "Offscreen canvas dimensions must be positive" );
+
+    auto canvas = CanvasGlRef( new CanvasGl( RenderMode::Offscreen, width, height ) );
+    return canvas;
+}
+
+CanvasGl::CanvasGl( RenderMode mode, int fboWidth, int fboHeight )
+    : mRenderMode( mode )
+    , mOffscreenSize( fboWidth, fboHeight )
+{
+    // Determine if we should force MSAA mode (disable atomic)
+    // - Window mode with MSAA: force MSAA mode to avoid double-coverage artifacts
+    // - macOS: always force MSAA mode (GL 4.1 doesn't support PLS/FSI)
+    // - Offscreen mode: use atomic mode for analytical AA
+    bool forceMsaaMode = false;
+#if defined( CINDER_MAC )
+    forceMsaaMode = true;  // macOS GL 4.1 doesn't support PLS/FSI
+#else
+    if( mode == RenderMode::Window ) {
+        // Will be set properly after MSAA detection in create()
+        // For now, query it here as well
+        GLint samples = 0;
+        glGetIntegerv( GL_SAMPLES, &samples );
+        forceMsaaMode = samples > 1;
+        mWindowHasMsaa = forceMsaaMode;
+    }
+#endif
+
+    initializeGl( forceMsaaMode );
+
+    // Create offscreen FBO if in offscreen mode
+    if( mode == RenderMode::Offscreen && fboWidth > 0 && fboHeight > 0 ) {
+        gl::Fbo::Format format;
+        format.colorTexture( gl::Texture::Format()
+            .internalFormat( GL_RGBA16F )
+            .minFilter( GL_LINEAR )
+            .magFilter( GL_LINEAR ) );
+        mOffscreenFbo = gl::Fbo::create( fboWidth, fboHeight, format );
+        CI_LOG_I( "Created offscreen RGBA16F FBO: " << fboWidth << "x" << fboHeight );
+    }
 }
 
 CanvasGl::~CanvasGl()
@@ -157,10 +202,9 @@ CanvasGl::~CanvasGl()
     mRiveContext.reset();
 }
 
-void CanvasGl::initializeGl( const CanvasOptions &options )
+void CanvasGl::initializeGl( bool forceMsaaMode )
 {
-    CI_LOG_I( "Creating Rive GL context with disablePLS=" << options.disablePixelLocalStorage
-              << " disableFSI=" << options.disableFragmentShaderInterlock );
+    CI_LOG_I( "Creating Rive GL context with forceMsaaMode=" << forceMsaaMode );
 
     // Initialize Rive's GLAD loader - this sets up GLAD_GL_version_major etc.
 #if defined( CINDER_MSW )
@@ -170,8 +214,8 @@ void CanvasGl::initializeGl( const CanvasOptions &options )
 #endif
 
     RenderContextGLImpl::ContextOptions riveOptions;
-    riveOptions.disablePixelLocalStorage = options.disablePixelLocalStorage;
-    riveOptions.disableFragmentShaderInterlock = options.disableFragmentShaderInterlock;
+    riveOptions.disablePixelLocalStorage = forceMsaaMode;
+    riveOptions.disableFragmentShaderInterlock = forceMsaaMode;
 
     mRiveContext = RenderContextGLImpl::MakeContext( riveOptions );
 
@@ -380,34 +424,49 @@ void CanvasGl::restoreHostState( const ivec2 &size )
     gl::setMatricesWindow( size );
 }
 
-void CanvasGl::setFbo( const gl::FboRef &fbo )
+gl::Texture2dRef CanvasGl::getTexture() const
 {
-    if( mInFrame ) {
-        CI_LOG_W( "Cannot change FBO while in frame" );
-        return;
+    if( mRenderMode == RenderMode::Offscreen && mOffscreenFbo ) {
+        return mOffscreenFbo->getColorTexture();
     }
-    mFbo = fbo;
+    return nullptr;
+}
+
+ivec2 CanvasGl::getFboSize() const
+{
+    if( mRenderMode == RenderMode::Offscreen ) {
+        return mOffscreenSize;
+    }
+    return ivec2( 0, 0 );
+}
+
+void CanvasGl::begin()
+{
+    // Offscreen mode - use FBO dimensions
+    CI_ASSERT_MSG( mRenderMode == RenderMode::Offscreen, "begin() without size argument is only valid for offscreen canvases. Use begin(size) for window mode." );
+    CI_ASSERT_MSG( mOffscreenFbo, "Offscreen FBO not created" );
+    begin( mOffscreenSize );
 }
 
 void CanvasGl::begin( const ivec2 &size )
 {
     CI_ASSERT_MSG( ! mInFrame, "begin() called while already in frame - did you forget to call end()?" );
+    CI_ASSERT_MSG( size.x > 0 && size.y > 0, "begin() size must be positive" );
+
+    // For offscreen mode, resize FBO if needed
+    if( mRenderMode == RenderMode::Offscreen && size != mOffscreenSize ) {
+        gl::Fbo::Format format;
+        format.colorTexture( gl::Texture::Format()
+            .internalFormat( GL_RGBA16F )
+            .minFilter( GL_LINEAR )
+            .magFilter( GL_LINEAR ) );
+        mOffscreenFbo = gl::Fbo::create( size.x, size.y, format );
+        mOffscreenSize = size;
+        CI_LOG_I( "Resized offscreen FBO to: " << size.x << "x" << size.y );
+    }
 
     mFrameSize = size;
     mInFrame = true;
-
-    // Create or resize internal floating-point FBO if needed
-    if( mUseFloatingPointBuffer && ! mFbo ) {
-        if( ! mInternalFbo || mInternalFbo->getWidth() != size.x || mInternalFbo->getHeight() != size.y ) {
-            gl::Fbo::Format format;
-            format.colorTexture( gl::Texture::Format()
-                .internalFormat( GL_RGBA16F )
-                .minFilter( GL_LINEAR )
-                .magFilter( GL_LINEAR ) );
-            mInternalFbo = gl::Fbo::create( size.x, size.y, format );
-            CI_LOG_I( "Created internal RGBA16F FBO: " << size.x << "x" << size.y );
-        }
-    }
 
     if( mRiveContext ) {
         // Save host GL state before Rive takes over
@@ -416,7 +475,13 @@ void CanvasGl::begin( const ivec2 &size )
         RenderContext::FrameDescriptor frameDesc;
         frameDesc.renderTargetWidth = size.x;
         frameDesc.renderTargetHeight = size.y;
-        frameDesc.loadAction = gpu::LoadAction::preserveRenderTarget;  // Preserve host app's background
+        // Clear offscreen FBO, preserve window framebuffer (so app's gl::clear works)
+        if( mRenderMode == RenderMode::Offscreen ) {
+            frameDesc.loadAction = gpu::LoadAction::clear;
+            frameDesc.clearColor = 0x00000000;  // Transparent black
+        } else {
+            frameDesc.loadAction = gpu::LoadAction::preserveRenderTarget;
+        }
         frameDesc.clockwiseFillOverride = true; // Enable feathering for any fill rule
 
         // Invalidate GL state since Cinder may have modified it
@@ -437,20 +502,21 @@ void CanvasGl::end()
     mRiveRenderer.reset();
 
     if( mRiveContext ) {
-        // Create render target for the appropriate framebuffer
+        // Determine target FBO and sample count
         GLuint framebufferId = 0;
         int sampleCount = 1;
 
-        // Determine the target FBO
-        gl::FboRef targetFbo = mFbo;  // User-provided FBO
-        if( ! targetFbo && mInternalFbo ) {
-            targetFbo = mInternalFbo;  // Use internal floating-point FBO
-        }
-
-        if( targetFbo ) {
-            framebufferId = targetFbo->getId();
-            sampleCount = targetFbo->getFormat().getSamples();
-            if( sampleCount == 0 ) sampleCount = 1;
+        if( mRenderMode == RenderMode::Offscreen && mOffscreenFbo ) {
+            // Offscreen: render to our internal FBO
+            framebufferId = mOffscreenFbo->getId();
+            sampleCount = 1;  // Always single-sample for atomic mode
+        } else if( mRenderMode == RenderMode::Window ) {
+            // Window: render directly to default framebuffer
+            framebufferId = 0;
+            // Get the actual sample count from the window
+            GLint samples = 0;
+            glGetIntegerv( GL_SAMPLES, &samples );
+            sampleCount = std::max( 1, (int)samples );
         }
 
         auto renderTarget = make_rcp<FramebufferRenderTargetGL>(
@@ -463,16 +529,6 @@ void CanvasGl::end()
 
         // Restore Cinder's expected GL state
         restoreHostState( mFrameSize );
-
-        // If using internal FBO, blit to screen
-        if( mInternalFbo && ! mFbo ) {
-            gl::ScopedViewport vp( mFrameSize );
-            gl::ScopedMatrices matrices;
-            gl::setMatricesWindow( mFrameSize );
-            gl::ScopedBlendPremult blend;
-            gl::ScopedColor color( Color::white() );
-            gl::draw( mInternalFbo->getColorTexture(), Rectf( 0, 0, (float)mFrameSize.x, (float)mFrameSize.y ) );
-        }
     }
 
     mInFrame = false;

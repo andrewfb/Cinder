@@ -29,9 +29,7 @@ private:
 
 void VectorGraphicsBasicApp::setup()
 {
-    vg::CanvasOptions options;
-    options.useFloatingPointBuffer = false;
-    mCanvas = vg::createCanvasGl( options );
+    mCanvas = vg::CanvasGl::create();
 
     // Create a star path using Path2d
     Path2d star;

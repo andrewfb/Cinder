@@ -43,8 +43,9 @@ namespace rive {
 
 namespace cinder { namespace vg {
 
-// Forward declare CanvasGl for GlyphCache
+// Forward declare CanvasGl and CanvasGlRef for use in class definition
 class CanvasGl;
+using CanvasGlRef = std::shared_ptr<CanvasGl>;
 
 // ------------------------------------------------------------------------------------------------
 // CachedPathGl - GL implementation of CachedPath
@@ -124,14 +125,33 @@ private:
 // ------------------------------------------------------------------------------------------------
 
 //! OpenGL implementation of Canvas using Rive's PLS renderer.
-//! Supports rendering to screen (default framebuffer) or to an FBO.
+//!
+//! Two rendering modes:
+//! - Window mode: Renders directly to the window. Auto-detects MSAA and chooses
+//!   the appropriate rendering path (atomic or MSAA mode).
+//! - Offscreen mode: Renders to an internal FBO using atomic mode with analytical AA.
+//!   Retrieve the result via getTexture().
+//!
+//! Example (window rendering):
+//!     auto canvas = CanvasGl::create();
+//!     canvas->begin( getWindowSize() );
+//!     canvas->fillCircle( ... );
+//!     canvas->end();
+//!
+//! Example (offscreen rendering):
+//!     auto canvas = CanvasGl::create( 1920, 1080 );
+//!     canvas->begin();
+//!     canvas->fillCircle( ... );
+//!     canvas->end();
+//!     gl::draw( canvas->getTexture() );
+//!
 class CI_API CanvasGl : public Canvas {
 public:
-    //! Create a canvas for rendering to the screen (default framebuffer)
-    explicit CanvasGl( const CanvasOptions &options = CanvasOptions() );
+    //! Create a canvas for window rendering (auto-detects MSAA)
+    static CanvasGlRef create();
 
-    //! Create a canvas for rendering to an FBO
-    CanvasGl( const gl::FboRef &fbo, const CanvasOptions &options = CanvasOptions() );
+    //! Create a canvas for offscreen rendering with analytical AA
+    static CanvasGlRef create( int width, int height );
 
     ~CanvasGl() override;
 
@@ -140,19 +160,27 @@ public:
     CanvasGl& operator=( const CanvasGl& ) = delete;
 
     // === Frame Management ===
+    //! Begin rendering at the given size (window mode)
     void begin( const ivec2 &size ) override;
+
+    //! Begin rendering (offscreen mode uses FBO dimensions)
+    void begin();
+
     void end() override;
     bool inFrame() const override { return mInFrame; }
 
-    // === FBO Management ===
-    //! Set a new FBO target (or nullptr for screen rendering)
-    void setFbo( const gl::FboRef &fbo );
+    // === Rendering Mode ===
+    //! Get the rendering mode
+    RenderMode getRenderMode() const { return mRenderMode; }
 
-    //! Get the current FBO target (nullptr if rendering to screen)
-    gl::FboRef getFbo() const { return mFbo; }
+    //! Returns true if rendering offscreen (to internal FBO)
+    bool isOffscreen() const { return mRenderMode == RenderMode::Offscreen; }
 
-    //! Returns true if rendering to an FBO
-    bool isRenderingToFbo() const { return mFbo != nullptr; }
+    //! Get the texture (offscreen mode only). Returns nullptr in window mode.
+    gl::Texture2dRef getTexture() const;
+
+    //! Get the FBO dimensions (offscreen mode only). Returns (0,0) in window mode.
+    ivec2 getFboSize() const;
 
     // === Transform Stack ===
     void save() override;
@@ -231,7 +259,10 @@ public:
     void clearGlyphCache() { mGlyphCache.clear(); }
 
 private:
-    void initializeGl( const CanvasOptions &options );
+    // Private constructors - use create() factory methods
+    CanvasGl( RenderMode mode, int fboWidth = 0, int fboHeight = 0 );
+
+    void initializeGl( bool forceMsaaMode );
     void invalidateState();
     void saveHostState();
     void restoreHostState( const ivec2 &size );
@@ -258,12 +289,13 @@ private:
     // Rive renderer (created per-frame)
     std::unique_ptr<rive::RiveRenderer> mRiveRenderer;
 
-    // FBO target (nullptr = screen)
-    gl::FboRef mFbo;
+    // Rendering mode and configuration
+    RenderMode mRenderMode = RenderMode::Window;
+    bool mWindowHasMsaa = false;  // True if window uses MSAA (detected at create time)
 
-    // Internal floating-point FBO for high-quality rendering
-    gl::FboRef mInternalFbo;
-    bool mUseFloatingPointBuffer = false;
+    // Internal FBO for offscreen rendering
+    gl::FboRef mOffscreenFbo;
+    ivec2 mOffscreenSize;
 
     // Frame state
     bool mInFrame = false;
@@ -278,17 +310,5 @@ private:
     std::unordered_map<float, CachedPathRef> mCirclePathCache;  // radius -> path
     std::unordered_map<uint64_t, CachedPathRef> mRectPathCache;  // packed size -> path
 };
-
-using CanvasGlRef = std::shared_ptr<CanvasGl>;
-
-//! Create a CanvasGl for screen rendering
-inline CanvasGlRef createCanvasGl( const CanvasOptions &options = CanvasOptions() ) {
-    return std::make_shared<CanvasGl>( options );
-}
-
-//! Create a CanvasGl for FBO rendering
-inline CanvasGlRef createCanvasGl( const gl::FboRef &fbo, const CanvasOptions &options = CanvasOptions() ) {
-    return std::make_shared<CanvasGl>( fbo, options );
-}
 
 } } // namespace cinder::vg
