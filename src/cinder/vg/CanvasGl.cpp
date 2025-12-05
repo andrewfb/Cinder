@@ -7,7 +7,7 @@
 #include "cinder/gl/gl.h"
 #include "cinder/gl/scoped.h"
 #include "cinder/gl/Context.h"
-#include "cinder/Svg.h"
+#include "cinder/svg/Svg.h"
 
 // Rive includes
 #include "rive/renderer/rive_renderer.hpp"
