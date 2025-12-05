@@ -190,38 +190,24 @@ void CanvasGl::initializeGl( const CanvasOptions &options )
 
     // CRITICAL: Clean up Rive's initialization state
     // Rive's context creation modifies VAOs, VBOs, textures, shaders, etc.
-    // We must unbind everything and tell Cinder's Context its cache is stale.
+    // unbindGLInternalResources() uses raw GL calls, so we must invalidate
+    // Cinder's caches so it knows to re-query/re-bind state.
     if( mRiveContextGl ) {
         mRiveContextGl->unbindGLInternalResources();
     }
 
-    // Clear any GL errors from Rive's initialization
-    while( glGetError() != GL_NO_ERROR ) {}
-
-    // Unbind GL state that Rive may have touched during initialization
-    // and invalidate Cinder's cached knowledge of that state
+    // Invalidate Cinder's cached knowledge of GL state that Rive touched
     auto* ctx = gl::context();
     if( ctx ) {
-        // Invalidate buffer binding caches
+        // Buffer bindings - Rive uses VBOs and UBOs
         ctx->invalidateBufferBindingCache( GL_ARRAY_BUFFER );
         ctx->invalidateBufferBindingCache( GL_ELEMENT_ARRAY_BUFFER );
         ctx->invalidateBufferBindingCache( GL_UNIFORM_BUFFER );
 
-        // Unbind VAO and restore Cinder's default
-        glBindVertexArray( 0 );
+        // VAO - Rive creates its own VAOs
         ctx->restoreInvalidatedVao();
 
-        // Unbind textures AND samplers on all units that Rive might have touched
-        // and force Cinder to re-bind when it next needs them
-        for( uint8_t i = 0; i < 8; ++i ) {
-            glActiveTexture( GL_TEXTURE0 + i );
-            glBindTexture( GL_TEXTURE_2D, 0 );
-#if defined( CINDER_GL_HAS_SAMPLERS )
-            glBindSampler( i, 0 );  // Unbind any sampler Rive may have bound
-#endif
-        }
-        glActiveTexture( GL_TEXTURE0 );
-        // Push/pop with forceRestore to reset Cinder's texture tracking
+        // Textures/samplers - push/pop to force Cinder to re-query
         for( uint8_t i = 0; i < 8; ++i ) {
             ctx->pushTextureBinding( GL_TEXTURE_2D, i );
             ctx->popTextureBinding( GL_TEXTURE_2D, i, true );
@@ -231,13 +217,11 @@ void CanvasGl::initializeGl( const CanvasOptions &options )
 #endif
         }
 
-        // Unbind shader program and reset Cinder's cache via push/pop
-        glUseProgram( 0 );
+        // Shader program
         ctx->pushGlslProg();
         ctx->popGlslProg( true );
 
-        // Unbind FBO - ensure we're rendering to default framebuffer
-        glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+        // Framebuffer
         ctx->pushFramebuffer();
         ctx->popFramebuffer( true );
     }
@@ -269,6 +253,9 @@ void CanvasGl::saveHostState()
     // Framebuffer (no argument = push current binding for GL_FRAMEBUFFER target)
     ctx->pushFramebuffer();
 
+    // Save active texture BEFORE the loop (since pushTextureBinding modifies active texture)
+    ctx->pushActiveTexture();
+
     // Texture bindings (Rive uses multiple texture units)
     for( uint8_t i = 0; i < 8; ++i ) {
         ctx->pushTextureBinding( GL_TEXTURE_2D, i );
@@ -276,7 +263,6 @@ void CanvasGl::saveHostState()
         ctx->pushSamplerBinding( i, ctx->getSamplerBinding( i ) );
 #endif
     }
-    ctx->pushActiveTexture();
 
     // Bool states Rive modifies
     ctx->pushBoolState( GL_BLEND );
@@ -322,9 +308,6 @@ void CanvasGl::restoreHostState( const ivec2 &size )
         mRiveContextGl->unbindGLInternalResources();
     }
 
-    // Clear any pending GL errors
-    while( glGetError() != GL_NO_ERROR ) {}
-
     auto* ctx = gl::context();
     if( ! ctx ) return;
 
@@ -367,14 +350,15 @@ void CanvasGl::restoreHostState( const ivec2 &size )
     ctx->popBoolState( GL_DEPTH_TEST, true );
     ctx->popBoolState( GL_BLEND, true );
 
-    // Texture bindings
-    ctx->popActiveTexture( true );
+    // Texture bindings (pop in reverse order - LIFO)
     for( int i = 7; i >= 0; --i ) {
 #if defined( CINDER_GL_HAS_SAMPLERS )
         ctx->popSamplerBinding( i, true );
 #endif
         ctx->popTextureBinding( GL_TEXTURE_2D, i, true );
     }
+    // Pop active texture AFTER texture bindings (matches push order: active texture first, then bindings)
+    ctx->popActiveTexture( true );
 
     // Framebuffer
     ctx->popFramebuffer( GL_FRAMEBUFFER );
