@@ -102,6 +102,17 @@ const mat4& CanvasUi::getInverseModelMatrix() const
 	return mInverseModelMatrix;
 }
 
+mat3 CanvasUi::getTransform2d() const
+{
+	vec2 viewportOffset = mViewport.getUpperLeft();
+	vec2 translate = viewportOffset + mPosition;
+	return mat3(
+		mZoom, 0,         0,
+		0,     mZoom,     0,
+		translate.x, translate.y, 1
+	);
+}
+
 void CanvasUi::updateMatrices() const
 {
 	// Transform: Window = Translate(viewport_offset + position) * Scale(zoom) * Canvas
