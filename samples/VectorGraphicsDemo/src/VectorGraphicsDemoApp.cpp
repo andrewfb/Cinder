@@ -1207,6 +1207,226 @@ private:
 };
 
 // ============================================================================
+// Demo 11: Shadow (Dynamic Lighting Simulation)
+// ============================================================================
+class ShadowDemo : public Demo {
+public:
+    std::string getName() const override { return "Shadow"; }
+    std::string getDescription() const override { return "Dynamic lighting simulation with feathered shadows"; }
+    Rectf getContentBounds() const override { return Rectf( 0, 0, 600, 500 ); }
+
+    void setup( vg::CanvasGlRef canvas ) override {
+        mCanvas = canvas;
+        mCenter = vec2( 300, 250 );
+        mLightPos = vec2( 450, 100 );  // Start top-right
+    }
+
+    void draw( vg::CanvasGlRef canvas ) override {
+        vec2 center = mCenter;
+        float sphereRadius = mSphereRadius;
+        vec2 center2 = center + vec2( -120, -60 );
+        float radius2 = sphereRadius * 0.5f;
+
+        // Safe normalize helper to avoid NaN when light is at sphere center
+        auto safeNorm = [](const vec2 &v) {
+            float len = glm::length(v);
+            return len > 1e-4f ? v / len : vec2(0, -1);
+        };
+
+        // Per-sphere light directions - each sphere reacts independently!
+        vec2 lightDir1 = safeNorm( mLightPos - center );
+        vec2 lightDir2 = safeNorm( mLightPos - center2 );
+
+        float lightDist1 = glm::distance( mLightPos, center );
+        float lightDist2 = glm::distance( mLightPos, center2 );
+        float normalizedDist1 = glm::clamp( lightDist1 / 400.0f, 0.0f, 1.0f );
+        float normalizedDist2 = glm::clamp( lightDist2 / 400.0f, 0.0f, 1.0f );
+
+        // Shadow parameters
+        float shadowScale1 = 1.0f + normalizedDist1 * mShadowSpread;
+        float shadowScale2 = 1.0f + normalizedDist2 * mShadowSpread;
+        float shadowAlpha1 = mShadowOpacity * (1.0f - normalizedDist1 * 0.3f);
+        float shadowAlpha2 = mShadowOpacity * (1.0f - normalizedDist2 * 0.3f) * 0.8f;
+
+        // Draw ground plane hint
+        if( mShowGround ) {
+            vg::Paint groundPaint;
+            groundPaint.setColor( ColorAf( 0.15f, 0.15f, 0.18f, 1.0f ) );
+            canvas->fillRect( Rectf( 50, center.y + sphereRadius + 50, 550, center.y + sphereRadius + 55 ), groundPaint );
+        }
+
+        // === PASS 1: Draw ALL shadows first ===
+
+        // Main sphere shadow (uses lightDir1)
+        {
+            vec2 shadowOffset = -lightDir1 * mShadowOffset * (1.0f + normalizedDist1 * 0.5f);
+            float shadowRadius = sphereRadius * shadowScale1;
+            vg::Paint shadowPaint;
+            float shadowFeather = mShadowFeather * (1.0f + normalizedDist1 * 0.5f);
+            shadowPaint.setColor( ColorAf( 0, 0, 0, shadowAlpha1 ) )
+                       .setFeather( shadowFeather );
+            vec2 shadowRadii( shadowRadius * 1.2f, shadowRadius * 0.4f );
+            vec2 shadowPos = center + shadowOffset + vec2( 0, sphereRadius * 0.8f );
+            canvas->fillEllipse( shadowPos, shadowRadii, shadowPaint );
+        }
+
+        // Second sphere shadow (uses lightDir2)
+        if( mShowSecondSphere ) {
+            vec2 shadowOffset2 = -lightDir2 * mShadowOffset * 0.7f * (1.0f + normalizedDist2 * 0.5f);
+            float shadowRadius2 = radius2 * shadowScale2;
+            vg::Paint shadowPaint2;
+            float shadowFeather2 = mShadowFeather * 0.7f * (1.0f + normalizedDist2 * 0.5f);
+            shadowPaint2.setColor( ColorAf( 0, 0, 0, shadowAlpha2 ) )
+                       .setFeather( shadowFeather2 );
+            vec2 shadowRadii2( shadowRadius2 * 1.2f, shadowRadius2 * 0.4f );
+            vec2 shadowPos2 = center2 + shadowOffset2 + vec2( 0, radius2 * 0.8f );
+            canvas->fillEllipse( shadowPos2, shadowRadii2, shadowPaint2 );
+        }
+
+        // === PASS 2: Draw ALL spheres with layered shading ===
+        // Layer order: base lambert -> AO -> subsurface -> rim -> bounce -> wide spec -> tight spec
+
+        // Helper to draw a sphere with full PBR-like layering
+        auto drawSphere = [&]( vec2 sphereCenter, float radius, vec2 lightDir, float normDist, const ColorAf& baseColor ) {
+            // 1. Base Lambert gradient
+            vec2 highlightCenter = sphereCenter + lightDir * radius * 0.4f;
+            ColorAf highlightColor = baseColor;
+            highlightColor.r = glm::min( 1.0f, highlightColor.r * 1.5f );
+            highlightColor.g = glm::min( 1.0f, highlightColor.g * 1.5f );
+            highlightColor.b = glm::min( 1.0f, highlightColor.b * 1.5f );
+            ColorAf shadowColor = baseColor;
+            shadowColor.r *= 0.25f;
+            shadowColor.g *= 0.25f;
+            shadowColor.b *= 0.25f;
+            vg::Paint basePaint;
+            basePaint.setRadialGradient( highlightCenter, radius * 1.8f, highlightColor, shadowColor );
+            canvas->fillCircle( sphereCenter, radius, basePaint );
+
+            // 2. Ambient occlusion at base
+            if( mShowRim ) {
+                vec2 aoCenter = sphereCenter + vec2( 0, radius * 0.7f );
+                vg::Paint ao;
+                ao.setRadialGradient( aoCenter, radius * 0.9f,
+                                      ColorAf( 0, 0, 0, 0.3f ), ColorAf( 0, 0, 0, 0.0f ) )
+                  .setFeather( radius * 0.3f );
+                canvas->fillEllipse( aoCenter, vec2( radius * 0.9f, radius * 0.5f ), ao );
+            }
+
+            // 3. Fresnel rim lighting (glow on edge opposite light)
+            if( mShowRim ) {
+                vec2 rimCenter = sphereCenter - lightDir * radius * 0.15f;
+                vg::Paint rim;
+                rim.setRadialGradient( rimCenter, radius * 1.05f,
+                                       ColorAf( 1, 1, 1, 0.0f ), ColorAf( 1, 1, 1, 0.2f ) )
+                   .setFeather( radius * 0.2f );
+                canvas->fillCircle( sphereCenter, radius * 1.0f, rim );
+            }
+
+            // 5. Ground bounce (faint up-light from below)
+            if( mShowRim ) {
+                vec2 bounceCenter = sphereCenter + vec2( 0, radius * 0.5f );
+                vg::Paint bounce;
+                bounce.setRadialGradient( bounceCenter, radius * 0.9f,
+                                          ColorAf( 0.5f, 0.45f, 0.4f, 0.12f ), ColorAf( 0.5f, 0.45f, 0.4f, 0.0f ) );
+                canvas->fillCircle( sphereCenter, radius * 0.95f, bounce );
+            }
+
+            // 6. Wide specular lobe (soft highlight spread)
+            if( mShowSpecular ) {
+                vec2 specularPos = sphereCenter + lightDir * radius * 0.5f;
+                vg::Paint specWide;
+                specWide.setRadialGradient( specularPos, radius * 0.35f,
+                                            ColorAf( 1, 1, 1, 0.3f ), ColorAf( 1, 1, 1, 0.0f ) );
+                canvas->fillCircle( specularPos, radius * 0.35f, specWide );
+            }
+
+            // 7. Tight specular hotspot
+            if( mShowSpecular ) {
+                vec2 specularPos = sphereCenter + lightDir * radius * 0.55f;
+                float specRadius = radius * 0.12f;
+                vg::Paint specTight;
+                specTight.setRadialGradient( specularPos, specRadius,
+                                             ColorAf( 1, 1, 1, 0.95f ), ColorAf( 1, 1, 1, 0.0f ) );
+                canvas->fillCircle( specularPos, specRadius, specTight );
+            }
+        };
+
+        // Draw main sphere
+        drawSphere( center, sphereRadius, lightDir1, normalizedDist1, mSphereColor );
+
+        // Draw second sphere
+        if( mShowSecondSphere ) {
+            ColorAf color2( 0.3f, 0.7f, 0.9f, 1.0f );
+            drawSphere( center2, radius2, lightDir2, normalizedDist2, color2 );
+        }
+
+        // Draw light source indicator
+        if( mShowLightIndicator ) {
+            vg::Paint lightPaint;
+            lightPaint.setRadialGradient( mLightPos, 25,
+                                          ColorAf( 1, 1, 0.8f, 1.0f ),
+                                          ColorAf( 1, 0.8f, 0.2f, 0.0f ) );
+            canvas->fillCircle( mLightPos, 20, lightPaint );
+
+            // Draw light rays
+            vg::Paint rayPaint;
+            rayPaint.setColor( ColorAf( 1, 1, 0.5f, 0.3f ) ).setStrokeWidth( 2 );
+            for( int i = 0; i < 8; i++ ) {
+                float angle = i * M_PI / 4.0f;
+                vec2 rayStart = mLightPos + vec2( cos(angle), sin(angle) ) * 25.0f;
+                vec2 rayEnd = mLightPos + vec2( cos(angle), sin(angle) ) * 35.0f;
+                canvas->drawLine( rayStart, rayEnd, rayPaint );
+            }
+        }
+    }
+
+    bool onMouseMove( ci::app::MouseEvent event ) override {
+        if( ! mCanvasUi ) return false;
+        mLightPos = mCanvasUi->toContent( vec2( event.getPos() ) );
+        return true;
+    }
+
+    bool onMouseDrag( ci::app::MouseEvent event ) override {
+        if( ! mCanvasUi ) return false;
+        mLightPos = mCanvasUi->toContent( vec2( event.getPos() ) );
+        return true;
+    }
+
+    void drawUI() override {
+        ImGui::Text( "Move mouse to control light position" );
+        ImGui::Separator();
+        ImGui::SliderFloat( "Sphere Radius", &mSphereRadius, 30, 120 );
+        ImGui::SliderFloat( "Shadow Offset", &mShadowOffset, 10, 100 );
+        ImGui::SliderFloat( "Shadow Feather", &mShadowFeather, 5, 80 );
+        ImGui::SliderFloat( "Shadow Opacity", &mShadowOpacity, 0.1f, 1.0f );
+        ImGui::SliderFloat( "Shadow Spread", &mShadowSpread, 0.0f, 1.0f );
+        ImGui::Separator();
+        ImGui::ColorEdit3( "Sphere Color", &mSphereColor.r );
+        ImGui::Separator();
+        ImGui::Checkbox( "Show Specular", &mShowSpecular );
+        ImGui::Checkbox( "Show Rim/AO", &mShowRim );
+        ImGui::Checkbox( "Show Light Indicator", &mShowLightIndicator );
+        ImGui::Checkbox( "Show Ground", &mShowGround );
+        ImGui::Checkbox( "Show Second Sphere", &mShowSecondSphere );
+    }
+
+private:
+    vec2 mCenter;
+    vec2 mLightPos;
+    float mSphereRadius = 80;
+    float mShadowOffset = 40;
+    float mShadowFeather = 30;
+    float mShadowOpacity = 0.6f;
+    float mShadowSpread = 0.3f;
+    ColorAf mSphereColor{ 0.9f, 0.4f, 0.3f, 1.0f };
+    bool mShowSpecular = true;
+    bool mShowRim = true;
+    bool mShowLightIndicator = true;
+    bool mShowGround = true;
+    bool mShowSecondSphere = true;
+};
+
+// ============================================================================
 // Main App
 // ============================================================================
 class VectorGraphicsDemoApp : public App {
@@ -1261,7 +1481,8 @@ void VectorGraphicsDemoApp::setup()
         std::make_shared<BlendModesDemo>(),
         std::make_shared<ClippingDemo>(),
         std::make_shared<ImagesDemo>(),
-        std::make_shared<ImageMeshDemo>()
+        std::make_shared<ImageMeshDemo>(),
+        std::make_shared<ShadowDemo>()
     };
     for( auto& d : mDemos ) d->setup( mCanvas );
     switchDemo( 0 );

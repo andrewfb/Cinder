@@ -220,7 +220,7 @@ void CanvasGl::initializeGl( bool forceMsaaMode )
     mRiveContext = RenderContextGLImpl::MakeContext( riveOptions );
 
     if( ! mRiveContext ) {
-        throw VgExc( "Failed to create Rive GL RenderContext" );
+        throw vg::Exc( "Failed to create Rive GL RenderContext" );
     }
 
     // Store the GL-specific pointer for invalidateGLState()

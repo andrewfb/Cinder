@@ -42,9 +42,9 @@ namespace cinder { namespace svg { class Doc; } }
 namespace cinder { namespace vg {
 
 //! Exception type for vector graphics errors
-class CI_API VgExc : public Exception {
+class CI_API Exc : public Exception {
 public:
-    VgExc( const std::string &description ) : Exception( description ) {}
+    Exc( const std::string &description ) : Exception( description ) {}
 };
 
 //! Rendering mode for CanvasGl
@@ -85,10 +85,6 @@ protected:
     Rectf mBounds;
 };
 
-// ------------------------------------------------------------------------------------------------
-// Image - GPU image for drawing
-// ------------------------------------------------------------------------------------------------
-
 //! A GPU image that can be drawn to the canvas.
 //! Created via Canvas::createImage(). Wraps a texture for use with Rive renderer.
 class CI_API Image {
@@ -96,9 +92,11 @@ public:
     virtual ~Image() = default;
 
     //! Get the image dimensions
-    ivec2 getSize() const { return mSize; }
-    int getWidth() const { return mSize.x; }
-    int getHeight() const { return mSize.y; }
+    ivec2	getSize() const { return mSize; }
+    int		getWidth() const { return mSize.x; }
+    int		getHeight() const { return mSize.y; }
+	float	getAspectRatio() const { return getWidth() / (float)getHeight(); }
+	Area	getBounds() const { return Area( 0, 0, getWidth(), getHeight() ); }
 
 protected:
     friend class Canvas;
@@ -106,10 +104,6 @@ protected:
 
     ivec2 mSize;
 };
-
-// ------------------------------------------------------------------------------------------------
-// Canvas - Main drawing interface
-// ------------------------------------------------------------------------------------------------
 
 //! Canvas provides the main drawing interface for vector graphics.
 //! This is an abstract base class - use CanvasGl for OpenGL rendering.
@@ -131,10 +125,10 @@ public:
     virtual bool inFrame() const = 0;
 
     // === Transform Stack ===
-    //! Push current transform state onto the stack
+    //! Push current transform and clipping state onto the stack
     virtual void save() = 0;
 
-    //! Pop transform state from the stack
+    //! Pop transform and clipping state from the stack
     virtual void restore() = 0;
 
     //! Translate the current transform
