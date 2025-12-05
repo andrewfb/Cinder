@@ -7,6 +7,7 @@
 #include "cinder/gl/gl.h"
 #include "cinder/gl/scoped.h"
 #include "cinder/gl/Context.h"
+#include "cinder/Svg.h"
 
 // Rive includes
 #include "rive/renderer/rive_renderer.hpp"
@@ -295,12 +296,9 @@ void CanvasGl::setFbo( const gl::FboRef &fbo )
     mFbo = fbo;
 }
 
-void CanvasGl::beginFrame( const ivec2 &size )
+void CanvasGl::begin( const ivec2 &size )
 {
-    if( mInFrame ) {
-        CI_LOG_W( "beginFrame called while already in frame" );
-        return;
-    }
+    CI_ASSERT_MSG( ! mInFrame, "begin() called while already in frame - did you forget to call end()?" );
 
     mFrameSize = size;
     mInFrame = true;
@@ -322,8 +320,7 @@ void CanvasGl::beginFrame( const ivec2 &size )
         RenderContext::FrameDescriptor frameDesc;
         frameDesc.renderTargetWidth = size.x;
         frameDesc.renderTargetHeight = size.y;
-        frameDesc.loadAction = gpu::LoadAction::clear;  // Clear for internal FBO
-        frameDesc.clearColor = 0x00000000;
+        frameDesc.loadAction = gpu::LoadAction::preserveRenderTarget;  // Preserve host app's background
         frameDesc.clockwiseFillOverride = true; // Enable feathering for any fill rule
 
         // Invalidate GL state since Cinder may have modified it
@@ -336,12 +333,9 @@ void CanvasGl::beginFrame( const ivec2 &size )
     }
 }
 
-void CanvasGl::endFrame()
+void CanvasGl::end()
 {
-    if( ! mInFrame ) {
-        CI_LOG_W( "endFrame called without beginFrame" );
-        return;
-    }
+    CI_ASSERT_MSG( mInFrame, "end() called without begin()" );
 
     // Destroy the renderer before flush
     mRiveRenderer.reset();
@@ -391,6 +385,10 @@ void CanvasGl::endFrame()
 void CanvasGl::save()
 {
     mTransformStack.push_back( mTransform );
+    // Also save Rive's clip state
+    if( mInFrame && mRiveRenderer ) {
+        mRiveRenderer->save();
+    }
 }
 
 void CanvasGl::restore()
@@ -398,6 +396,10 @@ void CanvasGl::restore()
     if( ! mTransformStack.empty() ) {
         mTransform = mTransformStack.back();
         mTransformStack.pop_back();
+    }
+    // Also restore Rive's clip state
+    if( mInFrame && mRiveRenderer ) {
+        mRiveRenderer->restore();
     }
 }
 
@@ -448,10 +450,7 @@ void CanvasGl::resetTransform()
 
 void CanvasGl::fillRect( const Rectf &rect, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) {
-        CI_LOG_W( "fillRect called outside of frame" );
-        return;
-    }
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end() - call begin() first" );
 
     RawPath rawPath;
     rawPath.addRect( AABB{ rect.x1, rect.y1, rect.x2, rect.y2 } );
@@ -461,7 +460,7 @@ void CanvasGl::fillRect( const Rectf &rect, const Paint &paint )
 
 void CanvasGl::strokeRect( const Rectf &rect, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath;
     rawPath.addRect( AABB{ rect.x1, rect.y1, rect.x2, rect.y2 } );
@@ -471,7 +470,7 @@ void CanvasGl::strokeRect( const Rectf &rect, const Paint &paint )
 
 void CanvasGl::fillRoundedRect( const Rectf &rect, float radius, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     // Build rounded rect path manually
     RawPath rawPath;
@@ -494,7 +493,7 @@ void CanvasGl::fillRoundedRect( const Rectf &rect, float radius, const Paint &pa
 
 void CanvasGl::strokeRoundedRect( const Rectf &rect, float radius, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath;
     float x1 = rect.x1, y1 = rect.y1, x2 = rect.x2, y2 = rect.y2;
@@ -516,7 +515,7 @@ void CanvasGl::strokeRoundedRect( const Rectf &rect, float radius, const Paint &
 
 void CanvasGl::fillCircle( const vec2 &center, float radius, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath;
     rawPath.addOval( AABB{ center.x - radius, center.y - radius,
@@ -527,7 +526,7 @@ void CanvasGl::fillCircle( const vec2 &center, float radius, const Paint &paint 
 
 void CanvasGl::strokeCircle( const vec2 &center, float radius, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath;
     rawPath.addOval( AABB{ center.x - radius, center.y - radius,
@@ -538,7 +537,7 @@ void CanvasGl::strokeCircle( const vec2 &center, float radius, const Paint &pain
 
 void CanvasGl::fillEllipse( const vec2 &center, const vec2 &radii, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath;
     rawPath.addOval( AABB{ center.x - radii.x, center.y - radii.y,
@@ -549,7 +548,7 @@ void CanvasGl::fillEllipse( const vec2 &center, const vec2 &radii, const Paint &
 
 void CanvasGl::strokeEllipse( const vec2 &center, const vec2 &radii, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath;
     rawPath.addOval( AABB{ center.x - radii.x, center.y - radii.y,
@@ -560,7 +559,7 @@ void CanvasGl::strokeEllipse( const vec2 &center, const vec2 &radii, const Paint
 
 void CanvasGl::drawLine( const vec2 &p0, const vec2 &p1, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath;
     rawPath.moveTo( p0.x, p0.y );
@@ -575,7 +574,7 @@ void CanvasGl::drawLine( const vec2 &p0, const vec2 &p1, const Paint &paint )
 
 void CanvasGl::fillPath( const Path2d &path, const Paint &paint, FillRule rule )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath = toRivePath( path );
     drawPathInternal( std::move( rawPath ), paint, true, false, rule );
@@ -583,7 +582,7 @@ void CanvasGl::fillPath( const Path2d &path, const Paint &paint, FillRule rule )
 
 void CanvasGl::strokePath( const Path2d &path, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath = toRivePath( path );
     drawPathInternal( std::move( rawPath ), paint, false, true );
@@ -591,7 +590,7 @@ void CanvasGl::strokePath( const Path2d &path, const Paint &paint )
 
 void CanvasGl::fillShape( const Shape2d &shape, const Paint &paint, FillRule rule )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath = toRivePath( shape );
     drawPathInternal( std::move( rawPath ), paint, true, false, rule );
@@ -599,7 +598,7 @@ void CanvasGl::fillShape( const Shape2d &shape, const Paint &paint, FillRule rul
 
 void CanvasGl::strokeShape( const Shape2d &shape, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath = toRivePath( shape );
     drawPathInternal( std::move( rawPath ), paint, false, true );
@@ -607,7 +606,7 @@ void CanvasGl::strokeShape( const Shape2d &shape, const Paint &paint )
 
 void CanvasGl::strokePolyLine( const PolyLine2f &polyline, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath = toRivePath( polyline );
     drawPathInternal( std::move( rawPath ), paint, false, true );
@@ -615,7 +614,7 @@ void CanvasGl::strokePolyLine( const PolyLine2f &polyline, const Paint &paint )
 
 void CanvasGl::fillPolyLine( const PolyLine2f &polyline, const Paint &paint, FillRule rule )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     RawPath rawPath = toRivePath( polyline );
     rawPath.close();
@@ -991,7 +990,7 @@ CachedPathRef CanvasGl::getOrCreateRectPath( const vec2 &size )
 
 void CanvasGl::drawCircles( std::span<const vec2> positions, float radius, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     auto circlePath = getOrCreateCirclePath( radius );
     if( ! circlePath ) return;
@@ -1006,7 +1005,7 @@ void CanvasGl::drawCircles( std::span<const vec2> positions, float radius, const
 
 void CanvasGl::drawCircles( std::span<const mat3> transforms, float radius, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     auto circlePath = getOrCreateCirclePath( radius );
     if( ! circlePath ) return;
@@ -1021,7 +1020,7 @@ void CanvasGl::drawCircles( std::span<const mat3> transforms, float radius, cons
 
 void CanvasGl::drawRects( std::span<const vec2> positions, const vec2 &size, const Paint &paint )
 {
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
 
     auto rectPath = getOrCreateRectPath( size );
     if( ! rectPath ) return;
@@ -1206,6 +1205,302 @@ RawPath CanvasGl::toRivePath( const PolyLine2f &polyline )
     }
 
     return rawPath;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Clipping API
+// ------------------------------------------------------------------------------------------------
+
+void CanvasGl::clipRect( const Rectf &rect )
+{
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Clipping outside of begin()/end()" );
+
+    // Create a rect path and clip with it
+    RawPath rawPath;
+    rawPath.moveTo( rect.x1, rect.y1 );
+    rawPath.lineTo( rect.x2, rect.y1 );
+    rawPath.lineTo( rect.x2, rect.y2 );
+    rawPath.lineTo( rect.x1, rect.y2 );
+    rawPath.close();
+
+    auto path = mRiveContext->makeRenderPath( rawPath, rive::FillRule::nonZero );
+
+    // Apply transform, clip, then restore transform (but keep clip)
+    // Rive clips accumulate within a save/restore block
+    mRiveRenderer->transform( toRiveMat( mTransform ) );
+    mRiveRenderer->clipPath( path.get() );
+    mRiveRenderer->transform( toRiveMat( glm::inverse( mTransform ) ) );
+}
+
+void CanvasGl::clipPath( const Path2d &path, FillRule rule )
+{
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Clipping outside of begin()/end()" );
+
+    RawPath rawPath = toRivePath( path );
+    auto rivePath = mRiveContext->makeRenderPath( rawPath, toRiveFillRule( rule ) );
+
+    // Apply transform, clip, then restore transform (but keep clip)
+    mRiveRenderer->transform( toRiveMat( mTransform ) );
+    mRiveRenderer->clipPath( rivePath.get() );
+    mRiveRenderer->transform( toRiveMat( glm::inverse( mTransform ) ) );
+}
+
+void CanvasGl::clipShape( const Shape2d &shape, FillRule rule )
+{
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Clipping outside of begin()/end()" );
+
+    RawPath rawPath = toRivePath( shape );
+    auto rivePath = mRiveContext->makeRenderPath( rawPath, toRiveFillRule( rule ) );
+
+    // Apply transform, clip, then restore transform (but keep clip)
+    mRiveRenderer->transform( toRiveMat( mTransform ) );
+    mRiveRenderer->clipPath( rivePath.get() );
+    mRiveRenderer->transform( toRiveMat( glm::inverse( mTransform ) ) );
+}
+
+void CanvasGl::clipPath( const CachedPathRef &path, FillRule rule )
+{
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Clipping outside of begin()/end()" );
+    if( ! path ) return;
+
+    auto glPath = std::dynamic_pointer_cast<CachedPathGl>( path );
+    if( ! glPath || ! glPath->mImpl || ! glPath->mImpl->rivePath ) return;
+
+    // Apply transform, clip, then restore transform (but keep clip)
+    mRiveRenderer->transform( toRiveMat( mTransform ) );
+    mRiveRenderer->clipPath( glPath->mImpl->rivePath.get() );
+    mRiveRenderer->transform( toRiveMat( glm::inverse( mTransform ) ) );
+}
+
+// ------------------------------------------------------------------------------------------------
+// SVG Rendering
+// ------------------------------------------------------------------------------------------------
+
+// Internal SVG renderer that uses vg::Canvas
+class SvgRendererVg : public svg::Renderer {
+public:
+    SvgRendererVg( CanvasGl* canvas )
+        : mCanvas( canvas )
+    {
+        // Initialize stacks with defaults
+        mFillStack.push_back( svg::Paint( Color::black() ) );
+        mStrokeStack.push_back( svg::Paint() );
+        mFillOpacityStack.push_back( 1.0f );
+        mStrokeOpacityStack.push_back( 1.0f );
+        mStrokeWidthStack.push_back( 1.0f );
+        mFillRuleStack.push_back( svg::FILL_RULE_NONZERO );
+        mLineCapStack.push_back( svg::LINE_CAP_BUTT );
+        mLineJoinStack.push_back( svg::LINE_JOIN_MITER );
+    }
+
+    void pushGroup( const svg::Group & /*group*/, float /*opacity*/ ) override {}
+    void popGroup() override {}
+
+    void drawPath( const svg::Path &path ) override {
+        drawShapeInternal( path.getShape2d() );
+    }
+
+    void drawPolygon( const svg::Polygon &polygon ) override {
+        // Convert PolyLine to Path2d for Shape2d
+        const PolyLine2f& polyline = polygon.getPolyLine();
+        Path2d path;
+        if( ! polyline.getPoints().empty() ) {
+            path.moveTo( polyline.getPoints()[0] );
+            for( size_t i = 1; i < polyline.getPoints().size(); ++i ) {
+                path.lineTo( polyline.getPoints()[i] );
+            }
+            path.close();
+        }
+        Shape2d shape;
+        shape.appendContour( path );
+        drawShapeInternal( shape );
+    }
+
+    void drawPolyline( const svg::Polyline &polyline ) override {
+        // Polyline is stroke-only (not closed)
+        if( mStrokeStack.back().isNone() ) return;
+
+        const PolyLine2f& poly = polyline.getPolyLine();
+        Paint strokePaint = createStrokePaint();
+        mCanvas->strokePolyLine( poly, strokePaint );
+    }
+
+    void drawLine( const svg::Line &line ) override {
+        if( mStrokeStack.back().isNone() ) return;
+
+        Paint strokePaint = createStrokePaint();
+        mCanvas->drawLine( line.getPoint1(), line.getPoint2(), strokePaint );
+    }
+
+    void drawRect( const svg::Rect &rect ) override {
+        if( ! mFillStack.back().isNone() ) {
+            Paint fillPaint = createFillPaint();
+            mCanvas->fillRect( rect.getRect(), fillPaint );
+        }
+        if( ! mStrokeStack.back().isNone() ) {
+            Paint strokePaint = createStrokePaint();
+            mCanvas->strokeRect( rect.getRect(), strokePaint );
+        }
+    }
+
+    void drawCircle( const svg::Circle &circle ) override {
+        if( ! mFillStack.back().isNone() ) {
+            Paint fillPaint = createFillPaint();
+            mCanvas->fillCircle( circle.getCenter(), circle.getRadius(), fillPaint );
+        }
+        if( ! mStrokeStack.back().isNone() ) {
+            Paint strokePaint = createStrokePaint();
+            mCanvas->strokeCircle( circle.getCenter(), circle.getRadius(), strokePaint );
+        }
+    }
+
+    void drawEllipse( const svg::Ellipse &ellipse ) override {
+        if( ! mFillStack.back().isNone() ) {
+            Paint fillPaint = createFillPaint();
+            mCanvas->fillEllipse( ellipse.getCenter(), vec2( ellipse.getRadiusX(), ellipse.getRadiusY() ), fillPaint );
+        }
+        if( ! mStrokeStack.back().isNone() ) {
+            Paint strokePaint = createStrokePaint();
+            mCanvas->strokeEllipse( ellipse.getCenter(), vec2( ellipse.getRadiusX(), ellipse.getRadiusY() ), strokePaint );
+        }
+    }
+
+    void drawImage( const svg::Image & /*image*/ ) override {
+        // TODO: implement image drawing
+    }
+
+    void drawTextSpan( const svg::TextSpan & /*span*/ ) override {
+        // TODO: implement text rendering
+    }
+
+    void pushMatrix( const mat3 &m ) override {
+        mCanvas->save();
+        mCanvas->transform( m );
+    }
+
+    void popMatrix() override {
+        mCanvas->restore();
+    }
+
+    void pushFill( const svg::Paint &paint ) override { mFillStack.push_back( paint ); }
+    void popFill() override { mFillStack.pop_back(); }
+    void pushStroke( const svg::Paint &paint ) override { mStrokeStack.push_back( paint ); }
+    void popStroke() override { mStrokeStack.pop_back(); }
+    void pushFillOpacity( float opacity ) override { mFillOpacityStack.push_back( opacity ); }
+    void popFillOpacity() override { mFillOpacityStack.pop_back(); }
+    void pushStrokeOpacity( float opacity ) override { mStrokeOpacityStack.push_back( opacity ); }
+    void popStrokeOpacity() override { mStrokeOpacityStack.pop_back(); }
+    void pushStrokeWidth( float width ) override { mStrokeWidthStack.push_back( width ); }
+    void popStrokeWidth() override { mStrokeWidthStack.pop_back(); }
+    void pushFillRule( svg::FillRule rule ) override { mFillRuleStack.push_back( rule ); }
+    void popFillRule() override { mFillRuleStack.pop_back(); }
+    void pushLineCap( svg::LineCap cap ) override { mLineCapStack.push_back( cap ); }
+    void popLineCap() override { mLineCapStack.pop_back(); }
+    void pushLineJoin( svg::LineJoin join ) override { mLineJoinStack.push_back( join ); }
+    void popLineJoin() override { mLineJoinStack.pop_back(); }
+
+private:
+    void drawShapeInternal( const Shape2d &shape ) {
+        FillRule rule = ( mFillRuleStack.back() == svg::FILL_RULE_EVENODD ) ? FillRule::EvenOdd : FillRule::NonZero;
+
+        if( ! mFillStack.back().isNone() ) {
+            Paint fillPaint = createFillPaint();
+            mCanvas->fillShape( shape, fillPaint, rule );
+        }
+        if( ! mStrokeStack.back().isNone() ) {
+            Paint strokePaint = createStrokePaint();
+            mCanvas->strokeShape( shape, strokePaint );
+        }
+    }
+
+    Paint createFillPaint() {
+        Paint paint;
+        const svg::Paint& svgPaint = mFillStack.back();
+
+        if( svgPaint.isLinearGradient() ) {
+            // Create multi-stop gradient
+            std::vector<GradientStop> stops;
+            for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
+                stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
+            }
+            paint.setLinearGradient( svgPaint.getCoords0(), svgPaint.getCoords1(), stops );
+        }
+        else if( svgPaint.isRadialGradient() ) {
+            std::vector<GradientStop> stops;
+            for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
+                stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
+            }
+            paint.setRadialGradient( svgPaint.getCoords0(), svgPaint.getRadius(), stops );
+        }
+        else {
+            ColorAf color( svgPaint.getColor() );
+            color.a = mFillOpacityStack.back();
+            paint.setColor( color );
+        }
+
+        return paint;
+    }
+
+    Paint createStrokePaint() {
+        Paint paint;
+        const svg::Paint& svgPaint = mStrokeStack.back();
+
+        if( svgPaint.isLinearGradient() ) {
+            std::vector<GradientStop> stops;
+            for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
+                stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
+            }
+            paint.setLinearGradient( svgPaint.getCoords0(), svgPaint.getCoords1(), stops );
+        }
+        else if( svgPaint.isRadialGradient() ) {
+            std::vector<GradientStop> stops;
+            for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
+                stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
+            }
+            paint.setRadialGradient( svgPaint.getCoords0(), svgPaint.getRadius(), stops );
+        }
+        else {
+            ColorAf color( svgPaint.getColor() );
+            color.a = mStrokeOpacityStack.back();
+            paint.setColor( color );
+        }
+
+        paint.setStrokeWidth( mStrokeWidthStack.back() );
+
+        // Convert line cap
+        switch( mLineCapStack.back() ) {
+            case svg::LINE_CAP_ROUND:  paint.setLineCap( LineCap::Round ); break;
+            case svg::LINE_CAP_SQUARE: paint.setLineCap( LineCap::Square ); break;
+            default:                   paint.setLineCap( LineCap::Butt ); break;
+        }
+
+        // Convert line join
+        switch( mLineJoinStack.back() ) {
+            case svg::LINE_JOIN_ROUND: paint.setLineJoin( LineJoin::Round ); break;
+            case svg::LINE_JOIN_BEVEL: paint.setLineJoin( LineJoin::Bevel ); break;
+            default:                   paint.setLineJoin( LineJoin::Miter ); break;
+        }
+
+        return paint;
+    }
+
+    CanvasGl* mCanvas;
+    std::vector<svg::Paint> mFillStack;
+    std::vector<svg::Paint> mStrokeStack;
+    std::vector<float> mFillOpacityStack;
+    std::vector<float> mStrokeOpacityStack;
+    std::vector<float> mStrokeWidthStack;
+    std::vector<svg::FillRule> mFillRuleStack;
+    std::vector<svg::LineCap> mLineCapStack;
+    std::vector<svg::LineJoin> mLineJoinStack;
+};
+
+void CanvasGl::draw( const svg::Doc &svg )
+{
+    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
+
+    SvgRendererVg renderer( this );
+    svg.render( renderer );
 }
 
 } } // namespace cinder::vg

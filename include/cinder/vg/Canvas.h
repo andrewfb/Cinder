@@ -37,6 +37,8 @@
 #include <vector>
 #include <span>
 
+namespace cinder { namespace svg { class Doc; } }
+
 namespace cinder { namespace vg {
 
 //! Exception type for vector graphics errors
@@ -45,11 +47,17 @@ public:
     VgExc( const std::string &description ) : Exception( description ) {}
 };
 
-//! Options for canvas creation
+//! Options for canvas creation.
+//! Platform defaults are set automatically - macOS disables PLS/FSI since GL 4.1 doesn't support them.
 struct CI_API CanvasOptions {
-    bool disablePixelLocalStorage = false;  //!< Disable PLS (required for macOS GL 4.1)
-    bool disableFragmentShaderInterlock = false;  //!< Disable FSI (required for macOS GL 4.1)
-    bool useFloatingPointBuffer = false;  //!< Use RGBA16F internal buffer for higher quality gradients/feathering
+#if defined( CINDER_MAC )
+    bool disablePixelLocalStorage = true;       //!< Disable PLS (required for macOS GL 4.1)
+    bool disableFragmentShaderInterlock = true; //!< Disable FSI (required for macOS GL 4.1)
+#else
+    bool disablePixelLocalStorage = false;      //!< Disable PLS (not needed on most platforms)
+    bool disableFragmentShaderInterlock = false;//!< Disable FSI (not needed on most platforms)
+#endif
+    bool useFloatingPointBuffer = false;        //!< Use RGBA16F internal buffer (may improve gradient/feathering quality)
 };
 
 // Forward declarations
@@ -117,16 +125,16 @@ public:
     virtual ~Canvas() = default;
 
     // === Frame Management ===
-    //! Begin a new frame for rendering at the given size
-    virtual void beginFrame( const ivec2 &size ) = 0;
+    //! Begin rendering at the given size. Must be paired with end().
+    virtual void begin( const ivec2 &size ) = 0;
 
-    //! Begin a new frame for rendering with explicit width/height
-    void beginFrame( int width, int height ) { beginFrame( ivec2( width, height ) ); }
+    //! Begin rendering with explicit width/height
+    void begin( int width, int height ) { begin( ivec2( width, height ) ); }
 
-    //! End the current frame and flush to the GPU
-    virtual void endFrame() = 0;
+    //! End rendering and flush to the GPU
+    virtual void end() = 0;
 
-    //! Check if currently in a frame
+    //! Check if currently between begin() and end()
     virtual bool inFrame() const = 0;
 
     // === Transform Stack ===
@@ -269,6 +277,27 @@ public:
 
     //! Draw multiple cached paths with full transforms (same paint)
     virtual void drawPaths( std::span<const mat3> transforms, const CachedPathRef &path, const Paint &paint ) = 0;
+
+    // === Clipping API ===
+    // Clips are accumulated (intersected) within a save/restore block.
+    // Each call to clipPath/clipRect/clipShape intersects with the current clip.
+    // Call save() before clipping to preserve the previous clip state, then restore() to revert.
+
+    //! Clip subsequent drawing to a rectangle (intersected with current clip)
+    virtual void clipRect( const Rectf &rect ) = 0;
+
+    //! Clip subsequent drawing to a path (intersected with current clip)
+    virtual void clipPath( const Path2d &path, FillRule rule = FillRule::NonZero ) = 0;
+
+    //! Clip subsequent drawing to a shape (intersected with current clip)
+    virtual void clipShape( const Shape2d &shape, FillRule rule = FillRule::NonZero ) = 0;
+
+    //! Clip subsequent drawing to a cached path (intersected with current clip)
+    virtual void clipPath( const CachedPathRef &path, FillRule rule = FillRule::NonZero ) = 0;
+
+    // === SVG Rendering ===
+    //! Render an SVG document
+    virtual void draw( const svg::Doc &svg ) = 0;
 
 protected:
     Canvas() = default;

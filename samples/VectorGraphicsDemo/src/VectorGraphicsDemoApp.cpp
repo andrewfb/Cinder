@@ -707,7 +707,227 @@ private:
 };
 
 // ============================================================================
-// Demo 7: Images
+// Demo 7: Blend Modes
+// ============================================================================
+class BlendModesDemo : public Demo {
+public:
+    std::string getName() const override { return "Blend Modes"; }
+    std::string getDescription() const override { return "All 15 blend modes in action"; }
+    Rectf getContentBounds() const override { return Rectf( 0, 0, 600, 500 ); }
+
+    void setup( vg::CanvasGlRef canvas ) override {
+        mFont = Font( "Arial", 11 );
+    }
+
+    void update( double dt ) override {
+        if( mAnimate ) mTime += dt * mSpeed;
+    }
+
+    void draw( vg::CanvasGlRef canvas ) override {
+        const char* names[] = {
+            "SrcOver", "Screen", "Overlay", "Darken", "Lighten",
+            "ColorDodge", "ColorBurn", "HardLight", "SoftLight", "Difference",
+            "Exclusion", "Multiply", "Hue", "Saturation", "Color", "Luminosity"
+        };
+        vg::BlendMode modes[] = {
+            vg::BlendMode::SrcOver, vg::BlendMode::Screen, vg::BlendMode::Overlay,
+            vg::BlendMode::Darken, vg::BlendMode::Lighten, vg::BlendMode::ColorDodge,
+            vg::BlendMode::ColorBurn, vg::BlendMode::HardLight, vg::BlendMode::SoftLight,
+            vg::BlendMode::Difference, vg::BlendMode::Exclusion, vg::BlendMode::Multiply,
+            vg::BlendMode::Hue, vg::BlendMode::Saturation, vg::BlendMode::Color,
+            vg::BlendMode::Luminosity
+        };
+
+        vg::Paint textPaint;
+        textPaint.setColor( ColorAf(0.7f, 0.7f, 0.7f, 1) );
+
+        int cols = 4;
+        float cellW = 140, cellH = 115;
+
+        for( int i = 0; i < 16; i++ ) {
+            int col = i % cols;
+            int row = i / cols;
+            float x = 20 + col * cellW;
+            float y = 20 + row * cellH;
+
+            // Background rectangle (base layer)
+            vg::Paint bg;
+            bg.setColor( mBaseColor );
+            canvas->fillRect( Rectf( x, y, x + 100, y + 70 ), bg );
+
+            // Animated circle position
+            float circleX = x + 50 + sin( mTime + i * 0.5f ) * 20;
+            float circleY = y + 35 + cos( mTime * 0.7f + i * 0.3f ) * 15;
+
+            // Blended circle with radial gradient and feather
+            vg::Paint fg;
+            fg.setRadialGradient( vec2( circleX, circleY ), 30,
+                                  mBlendColor,
+                                  ColorAf( mBlendColor.r * 0.6f, mBlendColor.g * 0.6f, mBlendColor.b * 0.6f, mBlendColor.a ) )
+              .setBlendMode( modes[i] )
+              .setFeather( mFeather );
+            canvas->fillCircle( vec2( circleX, circleY ), 30, fg );
+
+            // Label
+            canvas->drawString( names[i], vec2( x + 50 - strlen(names[i]) * 3, y + 80 ), mFont, textPaint );
+        }
+
+        // Large interactive demo - positioned to the right of the grid
+        float demoX = 20 + 4 * 140 + 20, demoY = 20;
+        vg::Paint demoBg;
+        demoBg.setLinearGradient( vec2(demoX, demoY), vec2(demoX + 180, demoY + 100),
+                                   mBaseColor, ColorAf(mBaseColor.r * 0.5f, mBaseColor.g * 0.5f, mBaseColor.b * 0.5f, 1) );
+        canvas->fillRoundedRect( Rectf( demoX, demoY, demoX + 180, demoY + 100 ), 10, demoBg );
+
+        // Yellow-to-orange gradient for the blended circle
+        vg::Paint demoFg;
+        demoFg.setRadialGradient( vec2( demoX + 90, demoY + 50 ), 40,
+                                  ColorAf( 1.0f, 0.9f, 0.2f, 0.9f ),  // bright yellow center
+                                  ColorAf( 1.0f, 0.4f, 0.1f, 0.9f ) ) // orange edge
+              .setBlendMode( modes[mSelectedMode] )
+              .setFeather( mFeather );
+        canvas->fillCircle( vec2( demoX + 90, demoY + 50 ), 40, demoFg );
+
+        canvas->drawString( names[mSelectedMode], vec2( demoX + 40, demoY + 115 ), mFont, textPaint );
+    }
+
+    void drawUI() override {
+        const char* names[] = {
+            "SrcOver", "Screen", "Overlay", "Darken", "Lighten",
+            "ColorDodge", "ColorBurn", "HardLight", "SoftLight", "Difference",
+            "Exclusion", "Multiply", "Hue", "Saturation", "Color", "Luminosity"
+        };
+        ImGui::Combo( "Mode", &mSelectedMode, names, 16 );
+        ImGui::ColorEdit4( "Base", &mBaseColor.r );
+        ImGui::ColorEdit4( "Blend", &mBlendColor.r );
+        ImGui::SliderFloat( "Feather", &mFeather, 0, 20 );
+        ImGui::Separator();
+        ImGui::Checkbox( "Animate", &mAnimate );
+        if( mAnimate ) ImGui::SliderFloat( "Speed", &mSpeed, 0.1f, 3.0f );
+    }
+
+private:
+    Font mFont;
+    ColorAf mBaseColor{ 0.2f, 0.5f, 0.9f, 1.0f };
+    ColorAf mBlendColor{ 1.0f, 0.4f, 0.2f, 0.8f };
+    int mSelectedMode = 0;
+    float mFeather = 0;
+    float mTime = 0, mSpeed = 1.0f;
+    bool mAnimate = true;
+};
+
+// ============================================================================
+// Demo 8: Clipping
+// ============================================================================
+class ClippingDemo : public Demo {
+public:
+    std::string getName() const override { return "Clipping"; }
+    std::string getDescription() const override { return "Intersecting clips: circle AND triangle"; }
+    Rectf getContentBounds() const override { return Rectf( 0, 0, 500, 400 ); }
+
+    void setup( vg::CanvasGlRef canvas ) override {
+        mCanvas = canvas;
+        mFont = Font( "Arial", 14 );
+
+        // Create circle path
+        Path2d circle;
+        circle.arc( vec2(0), mCircleRadius, 0, M_PI * 2 );
+        circle.close();
+        mCirclePath = canvas->createPath( circle );
+
+        // Create triangle path
+        Path2d tri;
+        for( int i = 0; i < 3; i++ ) {
+            float a = i * M_PI * 2 / 3 - M_PI / 2;
+            vec2 pt = vec2( cos(a), sin(a) ) * mTriangleRadius;
+            if( i == 0 ) tri.moveTo( pt );
+            else tri.lineTo( pt );
+        }
+        tri.close();
+        mTrianglePath = canvas->createPath( tri );
+    }
+
+    void update( double dt ) override {
+        if( mAnimate ) mTime += dt * mSpeed;
+    }
+
+    void draw( vg::CanvasGlRef canvas ) override {
+        vec2 center( 250, 200 );
+
+        // Draw shape outlines for reference
+        vg::Paint outlinePaint;
+        outlinePaint.setColor( ColorAf(0.5f, 0.5f, 0.6f, 0.4f) ).setStrokeWidth( 2 );
+
+        // Circle outline
+        canvas->save();
+        canvas->translate( center );
+        canvas->strokePath( mCirclePath, outlinePaint );
+        canvas->restore();
+
+        // Triangle outline (offset by 50%)
+        vec2 triOffset = vec2( cos(mTime * 0.5f), sin(mTime * 0.5f) ) * mTriangleRadius * 0.5f;
+        canvas->save();
+        canvas->translate( center + triOffset );
+        canvas->rotate( mTime * 0.3f );
+        canvas->strokePath( mTrianglePath, outlinePaint );
+        canvas->restore();
+
+        // ========================================
+        // KEY DEMO: Two clipPath calls intersected
+        // ========================================
+        canvas->save();
+        canvas->translate( center );
+
+        // First clip: circle at center
+        if( mClipCircle ) {
+            canvas->clipPath( mCirclePath );
+        }
+
+        // Second clip: triangle offset 50% (clips are intersected!)
+        canvas->translate( triOffset );
+        canvas->rotate( mTime * 0.3f );
+        if( mClipTriangle ) {
+            canvas->clipPath( mTrianglePath );
+        }
+
+        // Draw a big gradient rect - only the intersection is visible
+        vg::Paint gradient;
+        gradient.setRadialGradient( vec2(0), 150,
+                                    ColorAf( 1.0f, 0.9f, 0.2f, 1.0f ),   // yellow center
+                                    ColorAf( 1.0f, 0.3f, 0.1f, 1.0f ) ); // orange edge
+        canvas->fillRect( Rectf( -200, -200, 200, 200 ), gradient );
+
+        canvas->restore();
+
+        // Labels
+        vg::Paint textPaint;
+        textPaint.setColor( ColorAf(0.8f, 0.8f, 0.8f, 1) );
+        canvas->drawString( "clipPath(circle)", vec2(20, 30), mFont, textPaint );
+        canvas->drawString( "clipPath(triangle)", vec2(20, 50), mFont, textPaint );
+        canvas->drawString( "= intersection visible", vec2(20, 70), mFont, textPaint );
+    }
+
+    void drawUI() override {
+        ImGui::Checkbox( "Clip Circle", &mClipCircle );
+        ImGui::Checkbox( "Clip Triangle", &mClipTriangle );
+        ImGui::Separator();
+        ImGui::Checkbox( "Animate", &mAnimate );
+        if( mAnimate ) ImGui::SliderFloat( "Speed", &mSpeed, 0.1f, 3.0f );
+    }
+
+private:
+    Font mFont;
+    vg::CachedPathRef mCirclePath, mTrianglePath;
+    float mCircleRadius = 120;
+    float mTriangleRadius = 100;
+    float mTime = 0, mSpeed = 1.0f;
+    bool mAnimate = true;
+    bool mClipCircle = true;
+    bool mClipTriangle = true;
+};
+
+// ============================================================================
+// Demo 9: Images
 // ============================================================================
 class ImagesDemo : public Demo {
 public:
@@ -792,13 +1012,11 @@ private:
 void VectorGraphicsDemoApp::setup()
 {
     try {
-        vg::CanvasOptions opts;
-        #if defined( CINDER_MAC )
-        opts.disablePixelLocalStorage = true;
-        opts.disableFragmentShaderInterlock = true;
-        #endif
-        opts.useFloatingPointBuffer = true;
-        mCanvas = vg::createCanvasGl( opts );
+        vg::CanvasOptions options;
+        options.useFloatingPointBuffer = false;
+        mCanvas = vg::createCanvasGl( options );
+
+        mCanvas = vg::createCanvasGl( options );
     } catch( const std::exception &e ) {
         CI_LOG_E( "Canvas init failed: " << e.what() );
         return;
@@ -813,6 +1031,8 @@ void VectorGraphicsDemoApp::setup()
         std::make_shared<PathsDemo>(),
         std::make_shared<FeatheringDemo>(),
         std::make_shared<InstancingDemo>(),
+        std::make_shared<BlendModesDemo>(),
+        std::make_shared<ClippingDemo>(),
         std::make_shared<ImagesDemo>()
     };
     for( auto& d : mDemos ) d->setup( mCanvas );
@@ -863,11 +1083,11 @@ void VectorGraphicsDemoApp::draw()
     if( mDemo ) mDemo->drawUI();
     ImGui::Separator();
     ImGui::Text( "FPS: %.0f", mFps );
-    ImGui::Text( "Keys: 1-7 demos, 0 fit, Q quit" );
+    ImGui::Text( "Keys: 1-9 demos, 0 fit, Q quit" );
     ImGui::End();
 
     // Canvas
-    mCanvas->beginFrame( toPixels( getWindowSize() ) );
+    mCanvas->begin( toPixels( getWindowSize() ) );
     const mat4& m4 = mCanvasUi.getModelMatrix();
     mat3 m3;
     m3[0][0] = m4[0][0]; m3[0][1] = m4[0][1];
@@ -880,7 +1100,7 @@ void VectorGraphicsDemoApp::draw()
         vg::Paint bp; bp.setColor( ColorAf(0.3f,0.3f,0.4f,0.5f) ).setStrokeWidth(1);
         mCanvas->strokeRect( mDemo->getContentBounds(), bp );
     }
-    mCanvas->endFrame();
+    mCanvas->end();
 }
 
 void VectorGraphicsDemoApp::keyDown( KeyEvent event )
@@ -921,8 +1141,4 @@ void prepareSettings( VectorGraphicsDemoApp::Settings* s )
     s->setWindowSize( 1200, 800 );
 }
 
-#if defined( CINDER_MAC )
-CINDER_APP( VectorGraphicsDemoApp, RendererGl( RendererGl::Options().version(4,1).coreProfile().msaa(8) ), prepareSettings )
-#else
-CINDER_APP( VectorGraphicsDemoApp, RendererGl( RendererGl::Options().version(4,3).coreProfile().msaa(8) ), prepareSettings )
-#endif
+CINDER_APP( VectorGraphicsDemoApp, RendererGl( RendererGl::Options().msaa( 16 ) ), prepareSettings )

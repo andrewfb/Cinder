@@ -140,8 +140,8 @@ public:
     CanvasGl& operator=( const CanvasGl& ) = delete;
 
     // === Frame Management ===
-    void beginFrame( const ivec2 &size ) override;
-    void endFrame() override;
+    void begin( const ivec2 &size ) override;
+    void end() override;
     bool inFrame() const override { return mInFrame; }
 
     // === FBO Management ===
@@ -213,6 +213,15 @@ public:
     void drawRects( std::span<const vec2> positions, const vec2 &size, const Paint &paint ) override;
     void drawPaths( std::span<const vec2> positions, const CachedPathRef &path, const Paint &paint ) override;
     void drawPaths( std::span<const mat3> transforms, const CachedPathRef &path, const Paint &paint ) override;
+
+    // === Clipping API ===
+    void clipRect( const Rectf &rect ) override;
+    void clipPath( const Path2d &path, FillRule rule = FillRule::NonZero ) override;
+    void clipShape( const Shape2d &shape, FillRule rule = FillRule::NonZero ) override;
+    void clipPath( const CachedPathRef &path, FillRule rule = FillRule::NonZero ) override;
+
+    // === SVG Rendering ===
+    void draw( const svg::Doc &svg ) override;
 
     // === Advanced ===
     //! Get the underlying Rive RenderContext (for advanced usage)
