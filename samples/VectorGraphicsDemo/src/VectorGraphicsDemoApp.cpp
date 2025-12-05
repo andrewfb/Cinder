@@ -1088,12 +1088,7 @@ void VectorGraphicsDemoApp::draw()
 
     // Canvas
     mCanvas->begin( toPixels( getWindowSize() ) );
-    const mat4& m4 = mCanvasUi.getModelMatrix();
-    mat3 m3;
-    m3[0][0] = m4[0][0]; m3[0][1] = m4[0][1];
-    m3[1][0] = m4[1][0]; m3[1][1] = m4[1][1];
-    m3[2][0] = m4[3][0]; m3[2][1] = m4[3][1]; m3[2][2] = 1;
-    mCanvas->setTransform( m3 );
+    mCanvas->setTransform( mCanvasUi.getTransform2d() );
 
     if( mDemo ) {
         mDemo->draw( mCanvas );
