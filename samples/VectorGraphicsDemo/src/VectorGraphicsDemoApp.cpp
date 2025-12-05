@@ -988,6 +988,225 @@ private:
 };
 
 // ============================================================================
+// Demo 10: Image Mesh
+// ============================================================================
+class ImageMeshDemo : public Demo {
+public:
+    std::string getName() const override { return "Image Mesh"; }
+    std::string getDescription() const override { return "drawImageMesh - arbitrary mesh distortions"; }
+    Rectf getContentBounds() const override { return Rectf( 0, 0, 700, 500 ); }
+
+    void setup( vg::CanvasGlRef canvas ) override {
+        // Create checkerboard texture
+        Surface8u surf( 64, 64, true );
+        auto iter = surf.getIter();
+        while( iter.line() ) {
+            while( iter.pixel() ) {
+                bool light = ((iter.x()/8) + (iter.y()/8)) % 2 == 0;
+                iter.r() = light ? 255 : 60;
+                iter.g() = light ? 220 : 100;
+                iter.b() = light ? 100 : 200;
+                iter.a() = 255;
+            }
+        }
+        mImage = canvas->createImage( surf );
+        rebuildMesh();
+    }
+
+    void rebuildMesh() {
+        mVertices.clear();
+        mUvs.clear();
+        mIndices.clear();
+
+        // Create NxN grid of vertices
+        int n = mGridSize + 1;
+        for( int y = 0; y < n; y++ ) {
+            for( int x = 0; x < n; x++ ) {
+                float u = x / (float)mGridSize;
+                float v = y / (float)mGridSize;
+                mUvs.push_back( vec2( u, v ) );
+                // Position will be computed in update based on warp
+                mVertices.push_back( vec2( mMeshRect.x1 + u * mMeshRect.getWidth(),
+                                           mMeshRect.y1 + v * mMeshRect.getHeight() ) );
+            }
+        }
+
+        // Create triangle indices (two triangles per cell)
+        for( int y = 0; y < mGridSize; y++ ) {
+            for( int x = 0; x < mGridSize; x++ ) {
+                uint16_t i = y * n + x;
+                // First triangle
+                mIndices.push_back( i );
+                mIndices.push_back( i + 1 );
+                mIndices.push_back( i + n );
+                // Second triangle
+                mIndices.push_back( i + 1 );
+                mIndices.push_back( i + n + 1 );
+                mIndices.push_back( i + n );
+            }
+        }
+    }
+
+    void update( double dt ) override {
+        if( mAnimate ) mTime += dt * mSpeed;
+
+        // Apply warp to vertices
+        int n = mGridSize + 1;
+        for( int y = 0; y < n; y++ ) {
+            for( int x = 0; x < n; x++ ) {
+                float u = x / (float)mGridSize;
+                float v = y / (float)mGridSize;
+
+                // Base position
+                vec2 pos( mMeshRect.x1 + u * mMeshRect.getWidth(),
+                          mMeshRect.y1 + v * mMeshRect.getHeight() );
+
+                // Apply warps based on mode
+                if( mWarpMode == 0 ) {
+                    // Wave warp
+                    float wave = sin( u * M_PI * mWaveFreq + mTime * 2 ) * mWarpAmount;
+                    pos.y += wave;
+                    float wave2 = sin( v * M_PI * mWaveFreq + mTime * 1.5f ) * mWarpAmount * 0.5f;
+                    pos.x += wave2;
+                }
+                else if( mWarpMode == 1 ) {
+                    // Bulge/pinch
+                    vec2 center = mMeshRect.getCenter();
+                    vec2 toCenter = pos - center;
+                    float dist = glm::length( toCenter );
+                    float maxDist = glm::length( mMeshRect.getSize() ) * 0.5f;
+                    float t = 1.0f - glm::clamp( dist / maxDist, 0.0f, 1.0f );
+                    float bulge = t * t * mWarpAmount * (sin( mTime ) * 0.5f + 0.5f);
+                    pos += glm::normalize( toCenter + vec2(0.001f) ) * bulge;
+                }
+                else if( mWarpMode == 2 ) {
+                    // Twist
+                    vec2 center = mMeshRect.getCenter();
+                    vec2 toCenter = pos - center;
+                    float dist = glm::length( toCenter );
+                    float maxDist = glm::length( mMeshRect.getSize() ) * 0.5f;
+                    float angle = (1.0f - dist / maxDist) * mWarpAmount * 0.02f * sin( mTime );
+                    float c = cos( angle ), s = sin( angle );
+                    pos = center + vec2( toCenter.x * c - toCenter.y * s,
+                                         toCenter.x * s + toCenter.y * c );
+                }
+                else if( mWarpMode == 3 ) {
+                    // Flag wave
+                    float wave = sin( u * M_PI * 3 + mTime * 3 ) * mWarpAmount * (1.0f - u * 0.5f);
+                    pos.y += wave;
+                }
+
+                mVertices[y * n + x] = pos;
+            }
+        }
+    }
+
+    void draw( vg::CanvasGlRef canvas ) override {
+        if( !mImage ) return;
+
+        // Draw the mesh
+        canvas->drawImageMesh( mImage, mVertices, mUvs, mIndices, mOpacity );
+
+        // Draw grid overlay if enabled
+        if( mShowGrid ) {
+            vg::Paint gridPaint;
+            gridPaint.setColor( ColorAf( 0.3f, 0.8f, 0.3f, 0.5f ) ).setStrokeWidth( 1 );
+            int n = mGridSize + 1;
+            // Horizontal lines
+            for( int y = 0; y < n; y++ ) {
+                for( int x = 0; x < mGridSize; x++ ) {
+                    canvas->drawLine( mVertices[y * n + x], mVertices[y * n + x + 1], gridPaint );
+                }
+            }
+            // Vertical lines
+            for( int x = 0; x < n; x++ ) {
+                for( int y = 0; y < mGridSize; y++ ) {
+                    canvas->drawLine( mVertices[y * n + x], mVertices[(y + 1) * n + x], gridPaint );
+                }
+            }
+        }
+
+        // Draw control point for interactive vertex (corner handles)
+        if( mShowHandles ) {
+            vg::Paint handlePaint;
+            handlePaint.setColor( ColorAf( 1, 0.5f, 0.2f, 0.8f ) );
+            int n = mGridSize + 1;
+            // Draw corner handles
+            canvas->fillCircle( mVertices[0], 6, handlePaint );             // TL
+            canvas->fillCircle( mVertices[mGridSize], 6, handlePaint );     // TR
+            canvas->fillCircle( mVertices[mGridSize * n], 6, handlePaint ); // BL
+            canvas->fillCircle( mVertices[n * n - 1], 6, handlePaint );     // BR
+        }
+
+        // Second example: simple quad distortion
+        float qx = 450, qy = 50;
+        std::vector<vec2> quadVerts = {
+            vec2( qx, qy ),
+            vec2( qx + 180, qy + sin(mTime) * 20 ),
+            vec2( qx + 200, qy + 180 + cos(mTime * 1.3f) * 30 ),
+            vec2( qx - 20 + sin(mTime * 0.7f) * 15, qy + 160 )
+        };
+        std::vector<vec2> quadUvs = {
+            vec2( 0, 0 ), vec2( 1, 0 ), vec2( 1, 1 ), vec2( 0, 1 )
+        };
+        std::vector<uint16_t> quadIndices = { 0, 1, 2, 0, 2, 3 };
+        canvas->drawImageMesh( mImage, quadVerts, quadUvs, quadIndices, mOpacity );
+
+        if( mShowGrid ) {
+            vg::Paint outlinePaint;
+            outlinePaint.setColor( ColorAf( 0.8f, 0.5f, 0.3f, 0.6f ) ).setStrokeWidth( 1 );
+            canvas->drawLine( quadVerts[0], quadVerts[1], outlinePaint );
+            canvas->drawLine( quadVerts[1], quadVerts[2], outlinePaint );
+            canvas->drawLine( quadVerts[2], quadVerts[3], outlinePaint );
+            canvas->drawLine( quadVerts[3], quadVerts[0], outlinePaint );
+        }
+
+        // Labels
+        vg::Paint textPaint;
+        textPaint.setColor( ColorAf( 0.7f, 0.7f, 0.7f, 1 ) );
+        Font font( "Arial", 12 );
+        canvas->drawString( "Grid mesh with warp", vec2( 80, 280 ), font, textPaint );
+        canvas->drawString( "Simple quad", vec2( 500, 260 ), font, textPaint );
+    }
+
+    void drawUI() override {
+        const char* warpNames[] = { "Wave", "Bulge", "Twist", "Flag" };
+        ImGui::Combo( "Warp Mode", &mWarpMode, warpNames, 4 );
+        ImGui::SliderFloat( "Warp Amount", &mWarpAmount, 0, 50 );
+        if( mWarpMode == 0 ) {
+            ImGui::SliderFloat( "Wave Freq", &mWaveFreq, 1, 5 );
+        }
+        ImGui::Separator();
+        if( ImGui::SliderInt( "Grid Size", &mGridSize, 2, 20 ) ) {
+            rebuildMesh();
+        }
+        ImGui::SliderFloat( "Opacity", &mOpacity, 0, 1 );
+        ImGui::Separator();
+        ImGui::Checkbox( "Show Grid", &mShowGrid );
+        ImGui::Checkbox( "Show Handles", &mShowHandles );
+        ImGui::Checkbox( "Animate", &mAnimate );
+        if( mAnimate ) ImGui::SliderFloat( "Speed", &mSpeed, 0.1f, 3.0f );
+    }
+
+private:
+    vg::ImageRef mImage;
+    std::vector<vec2> mVertices;
+    std::vector<vec2> mUvs;
+    std::vector<uint16_t> mIndices;
+
+    Rectf mMeshRect{ 50, 50, 300, 250 };
+    int mGridSize = 8;
+    int mWarpMode = 0;
+    float mWarpAmount = 20;
+    float mWaveFreq = 2;
+    float mOpacity = 1.0f;
+    float mTime = 0, mSpeed = 1.0f;
+    bool mAnimate = true;
+    bool mShowGrid = true;
+    bool mShowHandles = true;
+};
+
+// ============================================================================
 // Main App
 // ============================================================================
 class VectorGraphicsDemoApp : public App {
@@ -1041,7 +1260,8 @@ void VectorGraphicsDemoApp::setup()
         std::make_shared<InstancingDemo>(),
         std::make_shared<BlendModesDemo>(),
         std::make_shared<ClippingDemo>(),
-        std::make_shared<ImagesDemo>()
+        std::make_shared<ImagesDemo>(),
+        std::make_shared<ImageMeshDemo>()
     };
     for( auto& d : mDemos ) d->setup( mCanvas );
     switchDemo( 0 );
