@@ -436,6 +436,19 @@ class CI_API Context {
 	//! Returns the current values for glBendFuncs
 	void		getBlendFuncSeparate( GLenum *resultSrcRGB, GLenum *resultDstRGB, GLenum *resultSrcAlpha, GLenum *resultDstAlpha );
 
+	//! Analogous to glBlendEquation(). Sets both RGB and Alpha blend equations.
+	void		blendEquation( GLenum mode );
+	//! Analogous to glBlendEquationSeparate().
+	void		blendEquationSeparate( GLenum modeRGB, GLenum modeAlpha );
+	//! Pushes and sets blend equations
+	void		pushBlendEquationSeparate( GLenum modeRGB, GLenum modeAlpha );
+	//! Duplicates and pushes the blend equation state stack.
+	void		pushBlendEquationSeparate();
+	//! Pops the blend equations. If \a forceRestore then redundancy checks are skipped and the hardware state is always set.
+	void		popBlendEquationSeparate( bool forceRestore = false );
+	//! Returns the current blend equations
+	void		getBlendEquationSeparate( GLenum *resultModeRGB, GLenum *resultModeAlpha );
+
 	//! Sets the current line width
 	void		lineWidth( float lineWidth );
 	//! Pushes and sets the current line width
@@ -610,6 +623,7 @@ class CI_API Context {
 	// Blend state stacks
 	std::vector<GLint>					mBlendSrcRgbStack, mBlendDstRgbStack;
 	std::vector<GLint>					mBlendSrcAlphaStack, mBlendDstAlphaStack;
+	std::vector<GLint>					mBlendEquationRgbStack, mBlendEquationAlphaStack;
 
 // #if defined( CINDER_GL_ES_2 ) && (! defined( CINDER_COCOA_TOUCH )) && (! defined( CINDER_GL_ANGLE ))
 // 	std::vector<GLint>			mFramebufferStack;

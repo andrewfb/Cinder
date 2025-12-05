@@ -188,10 +188,59 @@ void CanvasGl::initializeGl( const CanvasOptions &options )
               << " supportsAtomicMode=" << features.supportsAtomicMode
               << " supportsClockwiseAtomicMode=" << features.supportsClockwiseAtomicMode );
 
-    // CRITICAL: Restore host GL state after Rive initialization
-    // Rive's context creation modifies VAOs, VBOs, shaders, etc.
-    // We need to restore Cinder/ImGui's expected GL state
-    restoreHostState( ivec2( 800, 600 ) );  // Use reasonable default size
+    // CRITICAL: Clean up Rive's initialization state
+    // Rive's context creation modifies VAOs, VBOs, textures, shaders, etc.
+    // We must unbind everything and tell Cinder's Context its cache is stale.
+    if( mRiveContextGl ) {
+        mRiveContextGl->unbindGLInternalResources();
+    }
+
+    // Clear any GL errors from Rive's initialization
+    while( glGetError() != GL_NO_ERROR ) {}
+
+    // Unbind GL state that Rive may have touched during initialization
+    // and invalidate Cinder's cached knowledge of that state
+    auto* ctx = gl::context();
+    if( ctx ) {
+        // Invalidate buffer binding caches
+        ctx->invalidateBufferBindingCache( GL_ARRAY_BUFFER );
+        ctx->invalidateBufferBindingCache( GL_ELEMENT_ARRAY_BUFFER );
+        ctx->invalidateBufferBindingCache( GL_UNIFORM_BUFFER );
+
+        // Unbind VAO and restore Cinder's default
+        glBindVertexArray( 0 );
+        ctx->restoreInvalidatedVao();
+
+        // Unbind textures AND samplers on all units that Rive might have touched
+        // and force Cinder to re-bind when it next needs them
+        for( uint8_t i = 0; i < 8; ++i ) {
+            glActiveTexture( GL_TEXTURE0 + i );
+            glBindTexture( GL_TEXTURE_2D, 0 );
+#if defined( CINDER_GL_HAS_SAMPLERS )
+            glBindSampler( i, 0 );  // Unbind any sampler Rive may have bound
+#endif
+        }
+        glActiveTexture( GL_TEXTURE0 );
+        // Push/pop with forceRestore to reset Cinder's texture tracking
+        for( uint8_t i = 0; i < 8; ++i ) {
+            ctx->pushTextureBinding( GL_TEXTURE_2D, i );
+            ctx->popTextureBinding( GL_TEXTURE_2D, i, true );
+#if defined( CINDER_GL_HAS_SAMPLERS )
+            ctx->pushSamplerBinding( i, 0 );
+            ctx->popSamplerBinding( i, true );
+#endif
+        }
+
+        // Unbind shader program and reset Cinder's cache via push/pop
+        glUseProgram( 0 );
+        ctx->pushGlslProg();
+        ctx->popGlslProg( true );
+
+        // Unbind FBO - ensure we're rendering to default framebuffer
+        glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+        ctx->pushFramebuffer();
+        ctx->popFramebuffer( true );
+    }
 }
 
 void CanvasGl::invalidateState()
@@ -199,6 +248,71 @@ void CanvasGl::invalidateState()
     if( mRiveContextGl ) {
         mRiveContextGl->invalidateGLState();
     }
+}
+
+void CanvasGl::saveHostState()
+{
+    auto* ctx = gl::context();
+    if( ! ctx ) return;
+
+    // === Push all GL state that Rive may modify ===
+
+    // VAO and program
+    ctx->pushVao();
+    ctx->pushGlslProg();
+
+    // Buffer bindings (Rive uses VBO, UBO, potentially EBO)
+    ctx->pushBufferBinding( GL_ARRAY_BUFFER );
+    ctx->pushBufferBinding( GL_ELEMENT_ARRAY_BUFFER );
+    ctx->pushBufferBinding( GL_UNIFORM_BUFFER );
+
+    // Framebuffer (no argument = push current binding for GL_FRAMEBUFFER target)
+    ctx->pushFramebuffer();
+
+    // Texture bindings (Rive uses multiple texture units)
+    for( uint8_t i = 0; i < 8; ++i ) {
+        ctx->pushTextureBinding( GL_TEXTURE_2D, i );
+#if defined( CINDER_GL_HAS_SAMPLERS )
+        ctx->pushSamplerBinding( i, ctx->getSamplerBinding( i ) );
+#endif
+    }
+    ctx->pushActiveTexture();
+
+    // Bool states Rive modifies
+    ctx->pushBoolState( GL_BLEND );
+    ctx->pushBoolState( GL_DEPTH_TEST );
+    ctx->pushBoolState( GL_STENCIL_TEST );
+    ctx->pushBoolState( GL_SCISSOR_TEST );
+    ctx->pushBoolState( GL_CULL_FACE );
+
+    // Blend function and equation
+    ctx->pushBlendFuncSeparate();
+    ctx->pushBlendEquationSeparate();
+
+    // Masks
+    ctx->pushColorMask( ctx->getColorMask().r, ctx->getColorMask().g, ctx->getColorMask().b, ctx->getColorMask().a );
+    ctx->pushDepthMask( ctx->getDepthMask() );
+    ctx->pushStencilMask( ctx->getStencilMask().x, ctx->getStencilMask().y );
+
+    // Stencil function and operation
+    ctx->pushStencilFunc( GL_ALWAYS, 0, 0xFF );  // Push current state - Cinder will query GL if stack is empty
+    ctx->pushStencilOp( GL_KEEP, GL_KEEP, GL_KEEP );
+
+    // Front face (Rive uses CW, Cinder expects CCW)
+    ctx->pushFrontFace();
+
+    // Cull face mode
+    ctx->pushCullFace();
+
+    // Depth function
+    ctx->pushDepthFunc();
+
+    // Line width (wireframe mode)
+    ctx->pushLineWidth();
+
+    // Viewport and scissor
+    ctx->pushViewport();
+    ctx->pushScissor();
 }
 
 void CanvasGl::restoreHostState( const ivec2 &size )
@@ -211,84 +325,74 @@ void CanvasGl::restoreHostState( const ivec2 &size )
     // Clear any pending GL errors
     while( glGetError() != GL_NO_ERROR ) {}
 
-    // === Reset raw GL state ===
+    auto* ctx = gl::context();
+    if( ! ctx ) return;
 
-    // Buffer bindings
-    glBindBuffer( GL_ARRAY_BUFFER, 0 );
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
-    glBindBuffer( GL_UNIFORM_BUFFER, 0 );
+    // === Pop all GL state with forceRestore=true ===
+    // This ensures the actual GL state matches what Cinder had before
 
-    // Framebuffer - restore to screen or FBO
-    if( mFbo ) {
-        mFbo->bindFramebuffer();
-    } else {
-        glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+    // Viewport and scissor (pop first since they affect rendering)
+    ctx->popScissor( true );
+    ctx->popViewport( true );
+
+    // Line width
+    ctx->popLineWidth( true );
+
+    // Depth function
+    ctx->popDepthFunc( true );
+
+    // Cull face mode
+    ctx->popCullFace( true );
+
+    // Front face
+    ctx->popFrontFace( true );
+
+    // Stencil function and operation
+    ctx->popStencilOp( true );
+    ctx->popStencilFunc( true );
+
+    // Masks
+    ctx->popStencilMask( true );
+    ctx->popDepthMask( true );
+    ctx->popColorMask( true );
+
+    // Blend equation and function
+    ctx->popBlendEquationSeparate( true );
+    ctx->popBlendFuncSeparate( true );
+
+    // Bool states
+    ctx->popBoolState( GL_CULL_FACE, true );
+    ctx->popBoolState( GL_SCISSOR_TEST, true );
+    ctx->popBoolState( GL_STENCIL_TEST, true );
+    ctx->popBoolState( GL_DEPTH_TEST, true );
+    ctx->popBoolState( GL_BLEND, true );
+
+    // Texture bindings
+    ctx->popActiveTexture( true );
+    for( int i = 7; i >= 0; --i ) {
+#if defined( CINDER_GL_HAS_SAMPLERS )
+        ctx->popSamplerBinding( i, true );
+#endif
+        ctx->popTextureBinding( GL_TEXTURE_2D, i, true );
     }
 
-    // Reset all texture units and samplers
-    for( int i = 0; i < 8; ++i ) {
-        glActiveTexture( GL_TEXTURE0 + i );
-        glBindTexture( GL_TEXTURE_2D, 0 );
-        glBindSampler( i, 0 );
-    }
-    glActiveTexture( GL_TEXTURE0 );
+    // Framebuffer
+    ctx->popFramebuffer( GL_FRAMEBUFFER );
 
-    // Rive sets GL_CW winding, Cinder expects GL_CCW (default)
-    glFrontFace( GL_CCW );
+    // Buffer bindings - first restore the invalidated bindings from cache
+    ctx->restoreInvalidatedBufferBinding( GL_UNIFORM_BUFFER );
+    ctx->restoreInvalidatedBufferBinding( GL_ELEMENT_ARRAY_BUFFER );
+    ctx->restoreInvalidatedBufferBinding( GL_ARRAY_BUFFER );
+    ctx->popBufferBinding( GL_UNIFORM_BUFFER );
+    ctx->popBufferBinding( GL_ELEMENT_ARRAY_BUFFER );
+    ctx->popBufferBinding( GL_ARRAY_BUFFER );
 
-    // Reset enable states
-    glDisable( GL_CULL_FACE );
-    glDisable( GL_SCISSOR_TEST );
-    glDisable( GL_DEPTH_TEST );
-    glDisable( GL_STENCIL_TEST );
-    glColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
-    glDepthMask( GL_TRUE );
+    // VAO - restore invalidated state first, then pop
+    ctx->restoreInvalidatedVao();
+    ctx->popGlslProg( true );
+    ctx->popVao();
 
-    // Reset line width that Rive's wireframe mode may change
-    glLineWidth( 1.0f );
-
-    // Re-enable blending with Cinder's expected blend func
-    glEnable( GL_BLEND );
-    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-
-    // === Synchronize Cinder's internal GL state tracking ===
-    auto* ctx_gl = gl::context();
-    if( ctx_gl ) {
-        // Invalidate buffer binding caches
-        ctx_gl->invalidateBufferBindingCache( GL_ARRAY_BUFFER );
-        ctx_gl->invalidateBufferBindingCache( GL_ELEMENT_ARRAY_BUFFER );
-        ctx_gl->invalidateBufferBindingCache( GL_UNIFORM_BUFFER );
-
-        // Reset actual GL state for VAO and program
-        glUseProgram( 0 );
-        glBindVertexArray( 0 );
-
-        // Tell Cinder its tracking is invalid
-        ctx_gl->bindGlslProg( nullptr );
-        ctx_gl->bindVao( nullptr );
-
-        // Bind Cinder's default VAO
-        gl::Vao* defaultVao = ctx_gl->getDefaultVao();
-        if( defaultVao ) {
-            ctx_gl->bindVao( defaultVao );
-        }
-
-        // Get and bind the stock shader
-        auto defaultShader = gl::getStockShader( gl::ShaderDef().color() );
-        if( defaultShader ) {
-            defaultShader->bind();
-        }
-
-        // Unbind textures using Cinder's tracking to keep cache in sync
-        for( uint8_t i = 0; i < 8; ++i ) {
-            ctx_gl->bindTexture( GL_TEXTURE_2D, 0, i );
-            ctx_gl->bindSampler( i, 0 );
-        }
-        ctx_gl->setActiveTexture( 0 );
-    }
-
-    // Reset viewport and matrices AFTER binding shader so uniforms get set
-    gl::viewport( 0, 0, size.x, size.y );
+    // Set matrices for the size
     gl::setMatricesWindow( size );
 }
 
@@ -322,6 +426,9 @@ void CanvasGl::begin( const ivec2 &size )
     }
 
     if( mRiveContext ) {
+        // Save host GL state before Rive takes over
+        saveHostState();
+
         RenderContext::FrameDescriptor frameDesc;
         frameDesc.renderTargetWidth = size.x;
         frameDesc.renderTargetHeight = size.y;

@@ -233,6 +233,7 @@ public:
 private:
     void initializeGl( const CanvasOptions &options );
     void invalidateState();
+    void saveHostState();
     void restoreHostState( const ivec2 &size );
 
     // Internal path conversion

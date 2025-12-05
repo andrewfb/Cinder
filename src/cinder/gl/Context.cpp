@@ -1769,6 +1769,64 @@ void Context::getBlendFuncSeparate( GLenum *resultSrcRGB, GLenum *resultDstRGB, 
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
+// BlendEquation
+void Context::blendEquation( GLenum mode )
+{
+	blendEquationSeparate( mode, mode );
+}
+
+void Context::blendEquationSeparate( GLenum modeRGB, GLenum modeAlpha )
+{
+	bool needsChange = setStackState<GLint>( mBlendEquationRgbStack, modeRGB );
+	needsChange = setStackState<GLint>( mBlendEquationAlphaStack, modeAlpha ) || needsChange;
+	if( needsChange )
+		glBlendEquationSeparate( modeRGB, modeAlpha );
+}
+
+void Context::pushBlendEquationSeparate( GLenum modeRGB, GLenum modeAlpha )
+{
+	bool needsChange = pushStackState<GLint>( mBlendEquationRgbStack, modeRGB );
+	needsChange = pushStackState<GLint>( mBlendEquationAlphaStack, modeAlpha ) || needsChange;
+	if( needsChange )
+		glBlendEquationSeparate( modeRGB, modeAlpha );
+}
+
+void Context::pushBlendEquationSeparate()
+{
+	GLenum resultModeRGB, resultModeAlpha;
+	getBlendEquationSeparate( &resultModeRGB, &resultModeAlpha );
+
+	mBlendEquationRgbStack.push_back( resultModeRGB );
+	mBlendEquationAlphaStack.push_back( resultModeAlpha );
+}
+
+void Context::popBlendEquationSeparate( bool forceRestore )
+{
+	bool needsChange = popStackState<GLint>( mBlendEquationRgbStack );
+	needsChange = popStackState<GLint>( mBlendEquationAlphaStack ) || needsChange;
+	needsChange = forceRestore || needsChange;
+	if( needsChange && ( ! mBlendEquationRgbStack.empty() ) && ( ! mBlendEquationAlphaStack.empty() ) )
+		glBlendEquationSeparate( mBlendEquationRgbStack.back(), mBlendEquationAlphaStack.back() );
+}
+
+void Context::getBlendEquationSeparate( GLenum *resultModeRGB, GLenum *resultModeAlpha )
+{
+	// push twice on empty to accommodate inevitable push later
+	GLint queriedInt;
+	if( mBlendEquationRgbStack.empty() ) {
+		glGetIntegerv( GL_BLEND_EQUATION_RGB, &queriedInt );
+		mBlendEquationRgbStack.push_back( queriedInt ); mBlendEquationRgbStack.push_back( queriedInt );
+	}
+	if( mBlendEquationAlphaStack.empty() ) {
+		glGetIntegerv( GL_BLEND_EQUATION_ALPHA, &queriedInt );
+		mBlendEquationAlphaStack.push_back( queriedInt ); mBlendEquationAlphaStack.push_back( queriedInt );
+	}
+
+	*resultModeRGB = mBlendEquationRgbStack.back();
+	*resultModeAlpha = mBlendEquationAlphaStack.back();
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
 // LineWidth
 void Context::lineWidth( float lineWidth )
 {

@@ -1809,6 +1809,9 @@ TextExtents Context::textExtents( const std::string &s )
 	return result;
 }
 
+// NOTE: createWindowSurface() requires RendererCg on macOS or RendererGdi on Windows
+// It does not work with RendererGl. Commented out to allow Cairo to work with RendererGl.
+#if 0
 #if defined( CINDER_MSW )
 cairo::SurfaceGdi createWindowSurface()
 {
@@ -1823,6 +1826,7 @@ cairo::SurfaceQuartz createWindowSurface()
 	CGContextScaleCTM( cgContext, 1.0, -1.0 );
 	return cairo::SurfaceQuartz( cgContext, cinder::app::getWindowWidth(), height );
 }
+#endif
 #endif
 
 /*void Context::glyphExtents( const GlyphArray &glyphs, int num_glyphs, TextExtents *extents )
