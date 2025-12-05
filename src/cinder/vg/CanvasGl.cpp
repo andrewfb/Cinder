@@ -187,6 +187,11 @@ void CanvasGl::initializeGl( const CanvasOptions &options )
     CI_LOG_I( "CanvasGl created - supportsRasterOrderingMode=" << features.supportsRasterOrderingMode
               << " supportsAtomicMode=" << features.supportsAtomicMode
               << " supportsClockwiseAtomicMode=" << features.supportsClockwiseAtomicMode );
+
+    // CRITICAL: Restore host GL state after Rive initialization
+    // Rive's context creation modifies VAOs, VBOs, shaders, etc.
+    // We need to restore Cinder/ImGui's expected GL state
+    restoreHostState( ivec2( 800, 600 ) );  // Use reasonable default size
 }
 
 void CanvasGl::invalidateState()
