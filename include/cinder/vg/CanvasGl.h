@@ -33,12 +33,18 @@ namespace rive {
     class RiveRenderer;
     class RawPath;
     class RenderPath;
+    class RenderPaint;
     class RenderImage;
     class RenderBuffer;
     namespace gpu {
         class RenderContext;
         class RenderContextGLImpl;
     }
+}
+
+// Forward declarations for Rive reference counted pointers
+namespace rive {
+    template<typename T> class rcp;
 }
 
 namespace cinder { namespace vg {
@@ -186,7 +192,7 @@ public:
     // clipRect, clipPath, clipShape - use base class implementations (delegates to implClipPath)
 
     // === SVG Rendering ===
-    // draw(svg::Doc) - use base class implementation
+    using Canvas::draw;  // Bring base class draw(svg::Doc, DisplayListRef) into scope
 
     // === Advanced ===
     //! Get the underlying Rive RenderContext (for advanced usage)

@@ -42,13 +42,19 @@ class SimpleViewerApp : public App {
 	void mouseUp( MouseEvent event ) override;
 	void mouseWheel( MouseEvent event ) override;
 	void load( fs::path path );
+	void rebuildDisplayList();
 
 	RendererType			mRenderer = RendererType::Cairo;
 	svg::DocRef				mDoc;
 	gl::TextureRef			mCairoTex;    // Cached Cairo render
 	vg::CanvasGlRef			mCanvas;       // vg::Canvas for Rive rendering
+	vg::DisplayListRef		mDisplayList;  // Cached display list for SVG
 	CanvasUi				mCanvasUi;     // Pan/zoom UI
 	fs::path				mCurrentFile;
+
+	// DisplayList mode
+	bool					mUseDisplayList = false;
+	bool					mDisplayListDirty = true;
 
 	// Info
 	float					mLastRenderTimeMs = 0.0f;
@@ -100,6 +106,9 @@ void SimpleViewerApp::load( fs::path path )
 		// Pre-render Cairo texture
 		mCairoTex = renderCairoToTexture( mDoc );
 
+		// Mark display list as needing rebuild
+		mDisplayListDirty = true;
+
 		// Set content bounds and fit to window
 		int docWidth = mDoc->getWidth() ? (int)mDoc->getWidth() : 640;
 		int docHeight = mDoc->getHeight() ? (int)mDoc->getHeight() : 480;
@@ -112,6 +121,22 @@ void SimpleViewerApp::load( fs::path path )
 	catch( ci::Exception &exc ) {
 		console() << "exception caught parsing svg doc, what: " << exc.what() << endl;
 	}
+}
+
+void SimpleViewerApp::rebuildDisplayList()
+{
+	if( ! mCanvas || ! mDoc ) return;
+
+	// Create a new display list and record the SVG into it
+	mDisplayList = mCanvas->createDisplayList();
+	if( mDisplayList ) {
+		mDisplayList->begin();
+		// Record the SVG drawing commands to the display list
+		// Note: DisplayList has the same API as Canvas, so we can draw directly to it
+		mDisplayList->draw( *mDoc );
+		mDisplayList->end();
+	}
+	mDisplayListDirty = false;
 }
 
 void SimpleViewerApp::fileDrop( FileDropEvent event )
@@ -183,7 +208,22 @@ void SimpleViewerApp::draw()
 				if( mCanvas ) {
 					mCanvas->begin( toPixels( getWindowSize() ) );
 					mCanvas->setTransform( transform );
-					mCanvas->draw( *mDoc );
+
+					if( mUseDisplayList ) {
+						// Rebuild display list if needed
+						if( mDisplayListDirty ) {
+							rebuildDisplayList();
+						}
+						// Draw from display list
+						if( mDisplayList ) {
+							mCanvas->draw( mDisplayList );
+						}
+					}
+					else {
+						// Direct rendering
+						mCanvas->draw( *mDoc );
+					}
+
 					mCanvas->end();
 				}
 				break;
@@ -219,6 +259,14 @@ void SimpleViewerApp::draw()
 	ImGui::SameLine();
 	if( ImGui::RadioButton( "vg::Canvas (Rive)", vgSelected ) ) {
 		mRenderer = RendererType::VgCanvas;
+	}
+
+	// DisplayList option (only for vg::Canvas)
+	if( vgSelected && mDoc ) {
+		ImGui::Checkbox( "Use DisplayList", &mUseDisplayList );
+		if( ImGui::IsItemHovered() ) {
+			ImGui::SetTooltip( "Record SVG to a DisplayList for faster replay" );
+		}
 	}
 
 	ImGui::Separator();
