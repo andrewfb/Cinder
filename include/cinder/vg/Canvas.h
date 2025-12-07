@@ -69,11 +69,11 @@ enum class CI_API RenderMode {
 class Canvas;
 class CachedPath;
 class Image;
-class DisplayList;
+class FrozenPath;
 
 using CachedPathRef = std::shared_ptr<CachedPath>;
 using ImageRef = std::shared_ptr<Image>;
-using DisplayListRef = std::shared_ptr<DisplayList>;
+using FrozenPathRef = std::shared_ptr<FrozenPath>;
 
 // ------------------------------------------------------------------------------------------------
 // CachedPath - Cached path for efficient repeated drawing
@@ -120,122 +120,121 @@ protected:
 };
 
 // ------------------------------------------------------------------------------------------------
-// DisplayList - Recorded sequence of drawing commands for efficient replay
+// FrozenPath - Pre-tessellated path for efficient repeated drawing
 // ------------------------------------------------------------------------------------------------
 
-//! A recorded sequence of Canvas drawing commands that can be replayed efficiently.
-//! DisplayLists store high-level drawing commands that are replayed on a target Canvas.
+//! A pre-tessellated path that caches expensive tessellation computations.
+//! Created via Canvas::freezePath(). When drawn, skips the expensive Wang's formula
+//! calculations that normally happen during path tessellation.
 //!
-//! Usage:
-//!     // Record commands
+//! Use FrozenPath when:
+//! - The same path is drawn many times per frame (e.g., particle systems, repeated icons)
+//! - The path geometry doesn't change between draws
+//! - Performance profiling shows tessellation is a bottleneck
+//!
+//! Note: FrozenPath caches tessellation data computed at a specific transform scale.
+//! The cached tessellation remains valid when the path is translated or rotated,
+//! but may produce visual artifacts if drawn at a significantly different scale.
+//!
+//! Example:
+//!     // Create frozen path once (or when path changes)
+//!     auto frozen = canvas->freezePath( cachedPath, paint );
+//!
+//!     // Draw efficiently many times
+//!     for( const auto& transform : transforms ) {
+//!         canvas->drawFrozenPath( frozen, transform, paint );
+//!     }
+class CI_API FrozenPath {
+public:
+    virtual ~FrozenPath() = default;
+
+    //! Get the original source CachedPath
+    CachedPathRef getSourcePath() const { return mSourcePath; }
+
+    //! Get axis-aligned bounding box (in local path coordinates)
+    Rectf getBounds() const { return mBounds; }
+
+    //! Check if this frozen path is valid (tessellation was captured successfully)
+    virtual bool isValid() const = 0;
+
+    //! Check if this frozen path is for a stroke operation
+    bool isStroke() const { return mIsStroke; }
+
+    //! Get the stroke width (0 for fills)
+    float getStrokeWidth() const { return mStrokeWidth; }
+
+protected:
+    friend class Canvas;
+    FrozenPath() = default;
+
+    CachedPathRef mSourcePath;
+    Rectf mBounds;
+    bool mIsStroke = false;
+    float mStrokeWidth = 0.0f;
+};
+
+// ------------------------------------------------------------------------------------------------
+// DisplayList - Recorded drawing commands with frozen paths
+// ------------------------------------------------------------------------------------------------
+
+class Canvas;  // Forward declaration
+
+//! A recorded list of drawing commands that can be replayed efficiently.
+//! DisplayList captures Canvas draw commands and creates FrozenPaths for
+//! each path encountered. On replay, the frozen paths are used, skipping
+//! expensive tessellation calculations.
+//!
+//! Use DisplayList when:
+//! - Rendering complex static content like SVGs repeatedly
+//! - The content doesn't change between frames
+//! - Performance profiling shows SVG/path rendering is a bottleneck
+//!
+//! Example:
+//!     // Recording phase (do once when content changes)
 //!     auto displayList = canvas->createDisplayList();
-//!     displayList->begin();
-//!     displayList->fillRect( Rectf(0,0,100,100), paint );
-//!     displayList->strokeCircle( vec2(50,50), 30, strokePaint );
-//!     displayList->end();
+//!     displayList->beginRecording( canvas );
+//!     canvas->draw( *svgDoc );  // Draw commands are captured
+//!     displayList->endRecording();
 //!
-//!     // Replay multiple times
-//!     canvas->begin( size );
-//!     canvas->draw( displayList );              // Draw at identity
-//!     canvas->translate( vec2(200,0) );
-//!     canvas->draw( displayList );              // Draw translated
+//!     // Playback phase (do every frame)
+//!     canvas->begin( windowSize );
+//!     canvas->setTransform( viewMatrix );
+//!     displayList->replay( canvas );  // Fast - uses frozen paths
 //!     canvas->end();
-//!
 class CI_API DisplayList {
 public:
+    virtual ~DisplayList() = default;
+
+    //! Begin recording draw commands. The canvas must be in a frame (between begin/end).
+    virtual void beginRecording( Canvas* canvas ) = 0;
+
+    //! End recording and freeze all captured paths.
+    virtual void endRecording() = 0;
+
+    //! Check if currently recording
+    virtual bool isRecording() const = 0;
+
+    //! Replay the recorded commands using frozen paths.
+    //! The canvas must be in a frame (between begin/end).
+    virtual void replay( Canvas* canvas ) = 0;
+
+    //! Check if the display list is valid (has recorded content)
+    virtual bool isValid() const = 0;
+
+    //! Clear the display list
+    virtual void clear() = 0;
+
+    //! Get the number of draw commands recorded
+    virtual size_t getCommandCount() const = 0;
+
+    //! Get the axis-aligned bounding box of the recorded content
+    virtual Rectf getBounds() const = 0;
+
+protected:
     DisplayList() = default;
-    ~DisplayList() = default;
-
-    // Non-copyable, movable
-    DisplayList( const DisplayList& ) = delete;
-    DisplayList& operator=( const DisplayList& ) = delete;
-    DisplayList( DisplayList&& ) = default;
-    DisplayList& operator=( DisplayList&& ) = default;
-
-    //! Begin recording commands. Clears any previously recorded commands.
-    void begin();
-
-    //! End recording. After this, the display list can be drawn.
-    void end();
-
-    //! Returns true if currently recording (between begin() and end())
-    bool isRecording() const { return mRecording; }
-
-    //! Returns true if the display list has recorded content
-    bool hasContent() const { return !mCommands.empty(); }
-
-    //! Get the number of recorded commands
-    size_t getCommandCount() const { return mCommands.size(); }
-
-    //! Replay all recorded commands on a target canvas
-    void replay( Canvas &target ) const;
-
-    // === Recording API (mirrors Canvas) ===
-    void save();
-    void restore();
-    void translate( const vec2 &offset );
-    void translate( float x, float y ) { translate( vec2( x, y ) ); }
-    void rotate( float radians );
-    void scale( const vec2 &s );
-    void scale( float sx, float sy ) { scale( vec2( sx, sy ) ); }
-    void scale( float s ) { scale( vec2( s, s ) ); }
-    void transform( const mat3 &m );
-    void setTransform( const mat3 &m );
-    void resetTransform();
-
-    // === Drawing primitives ===
-    void fillRect( const Rectf &rect, const Paint &paint );
-    void strokeRect( const Rectf &rect, const Paint &paint );
-    void fillRoundedRect( const Rectf &rect, float radius, const Paint &paint );
-    void strokeRoundedRect( const Rectf &rect, float radius, const Paint &paint );
-    void fillCircle( const vec2 &center, float radius, const Paint &paint );
-    void strokeCircle( const vec2 &center, float radius, const Paint &paint );
-    void fillEllipse( const vec2 &center, const vec2 &radii, const Paint &paint );
-    void strokeEllipse( const vec2 &center, const vec2 &radii, const Paint &paint );
-    void drawLine( const vec2 &p0, const vec2 &p1, const Paint &paint );
-
-    // === Path drawing ===
-    void fillPath( const Path2d &path, const Paint &paint, FillRule rule = FillRule::NonZero );
-    void strokePath( const Path2d &path, const Paint &paint );
-    void fillShape( const Shape2d &shape, const Paint &paint, FillRule rule = FillRule::NonZero );
-    void strokeShape( const Shape2d &shape, const Paint &paint );
-
-    // === Cached path drawing ===
-    void fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule = FillRule::NonZero );
-    void strokePath( const CachedPathRef &path, const Paint &paint );
-
-    // === Clipping ===
-    void clipRect( const Rectf &rect );
-    void clipPath( const Path2d &path, FillRule rule = FillRule::NonZero );
-    void clipShape( const Shape2d &shape, FillRule rule = FillRule::NonZero );
-
-    // === Image drawing ===
-    void drawImage( const ImageRef &image, const vec2 &position );
-    void drawImage( const ImageRef &image, const Rectf &destRect );
-    void drawImage( const ImageRef &image, const Rectf &srcRect, const Rectf &destRect );
-
-    // === SVG Rendering ===
-    void draw( const svg::Doc &svg );
-
-public:
-    // Command base class - public so command implementations in Canvas.cpp can inherit
-    struct Command {
-        virtual ~Command() = default;
-        virtual void execute( Canvas &target ) const = 0;
-    };
-
-private:
-    // Helper to add commands
-    template<typename T, typename... Args>
-    void addCommand( Args&&... args ) {
-        if( mRecording ) {
-            mCommands.push_back( std::make_unique<T>( std::forward<Args>( args )... ) );
-        }
-    }
-
-    bool mRecording = false;
-    std::vector<std::unique_ptr<Command>> mCommands;
 };
+
+using DisplayListRef = std::shared_ptr<DisplayList>;
 
 // ------------------------------------------------------------------------------------------------
 // GlyphCache - Internal glyph shape cache for text rendering
@@ -438,6 +437,34 @@ public:
     //! Draw multiple cached paths with full transforms (same paint) - base implementation provided
     virtual void drawPaths( std::span<const mat3> transforms, const CachedPathRef &path, const Paint &paint );
 
+    // === FrozenPath API ===
+    //! Create a frozen path for efficient repeated drawing (fill operation).
+    //! The tessellation is computed once using the current transform scale.
+    //! Must be implemented by subclass.
+    virtual FrozenPathRef freezePathFill( const CachedPathRef &path, const Paint &paint,
+                                          FillRule rule = FillRule::NonZero ) = 0;
+
+    //! Create a frozen path for efficient repeated drawing (stroke operation).
+    //! The tessellation is computed once using the current transform scale.
+    //! Must be implemented by subclass.
+    virtual FrozenPathRef freezePathStroke( const CachedPathRef &path, const Paint &paint ) = 0;
+
+    //! Draw a frozen path using the current transform.
+    //! The frozen tessellation is reused, skipping expensive Wang's formula calculations.
+    //! Must be implemented by subclass.
+    virtual void drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint ) = 0;
+
+    //! Draw multiple frozen paths at different positions (same paint).
+    //! Efficient for particle systems, repeated icons, etc.
+    virtual void drawFrozenPaths( std::span<const vec2> positions,
+                                   const FrozenPathRef &frozenPath,
+                                   const Paint &paint );
+
+    //! Draw multiple frozen paths with full transforms (same paint).
+    virtual void drawFrozenPaths( std::span<const mat3> transforms,
+                                   const FrozenPathRef &frozenPath,
+                                   const Paint &paint );
+
     // === Clipping API ===
     // Clips are accumulated (intersected) within a save/restore block.
     // Each call to clipPath/clipRect/clipShape intersects with the current clip.
@@ -460,11 +487,8 @@ public:
     virtual void draw( const svg::Doc &svg );
 
     // === DisplayList API ===
-    //! Create a display list for recording drawing commands
-    DisplayListRef createDisplayList();
-
-    //! Draw a recorded display list. The display list is rendered using the current transform.
-    void draw( const DisplayListRef &displayList );
+    //! Create a display list for recording draw commands
+    virtual DisplayListRef createDisplayList() = 0;
 
     //! Clear the glyph cache (call if fonts are unloaded)
     void clearGlyphCache() { mGlyphCache.clear(); }

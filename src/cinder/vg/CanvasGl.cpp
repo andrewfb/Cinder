@@ -16,6 +16,9 @@
 #include "rive/renderer/gl/render_target_gl.hpp"
 #include "rive/renderer/rive_render_image.hpp"
 #include "rive/math/raw_path.hpp"
+#include "rive/renderer/draw.hpp"
+#include "rive_render_path.hpp"
+#include "rive_render_paint.hpp"
 
 // For Rive's GLAD loader initialization
 #include "glad/glad_custom.h"
@@ -58,6 +61,11 @@ struct ImageGlImpl {
     rcp<RiveRenderImage> riveImage;
 };
 
+struct FrozenPathGlImpl {
+    CachedPathRef cachedPath;  // Just store a reference to the cached path
+    bool isStroke = false;     // Was this frozen for fill or stroke?
+};
+
 // ------------------------------------------------------------------------------------------------
 // Helper functions (GL-specific)
 // ------------------------------------------------------------------------------------------------
@@ -84,6 +92,20 @@ CachedPathGl::~CachedPathGl() = default;
 ImageGl::ImageGl() : mImpl( std::make_unique<ImageGlImpl>() ) {}
 
 ImageGl::~ImageGl() = default;
+
+// ------------------------------------------------------------------------------------------------
+// FrozenPathGl implementation
+// ------------------------------------------------------------------------------------------------
+
+FrozenPathGl::FrozenPathGl() : mImpl( std::make_unique<FrozenPathGlImpl>() ) {}
+
+FrozenPathGl::~FrozenPathGl() = default;
+
+bool FrozenPathGl::isValid() const
+{
+    // Stub implementation - valid if we have a cached path
+    return mImpl && mImpl->cachedPath;
+}
 
 // GlyphCache implementation is now in Canvas.cpp
 
@@ -542,9 +564,84 @@ CachedPathRef CanvasGl::createPath( const Shape2d &shape )
     return cachedPath;
 }
 
+// ------------------------------------------------------------------------------------------------
+// Path Drawing (uncached) - Override for DisplayList recording
+// ------------------------------------------------------------------------------------------------
+
+void CanvasGl::fillPath( const Path2d &path, const Paint &paint, FillRule rule )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( path );
+        if( cachedPath ) {
+            mRecordingDisplayList->recordFillPath( cachedPath, paint, rule );
+        }
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::fillPath( path, paint, rule );
+}
+
+void CanvasGl::strokePath( const Path2d &path, const Paint &paint )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( path );
+        if( cachedPath ) {
+            mRecordingDisplayList->recordStrokePath( cachedPath, paint );
+        }
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::strokePath( path, paint );
+}
+
+void CanvasGl::fillShape( const Shape2d &shape, const Paint &paint, FillRule rule )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( shape );
+        if( cachedPath ) {
+            mRecordingDisplayList->recordFillPath( cachedPath, paint, rule );
+        }
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::fillShape( shape, paint, rule );
+}
+
+void CanvasGl::strokeShape( const Shape2d &shape, const Paint &paint )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( shape );
+        if( cachedPath ) {
+            mRecordingDisplayList->recordStrokePath( cachedPath, paint );
+        }
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::strokeShape( shape, paint );
+}
+
+// ------------------------------------------------------------------------------------------------
+// Cached Path API
+// ------------------------------------------------------------------------------------------------
+
 void CanvasGl::fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule )
 {
     if( ! path ) return;
+
+    // If recording, redirect to DisplayList
+    if( mRecordingDisplayList ) {
+        mRecordingDisplayList->recordFillPath( path, paint, rule );
+        return;
+    }
+
     auto glPath = std::dynamic_pointer_cast<CachedPathGl>( path );
     if( glPath ) {
         drawCachedPathInternal( glPath.get(), paint, true, false, rule );
@@ -554,6 +651,13 @@ void CanvasGl::fillPath( const CachedPathRef &path, const Paint &paint, FillRule
 void CanvasGl::strokePath( const CachedPathRef &path, const Paint &paint )
 {
     if( ! path ) return;
+
+    // If recording, redirect to DisplayList
+    if( mRecordingDisplayList ) {
+        mRecordingDisplayList->recordStrokePath( path, paint );
+        return;
+    }
+
     auto glPath = std::dynamic_pointer_cast<CachedPathGl>( path );
     if( glPath ) {
         drawCachedPathInternal( glPath.get(), paint, false, true );
@@ -790,5 +894,336 @@ void CanvasGl::drawCachedPathInternal( const CachedPathGl* cachedPath, const Pai
 // toRivePath implementations are now in Canvas base class
 // implClipPath is now implemented in Canvas base class
 // SVG rendering is handled by the base Canvas class using SvgRendererVg
+
+// ------------------------------------------------------------------------------------------------
+// FrozenPath API - Pre-tessellation caching for repeated path drawing
+// NOTE: Currently implemented as stubs that delegate to regular CachedPath drawing.
+// True tessellation caching requires deep Rive integration and is planned for future.
+// ------------------------------------------------------------------------------------------------
+
+FrozenPathRef CanvasGl::freezePathFill( const CachedPathRef &path, const Paint &paint, FillRule rule )
+{
+    // Stub implementation - just store a reference to the cached path
+    // The actual "freezing" (tessellation caching) is not yet implemented
+    if( ! path ) {
+        return nullptr;
+    }
+
+    auto frozenPath = std::make_shared<FrozenPathGl>();
+    frozenPath->mFillRule = rule;
+    frozenPath->mImpl->cachedPath = path;
+    frozenPath->mImpl->isStroke = false;
+
+    return frozenPath;
+}
+
+FrozenPathRef CanvasGl::freezePathStroke( const CachedPathRef &path, const Paint &paint )
+{
+    // Stub implementation - just store a reference to the cached path
+    if( ! path ) {
+        return nullptr;
+    }
+
+    auto frozenPath = std::make_shared<FrozenPathGl>();
+    frozenPath->mFillRule = FillRule::NonZero;  // Strokes always use non-zero
+    frozenPath->mImpl->cachedPath = path;
+    frozenPath->mImpl->isStroke = true;
+
+    return frozenPath;
+}
+
+void CanvasGl::drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint )
+{
+    // Stub implementation - delegate to regular path drawing
+    if( ! frozenPath ) return;
+
+    auto glFrozen = std::dynamic_pointer_cast<FrozenPathGl>( frozenPath );
+    if( ! glFrozen || ! glFrozen->isValid() ) {
+        return;
+    }
+
+    // Delegate to regular cached path drawing
+    if( glFrozen->mImpl->isStroke ) {
+        strokePath( glFrozen->mImpl->cachedPath, paint );
+    }
+    else {
+        fillPath( glFrozen->mImpl->cachedPath, paint, glFrozen->mFillRule );
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
+// DisplayListGl implementation - Recording and replaying Canvas commands
+// ------------------------------------------------------------------------------------------------
+
+DisplayListGl::DisplayListGl( CanvasGl* canvas )
+    : mOwnerCanvas( canvas )
+{
+}
+
+DisplayListGl::~DisplayListGl() = default;
+
+void DisplayListGl::beginRecording( Canvas* canvas )
+{
+    if( mRecording ) {
+        CI_LOG_W( "DisplayListGl::beginRecording called while already recording" );
+        return;
+    }
+
+    mRecordingCanvas = canvas;
+    mRecording = true;
+    mValid = false;
+    mCommands.clear();
+    mBounds = Rectf();
+
+    // Set the recording pointer on the CanvasGl so draw calls get redirected
+    auto* glCanvas = dynamic_cast<CanvasGl*>( canvas );
+    if( glCanvas ) {
+        glCanvas->mRecordingDisplayList = this;
+    }
+}
+
+void DisplayListGl::endRecording()
+{
+    if( ! mRecording ) {
+        CI_LOG_W( "DisplayListGl::endRecording called without beginRecording" );
+        return;
+    }
+
+    // Clear the recording pointer on the CanvasGl
+    auto* glCanvas = dynamic_cast<CanvasGl*>( mRecordingCanvas );
+    if( glCanvas ) {
+        glCanvas->mRecordingDisplayList = nullptr;
+    }
+
+    mRecording = false;
+    mRecordingCanvas = nullptr;
+    mValid = ! mCommands.empty();
+}
+
+void DisplayListGl::replay( Canvas* canvas )
+{
+    if( ! mValid || mCommands.empty() ) {
+        return;
+    }
+
+    auto* glCanvas = dynamic_cast<CanvasGl*>( canvas );
+    if( ! glCanvas ) {
+        CI_LOG_W( "DisplayListGl::replay requires a CanvasGl" );
+        return;
+    }
+
+    for( const auto& cmd : mCommands ) {
+        switch( cmd.type ) {
+            case CommandType::Save:
+                canvas->save();
+                break;
+
+            case CommandType::Restore:
+                canvas->restore();
+                break;
+
+            case CommandType::SetTransform:
+                canvas->setTransform( cmd.transform );
+                break;
+
+            case CommandType::FillPath:
+                if( cmd.frozenPath && cmd.frozenPath->isValid() ) {
+                    glCanvas->drawFrozenPath( cmd.frozenPath, cmd.paint );
+                }
+                else if( cmd.cachedPath ) {
+                    glCanvas->fillPath( cmd.cachedPath, cmd.paint, cmd.fillRule );
+                }
+                break;
+
+            case CommandType::StrokePath:
+                if( cmd.frozenPath && cmd.frozenPath->isValid() ) {
+                    glCanvas->drawFrozenPath( cmd.frozenPath, cmd.paint );
+                }
+                else if( cmd.cachedPath ) {
+                    glCanvas->strokePath( cmd.cachedPath, cmd.paint );
+                }
+                break;
+
+            case CommandType::DrawImage:
+                if( cmd.image ) {
+                    if( cmd.srcRect.getWidth() > 0 && cmd.srcRect.getHeight() > 0 ) {
+                        canvas->drawImage( cmd.image, cmd.srcRect, cmd.destRect );
+                    }
+                    else {
+                        canvas->drawImage( cmd.image, cmd.destRect );
+                    }
+                }
+                break;
+
+            case CommandType::Clip:
+                if( cmd.cachedPath ) {
+                    canvas->clipPath( cmd.cachedPath, cmd.fillRule );
+                }
+                break;
+        }
+    }
+}
+
+void DisplayListGl::clear()
+{
+    mCommands.clear();
+    mValid = false;
+    mBounds = Rectf();
+    mFrozenPathsCreated = false;
+}
+
+void DisplayListGl::recordFillPath( const CachedPathRef& path, const Paint& paint, FillRule rule )
+{
+    if( ! mRecording || ! path ) return;
+
+    Command cmd;
+    cmd.type = CommandType::FillPath;
+    cmd.cachedPath = path;
+    cmd.paint = paint;
+    cmd.fillRule = rule;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+
+    // Expand bounds
+    if( path->getBounds().getWidth() > 0 ) {
+        if( mBounds.getWidth() == 0 ) {
+            mBounds = path->getBounds();
+        }
+        else {
+            mBounds.include( path->getBounds() );
+        }
+    }
+
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordStrokePath( const CachedPathRef& path, const Paint& paint )
+{
+    if( ! mRecording || ! path ) return;
+
+    Command cmd;
+    cmd.type = CommandType::StrokePath;
+    cmd.cachedPath = path;
+    cmd.paint = paint;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+
+    // Expand bounds (with stroke width consideration)
+    if( path->getBounds().getWidth() > 0 ) {
+        Rectf strokeBounds = path->getBounds();
+        float expansion = paint.getStrokeWidth() / 2.0f;
+        strokeBounds.inflate( vec2( expansion, expansion ) );
+
+        if( mBounds.getWidth() == 0 ) {
+            mBounds = strokeBounds;
+        }
+        else {
+            mBounds.include( strokeBounds );
+        }
+    }
+
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordDrawImage( const ImageRef& image, const Rectf& destRect )
+{
+    if( ! mRecording || ! image ) return;
+
+    Command cmd;
+    cmd.type = CommandType::DrawImage;
+    cmd.image = image;
+    cmd.destRect = destRect;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+
+    if( mBounds.getWidth() == 0 ) {
+        mBounds = destRect;
+    }
+    else {
+        mBounds.include( destRect );
+    }
+
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordDrawImage( const ImageRef& image, const Rectf& srcRect, const Rectf& destRect )
+{
+    if( ! mRecording || ! image ) return;
+
+    Command cmd;
+    cmd.type = CommandType::DrawImage;
+    cmd.image = image;
+    cmd.srcRect = srcRect;
+    cmd.destRect = destRect;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+
+    if( mBounds.getWidth() == 0 ) {
+        mBounds = destRect;
+    }
+    else {
+        mBounds.include( destRect );
+    }
+
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordSave()
+{
+    if( ! mRecording ) return;
+
+    Command cmd;
+    cmd.type = CommandType::Save;
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordRestore()
+{
+    if( ! mRecording ) return;
+
+    Command cmd;
+    cmd.type = CommandType::Restore;
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordSetTransform( const mat3& transform )
+{
+    if( ! mRecording ) return;
+
+    Command cmd;
+    cmd.type = CommandType::SetTransform;
+    cmd.transform = transform;
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordClip( const CachedPathRef& path, FillRule rule )
+{
+    if( ! mRecording || ! path ) return;
+
+    Command cmd;
+    cmd.type = CommandType::Clip;
+    cmd.cachedPath = path;
+    cmd.fillRule = rule;
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::createFrozenPaths()
+{
+    if( mFrozenPathsCreated || ! mOwnerCanvas ) return;
+
+    for( auto& cmd : mCommands ) {
+        if( cmd.cachedPath && ! cmd.frozenPath ) {
+            if( cmd.type == CommandType::FillPath ) {
+                cmd.frozenPath = mOwnerCanvas->freezePathFill( cmd.cachedPath, cmd.paint, cmd.fillRule );
+            }
+            else if( cmd.type == CommandType::StrokePath ) {
+                cmd.frozenPath = mOwnerCanvas->freezePathStroke( cmd.cachedPath, cmd.paint );
+            }
+        }
+    }
+
+    mFrozenPathsCreated = true;
+}
+
+DisplayListRef CanvasGl::createDisplayList()
+{
+    return std::make_shared<DisplayListGl>( this );
+}
 
 } } // namespace cinder::vg

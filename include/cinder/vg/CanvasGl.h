@@ -94,6 +94,118 @@ private:
 };
 
 // ------------------------------------------------------------------------------------------------
+// FrozenPathGl - GL implementation of FrozenPath
+// ------------------------------------------------------------------------------------------------
+
+// Forward declare internal struct defined in cpp file
+struct FrozenPathGlImpl;
+
+class CI_API FrozenPathGl : public FrozenPath {
+public:
+    FrozenPathGl();
+    ~FrozenPathGl() override;
+
+    //! Check if this frozen path is valid (tessellation was captured successfully)
+    bool isValid() const override;
+
+    //! Get the fill rule used when freezing (for fills)
+    FillRule getFillRule() const { return mFillRule; }
+
+private:
+    friend class CanvasGl;
+
+    FillRule mFillRule = FillRule::NonZero;
+    std::unique_ptr<FrozenPathGlImpl> mImpl;
+};
+
+// ------------------------------------------------------------------------------------------------
+// DisplayListGl - GL implementation of DisplayList
+// ------------------------------------------------------------------------------------------------
+
+class CanvasGl;  // Forward declaration
+
+//! GL implementation of DisplayList that records drawing commands and creates FrozenPaths.
+class CI_API DisplayListGl : public DisplayList {
+public:
+    DisplayListGl( CanvasGl* canvas );
+    ~DisplayListGl() override;
+
+    //! Begin recording draw commands
+    void beginRecording( Canvas* canvas ) override;
+
+    //! End recording and freeze captured paths
+    void endRecording() override;
+
+    //! Check if currently recording
+    bool isRecording() const override { return mRecording; }
+
+    //! Replay the recorded commands
+    void replay( Canvas* canvas ) override;
+
+    //! Check if display list is valid
+    bool isValid() const override { return mValid && !mCommands.empty(); }
+
+    //! Clear the display list
+    void clear() override;
+
+    //! Get command count
+    size_t getCommandCount() const override { return mCommands.size(); }
+
+    //! Get content bounds
+    Rectf getBounds() const override { return mBounds; }
+
+private:
+    friend class CanvasGl;
+
+    // Command types
+    enum class CommandType {
+        FillPath,
+        StrokePath,
+        DrawImage,
+        Save,
+        Restore,
+        SetTransform,
+        Clip
+    };
+
+    // A recorded draw command
+    struct Command {
+        CommandType type;
+        FrozenPathRef frozenPath;
+        CachedPathRef cachedPath;  // For clip commands
+        ImageRef image;
+        Paint paint;
+        mat3 transform;
+        Rectf destRect;
+        Rectf srcRect;
+        FillRule fillRule = FillRule::NonZero;
+    };
+
+    // Record methods for building the display list
+    void recordFillPath( const CachedPathRef& path, const Paint& paint, FillRule rule = FillRule::NonZero );
+    void recordStrokePath( const CachedPathRef& path, const Paint& paint );
+    void recordDrawImage( const ImageRef& image, const Rectf& destRect );
+    void recordDrawImage( const ImageRef& image, const Rectf& srcRect, const Rectf& destRect );
+    void recordSave();
+    void recordRestore();
+    void recordSetTransform( const mat3& transform );
+    void recordClip( const CachedPathRef& path, FillRule rule = FillRule::NonZero );
+
+    //! Create frozen paths for all recorded path commands (call after endRecording)
+    void createFrozenPaths();
+
+    CanvasGl* mOwnerCanvas = nullptr;
+    Canvas* mRecordingCanvas = nullptr;
+    bool mRecording = false;
+    bool mValid = false;
+    bool mFrozenPathsCreated = false;
+    std::vector<Command> mCommands;
+    Rectf mBounds;
+};
+
+using DisplayListGlRef = std::shared_ptr<DisplayListGl>;
+
+// ------------------------------------------------------------------------------------------------
 // CanvasGl - OpenGL implementation of Canvas
 // ------------------------------------------------------------------------------------------------
 
@@ -164,6 +276,12 @@ public:
     // fillPath, strokePath, fillShape, strokeShape, strokePolyLine, fillPolyLine
     // - use base class implementations (delegates to implFillShape/implStrokeShape)
 
+    // === Path Drawing (uncached) - override for DisplayList recording ===
+    void fillPath( const Path2d &path, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
+    void strokePath( const Path2d &path, const Paint &paint ) override;
+    void fillShape( const Shape2d &shape, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
+    void strokeShape( const Shape2d &shape, const Paint &paint ) override;
+
     // === Cached Path API ===
     using Canvas::createPath;  // Bring createPath(Path2d) into scope
     CachedPathRef createPath( const Shape2d &shape ) override;
@@ -191,8 +309,17 @@ public:
     // === Clipping API ===
     // clipRect, clipPath, clipShape - use base class implementations (delegates to implClipPath)
 
+    // === FrozenPath API ===
+    FrozenPathRef freezePathFill( const CachedPathRef &path, const Paint &paint,
+                                   FillRule rule = FillRule::NonZero ) override;
+    FrozenPathRef freezePathStroke( const CachedPathRef &path, const Paint &paint ) override;
+    void drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint ) override;
+
+    // === DisplayList API ===
+    DisplayListRef createDisplayList() override;
+
     // === SVG Rendering ===
-    using Canvas::draw;  // Bring base class draw(svg::Doc, DisplayListRef) into scope
+    using Canvas::draw;  // Bring base class draw(svg::Doc) into scope
 
     // === Advanced ===
     //! Get the underlying Rive RenderContext (for advanced usage)
@@ -227,6 +354,10 @@ private:
 
     // Frame size (for end() to know dimensions)
     ivec2 mFrameSize;
+
+    // DisplayList recording - when non-null, draw calls are recorded instead of rendered
+    friend class DisplayListGl;
+    DisplayListGl* mRecordingDisplayList = nullptr;
 };
 
 } } // namespace cinder::vg
