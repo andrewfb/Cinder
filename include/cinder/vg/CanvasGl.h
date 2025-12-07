@@ -88,39 +88,6 @@ private:
 };
 
 // ------------------------------------------------------------------------------------------------
-// GlyphCache - Internal glyph shape cache for text rendering
-// ------------------------------------------------------------------------------------------------
-
-class GlyphCache {
-public:
-    CachedPathRef getGlyph( CanvasGl* canvas, const Font &font, Font::Glyph glyphIndex );
-    void clear();
-
-private:
-    // Key: font name + size + glyph index
-    struct GlyphKey {
-        std::string fontName;
-        float fontSize;
-        Font::Glyph glyphIndex;
-
-        bool operator==( const GlyphKey &other ) const {
-            return fontName == other.fontName && fontSize == other.fontSize && glyphIndex == other.glyphIndex;
-        }
-    };
-
-    struct GlyphKeyHash {
-        size_t operator()( const GlyphKey &k ) const {
-            size_t h1 = std::hash<std::string>{}( k.fontName );
-            size_t h2 = std::hash<float>{}( k.fontSize );
-            size_t h3 = std::hash<Font::Glyph>{}( k.glyphIndex );
-            return h1 ^ (h2 << 1) ^ (h3 << 2);
-        }
-    };
-
-    std::unordered_map<GlyphKey, CachedPathRef, GlyphKeyHash> mCache;
-};
-
-// ------------------------------------------------------------------------------------------------
 // CanvasGl - OpenGL implementation of Canvas
 // ------------------------------------------------------------------------------------------------
 
@@ -167,7 +134,7 @@ public:
     void begin();
 
     void end() override;
-    bool inFrame() const override { return mInFrame; }
+    bool inFrame() const override { return Canvas::mInFrame; }
 
     // === Rendering Mode ===
     //! Get the rendering mode
@@ -183,37 +150,16 @@ public:
     ivec2 getFboSize() const;
 
     // === Transform Stack ===
-    void save() override;
-    void restore() override;
-    void translate( const vec2 &offset ) override;
-    void rotate( float radians ) override;
-    void scale( const vec2 &s ) override;
-    void transform( const mat3 &m ) override;
-    void setTransform( const mat3 &m ) override;
-    void resetTransform() override;
-    mat3 getTransform() const override { return mTransform; }
-
-    // === Drawing Primitives ===
-    void fillRect( const Rectf &rect, const Paint &paint ) override;
-    void strokeRect( const Rectf &rect, const Paint &paint ) override;
-    void fillRoundedRect( const Rectf &rect, float radius, const Paint &paint ) override;
-    void strokeRoundedRect( const Rectf &rect, float radius, const Paint &paint ) override;
-    void fillCircle( const vec2 &center, float radius, const Paint &paint ) override;
-    void strokeCircle( const vec2 &center, float radius, const Paint &paint ) override;
-    void fillEllipse( const vec2 &center, const vec2 &radii, const Paint &paint ) override;
-    void strokeEllipse( const vec2 &center, const vec2 &radii, const Paint &paint ) override;
-    void drawLine( const vec2 &p0, const vec2 &p1, const Paint &paint ) override;
+    // save(), restore() - use base class implementations (delegates to implSave/implRestore)
+    // translate, rotate, scale, transform, setTransform, resetTransform - use base class implementations
+    // fillRect, strokeRect, fillCircle, strokeCircle, etc. - use base class implementations
 
     // === Path Drawing (uncached) ===
-    void fillPath( const Path2d &path, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
-    void strokePath( const Path2d &path, const Paint &paint ) override;
-    void fillShape( const Shape2d &shape, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
-    void strokeShape( const Shape2d &shape, const Paint &paint ) override;
-    void strokePolyLine( const PolyLine2f &polyline, const Paint &paint ) override;
-    void fillPolyLine( const PolyLine2f &polyline, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
+    // fillPath, strokePath, fillShape, strokeShape, strokePolyLine, fillPolyLine
+    // - use base class implementations (delegates to implFillShape/implStrokeShape)
 
     // === Cached Path API ===
-    CachedPathRef createPath( const Path2d &path ) override;
+    using Canvas::createPath;  // Bring createPath(Path2d) into scope
     CachedPathRef createPath( const Shape2d &shape ) override;
     void fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
     void strokePath( const CachedPathRef &path, const Paint &paint ) override;
@@ -221,7 +167,7 @@ public:
     // === Image API ===
     ImageRef createImage( const gl::Texture2dRef &texture ) override;
     ImageRef createImage( const Surface &surface ) override;
-    void drawImage( const ImageRef &image, const vec2 &position ) override;
+    using Canvas::drawImage;  // Bring base class drawImage(position) into scope
     void drawImage( const ImageRef &image, const Rectf &destRect ) override;
     void drawImage( const ImageRef &image, const Rectf &srcRect, const Rectf &destRect ) override;
     void drawImageMesh( const ImageRef &image,
@@ -231,63 +177,39 @@ public:
                         float opacity = 1.0f ) override;
 
     // === Text API ===
-    void drawString( const std::string &text, const vec2 &position,
-                     const Font &font, const Paint &paint ) override;
-    CachedPathRef createTextPath( const std::string &text, const Font &font ) override;
+    // drawString, createTextPath - use base class implementations
 
     // === Instanced Drawing API ===
-    void drawCircles( std::span<const vec2> positions, float radius, const Paint &paint ) override;
-    void drawCircles( std::span<const mat3> transforms, float radius, const Paint &paint ) override;
-    void drawRects( std::span<const vec2> positions, const vec2 &size, const Paint &paint ) override;
-    void drawPaths( std::span<const vec2> positions, const CachedPathRef &path, const Paint &paint ) override;
-    void drawPaths( std::span<const mat3> transforms, const CachedPathRef &path, const Paint &paint ) override;
+    // drawCircles, drawRects, drawPaths - use base class implementations
 
     // === Clipping API ===
-    void clipRect( const Rectf &rect ) override;
-    void clipPath( const Path2d &path, FillRule rule = FillRule::NonZero ) override;
-    void clipShape( const Shape2d &shape, FillRule rule = FillRule::NonZero ) override;
-    void clipPath( const CachedPathRef &path, FillRule rule = FillRule::NonZero ) override;
+    // clipRect, clipPath, clipShape - use base class implementations (delegates to implClipPath)
 
     // === SVG Rendering ===
-    void draw( const svg::Doc &svg ) override;
+    // draw(svg::Doc) - use base class implementation
 
     // === Advanced ===
     //! Get the underlying Rive RenderContext (for advanced usage)
     rive::gpu::RenderContext* getRiveContext() const { return mRiveContext.get(); }
 
-    //! Clear the glyph cache (call if fonts are unloaded)
-    void clearGlyphCache() { mGlyphCache.clear(); }
+    // clearGlyphCache() - use base class implementation
 
 private:
     // Private constructors - use create() factory methods
     CanvasGl( RenderMode mode, int fboWidth = 0, int fboHeight = 0 );
 
+    // GL-specific initialization and state management
     void initializeGl( bool forceMsaaMode );
     void invalidateState();
     void saveHostState();
     void restoreHostState( const ivec2 &size );
 
-    // Internal path conversion
-    rive::RawPath toRivePath( const Path2d &path );
-    rive::RawPath toRivePath( const Shape2d &shape );
-    rive::RawPath toRivePath( const PolyLine2f &polyline );
-
-    // Internal drawing
-    void drawPathInternal( rive::RawPath path, const Paint &paint,
-                           bool fill, bool stroke, FillRule rule = FillRule::NonZero );
+    // Cached path drawing helper
     void drawCachedPathInternal( const CachedPathGl* cachedPath, const Paint &paint,
                                   bool fill, bool stroke, FillRule rule = FillRule::NonZero );
 
-    // Internal helpers for primitives
-    CachedPathRef getOrCreateCirclePath( float radius );
-    CachedPathRef getOrCreateRectPath( const vec2 &size );
-
-    // Rive context (owned)
-    std::unique_ptr<rive::gpu::RenderContext> mRiveContext;
+    // GL-specific Rive context access
     rive::gpu::RenderContextGLImpl* mRiveContextGl = nullptr;  // Raw pointer for GL-specific calls
-
-    // Rive renderer (created per-frame)
-    std::unique_ptr<rive::RiveRenderer> mRiveRenderer;
 
     // Rendering mode and configuration
     RenderMode mRenderMode = RenderMode::Window;
@@ -297,18 +219,8 @@ private:
     gl::FboRef mOffscreenFbo;
     ivec2 mOffscreenSize;
 
-    // Frame state
-    bool mInFrame = false;
+    // Frame size (for end() to know dimensions)
     ivec2 mFrameSize;
-
-    // Transform state
-    mat3 mTransform = mat3();
-    std::vector<mat3> mTransformStack;
-
-    // Caches
-    GlyphCache mGlyphCache;
-    std::unordered_map<float, CachedPathRef> mCirclePathCache;  // radius -> path
-    std::unordered_map<uint64_t, CachedPathRef> mRectPathCache;  // packed size -> path
 };
 
 } } // namespace cinder::vg

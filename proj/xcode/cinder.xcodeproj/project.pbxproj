@@ -1658,6 +1658,7 @@
 		RVE000200000000000000029 /* renderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE000100000000000000029 /* renderer.cpp */; };
 		RVE00020000000000000002A /* color.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE00010000000000000002A /* color.cpp */; };
 		RVE0002000000000000000C3 /* Paint.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE0001000000000000000C3 /* Paint.cpp */; };
+		RVE0002000000000000000C4 /* Canvas.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE0001000000000000000C4 /* Canvas.cpp */; };
 		RVE0002000000000000000C5 /* CanvasGl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = RVE0001000000000000000C5 /* CanvasGl.cpp */; };
 /* End PBXBuildFile section */
 
@@ -2442,6 +2443,7 @@
 		RVE00010000000000000002A /* color.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = color.cpp; path = ../../src/cinder/vg/rive/core/color.cpp; sourceTree = "<group>"; };
 		RVE00010000000000000002B /* gles2.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = gles2.c; path = ../../include/cinder/vg/rive/glad/src/gles2.c; sourceTree = "<group>"; };
 		RVE0001000000000000000C3 /* Paint.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Paint.cpp; path = ../../src/cinder/vg/Paint.cpp; sourceTree = "<group>"; };
+		RVE0001000000000000000C4 /* Canvas.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Canvas.cpp; path = ../../src/cinder/vg/Canvas.cpp; sourceTree = "<group>"; };
 		RVE0001000000000000000C5 /* CanvasGl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = CanvasGl.cpp; path = ../../src/cinder/vg/CanvasGl.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -3946,6 +3948,7 @@
 			isa = PBXGroup;
 			children = (
 				RVE0001000000000000000C3 /* Paint.cpp */,
+				RVE0001000000000000000C4 /* Canvas.cpp */,
 				RVE0001000000000000000C5 /* CanvasGl.cpp */,
 				RVE000300000000000000002 /* rive */,
 			);
@@ -5471,6 +5474,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				RVE0002000000000000000C3 /* Paint.cpp in Sources */,
+				RVE0002000000000000000C4 /* Canvas.cpp in Sources */,
 				RVE0002000000000000000C5 /* CanvasGl.cpp in Sources */,
 				RVE000200000000000000002 /* draw.cpp in Sources */,
 				RVE000200000000000000003 /* gpu.cpp in Sources */,
