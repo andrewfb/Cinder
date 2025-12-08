@@ -7,7 +7,7 @@
 #include "cinder/gl/gl.h"
 #include "cinder/gl/scoped.h"
 #include "cinder/gl/Context.h"
-#include "cinder/Svg.h"
+#include "cinder/svg/Svg.h"
 
 // Rive includes
 #include "rive/renderer/rive_renderer.hpp"
@@ -16,6 +16,9 @@
 #include "rive/renderer/gl/render_target_gl.hpp"
 #include "rive/renderer/rive_render_image.hpp"
 #include "rive/math/raw_path.hpp"
+#include "rive/renderer/draw.hpp"
+#include "rive_render_path.hpp"
+#include "rive_render_paint.hpp"
 
 // For Rive's GLAD loader initialization
 #include "glad/glad_custom.h"
@@ -58,8 +61,13 @@ struct ImageGlImpl {
     rcp<RiveRenderImage> riveImage;
 };
 
+struct FrozenPathGlImpl {
+    CachedPathRef cachedPath;  // Just store a reference to the cached path
+    bool isStroke = false;     // Was this frozen for fill or stroke?
+};
+
 // ------------------------------------------------------------------------------------------------
-// Helper functions
+// Helper functions (GL-specific)
 // ------------------------------------------------------------------------------------------------
 
 // Helper to convert Cinder mat3 to Rive Mat2D
@@ -67,12 +75,6 @@ static Mat2D toRiveMat( const mat3 &m )
 {
     // Cinder mat3 is column-major, Rive Mat2D is [xx, xy, yx, yy, tx, ty]
     return Mat2D( m[0][0], m[0][1], m[1][0], m[1][1], m[2][0], m[2][1] );
-}
-
-// Convert FillRule to Rive FillRule
-static rive::FillRule toRiveFillRule( FillRule rule )
-{
-    return rule == FillRule::EvenOdd ? rive::FillRule::evenOdd : rive::FillRule::nonZero;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -92,60 +94,82 @@ ImageGl::ImageGl() : mImpl( std::make_unique<ImageGlImpl>() ) {}
 ImageGl::~ImageGl() = default;
 
 // ------------------------------------------------------------------------------------------------
-// GlyphCache implementation
+// FrozenPathGl implementation
 // ------------------------------------------------------------------------------------------------
 
-CachedPathRef GlyphCache::getGlyph( CanvasGl* canvas, const Font &font, Font::Glyph glyphIndex )
+FrozenPathGl::FrozenPathGl() : mImpl( std::make_unique<FrozenPathGlImpl>() ) {}
+
+FrozenPathGl::~FrozenPathGl() = default;
+
+bool FrozenPathGl::isValid() const
 {
-    GlyphKey key{ font.getName(), font.getSize(), glyphIndex };
-
-    auto it = mCache.find( key );
-    if( it != mCache.end() ) {
-        return it->second;
-    }
-
-    // Cache miss - create the glyph path
-    try {
-        Shape2d glyphShape = font.getGlyphShape( glyphIndex );
-
-        // Skip empty glyphs (like spaces)
-        if( glyphShape.getContours().empty() ) {
-            mCache[key] = nullptr;
-            return nullptr;
-        }
-
-        auto cachedPath = canvas->createPath( glyphShape );
-        mCache[key] = cachedPath;
-        return cachedPath;
-    }
-    catch( const std::exception& e ) {
-        CI_LOG_W( "Failed to create glyph path for index " << glyphIndex << ": " << e.what() );
-        mCache[key] = nullptr;
-        return nullptr;
-    }
+    // Stub implementation - valid if we have a cached path
+    return mImpl && mImpl->cachedPath;
 }
 
-void GlyphCache::clear()
-{
-    mCache.clear();
-}
+// GlyphCache implementation is now in Canvas.cpp
 
 // ------------------------------------------------------------------------------------------------
 // CanvasGl implementation
 // ------------------------------------------------------------------------------------------------
 
-CanvasGl::CanvasGl( const CanvasOptions &options )
-    : mFbo( nullptr )
-    , mUseFloatingPointBuffer( options.useFloatingPointBuffer )
+CanvasGlRef CanvasGl::create()
 {
-    initializeGl( options );
+    // Query window's MSAA sample count
+    GLint samples = 0;
+    glBindFramebuffer( GL_FRAMEBUFFER, 0 );  // Ensure default framebuffer is bound
+    glGetIntegerv( GL_SAMPLES, &samples );
+
+    bool windowHasMsaa = samples > 1;
+    CI_LOG_I( "Window MSAA samples: " << samples << " (MSAA " << (windowHasMsaa ? "enabled" : "disabled") << ")" );
+
+    auto canvas = CanvasGlRef( new CanvasGl( RenderMode::Window ) );
+    canvas->mWindowHasMsaa = windowHasMsaa;
+    return canvas;
 }
 
-CanvasGl::CanvasGl( const gl::FboRef &fbo, const CanvasOptions &options )
-    : mFbo( fbo )
-    , mUseFloatingPointBuffer( options.useFloatingPointBuffer )
+CanvasGlRef CanvasGl::create( int width, int height )
 {
-    initializeGl( options );
+    CI_ASSERT_MSG( width > 0 && height > 0, "Offscreen canvas dimensions must be positive" );
+
+    auto canvas = CanvasGlRef( new CanvasGl( RenderMode::Offscreen, width, height ) );
+    return canvas;
+}
+
+CanvasGl::CanvasGl( RenderMode mode, int fboWidth, int fboHeight )
+    : mRenderMode( mode )
+    , mOffscreenSize( fboWidth, fboHeight )
+{
+    // Determine if we should force MSAA mode (disable atomic)
+    // - Window mode with MSAA: force MSAA mode to avoid double-coverage artifacts
+    // - macOS: always force MSAA mode (GL 4.1 doesn't support PLS/FSI)
+    // - Offscreen mode: use atomic mode for analytical AA
+    bool forceMsaaMode = false;
+#if defined( CINDER_MAC )
+    forceMsaaMode = true;  // macOS GL 4.1 doesn't support PLS/FSI
+#else
+    if( mode == RenderMode::Window ) {
+        // Will be set properly after MSAA detection in create()
+        // For now, query it here as well
+        GLint samples = 0;
+        glGetIntegerv( GL_SAMPLES, &samples );
+        forceMsaaMode = samples > 1;
+        mWindowHasMsaa = forceMsaaMode;
+    }
+#endif
+
+    initializeGl( forceMsaaMode );
+
+    // Create offscreen FBO if in offscreen mode
+    if( mode == RenderMode::Offscreen && fboWidth > 0 && fboHeight > 0 ) {
+        gl::Fbo::Format format;
+        format.colorTexture( gl::Texture::Format()
+            .internalFormat( GL_RGBA16F )
+            .minFilter( GL_LINEAR )
+            .magFilter( GL_LINEAR ) );
+        mOffscreenFbo = gl::Fbo::create( fboWidth, fboHeight, format );
+        CI_LOG_I( "Created offscreen RGBA16F FBO: " << fboWidth << "x" << fboHeight );
+    }
 }
 
 CanvasGl::~CanvasGl()
@@ -153,14 +177,14 @@ CanvasGl::~CanvasGl()
     if( mInFrame ) {
         CI_LOG_W( "CanvasGl destroyed while still in frame" );
     }
-    mRiveRenderer.reset();
+    mRiveRenderer = nullptr;  // Clear base class pointer
+    mOwnedRiveRenderer.reset();
     mRiveContext.reset();
 }
 
-void CanvasGl::initializeGl( const CanvasOptions &options )
+void CanvasGl::initializeGl( bool forceMsaaMode )
 {
-    CI_LOG_I( "Creating Rive GL context with disablePLS=" << options.disablePixelLocalStorage
-              << " disableFSI=" << options.disableFragmentShaderInterlock );
+    CI_LOG_I( "Creating Rive GL context with forceMsaaMode=" << forceMsaaMode );
 
     // Initialize Rive's GLAD loader - this sets up GLAD_GL_version_major etc.
 #if defined( CINDER_MSW )
@@ -170,13 +194,13 @@ void CanvasGl::initializeGl( const CanvasOptions &options )
 #endif
 
     RenderContextGLImpl::ContextOptions riveOptions;
-    riveOptions.disablePixelLocalStorage = options.disablePixelLocalStorage;
-    riveOptions.disableFragmentShaderInterlock = options.disableFragmentShaderInterlock;
+    riveOptions.disablePixelLocalStorage = forceMsaaMode;
+    riveOptions.disableFragmentShaderInterlock = forceMsaaMode;
 
     mRiveContext = RenderContextGLImpl::MakeContext( riveOptions );
 
     if( ! mRiveContext ) {
-        throw VgExc( "Failed to create Rive GL RenderContext" );
+        throw vg::Exc( "Failed to create Rive GL RenderContext" );
     }
 
     // Store the GL-specific pointer for invalidateGLState()
@@ -188,10 +212,43 @@ void CanvasGl::initializeGl( const CanvasOptions &options )
               << " supportsAtomicMode=" << features.supportsAtomicMode
               << " supportsClockwiseAtomicMode=" << features.supportsClockwiseAtomicMode );
 
-    // CRITICAL: Restore host GL state after Rive initialization
-    // Rive's context creation modifies VAOs, VBOs, shaders, etc.
-    // We need to restore Cinder/ImGui's expected GL state
-    restoreHostState( ivec2( 800, 600 ) );  // Use reasonable default size
+    // CRITICAL: Clean up Rive's initialization state
+    // Rive's context creation modifies VAOs, VBOs, textures, shaders, etc.
+    // unbindGLInternalResources() uses raw GL calls, so we must invalidate
+    // Cinder's caches so it knows to re-query/re-bind state.
+    if( mRiveContextGl ) {
+        mRiveContextGl->unbindGLInternalResources();
+    }
+
+    // Invalidate Cinder's cached knowledge of GL state that Rive touched
+    auto* ctx = gl::context();
+    if( ctx ) {
+        // Buffer bindings - Rive uses VBOs and UBOs
+        ctx->invalidateBufferBindingCache( GL_ARRAY_BUFFER );
+        ctx->invalidateBufferBindingCache( GL_ELEMENT_ARRAY_BUFFER );
+        ctx->invalidateBufferBindingCache( GL_UNIFORM_BUFFER );
+
+        // VAO - Rive creates its own VAOs
+        ctx->restoreInvalidatedVao();
+
+        // Textures/samplers - push/pop to force Cinder to re-query
+        for( uint8_t i = 0; i < 8; ++i ) {
+            ctx->pushTextureBinding( GL_TEXTURE_2D, i );
+            ctx->popTextureBinding( GL_TEXTURE_2D, i, true );
+#if defined( CINDER_GL_HAS_SAMPLERS )
+            ctx->pushSamplerBinding( i, 0 );
+            ctx->popSamplerBinding( i, true );
+#endif
+        }
+
+        // Shader program
+        ctx->pushGlslProg();
+        ctx->popGlslProg( true );
+
+        // Framebuffer
+        ctx->pushFramebuffer();
+        ctx->popFramebuffer( true );
+    }
 }
 
 void CanvasGl::invalidateState()
@@ -201,6 +258,73 @@ void CanvasGl::invalidateState()
     }
 }
 
+void CanvasGl::saveHostState()
+{
+    auto* ctx = gl::context();
+    if( ! ctx ) return;
+
+    // === Push all GL state that Rive may modify ===
+
+    // VAO and program
+    ctx->pushVao();
+    ctx->pushGlslProg();
+
+    // Buffer bindings (Rive uses VBO, UBO, potentially EBO)
+    ctx->pushBufferBinding( GL_ARRAY_BUFFER );
+    ctx->pushBufferBinding( GL_ELEMENT_ARRAY_BUFFER );
+    ctx->pushBufferBinding( GL_UNIFORM_BUFFER );
+
+    // Framebuffer (no argument = push current binding for GL_FRAMEBUFFER target)
+    ctx->pushFramebuffer();
+
+    // Save active texture BEFORE the loop (since pushTextureBinding modifies active texture)
+    ctx->pushActiveTexture();
+
+    // Texture bindings (Rive uses multiple texture units)
+    for( uint8_t i = 0; i < 8; ++i ) {
+        ctx->pushTextureBinding( GL_TEXTURE_2D, i );
+#if defined( CINDER_GL_HAS_SAMPLERS )
+        ctx->pushSamplerBinding( i, ctx->getSamplerBinding( i ) );
+#endif
+    }
+
+    // Bool states Rive modifies
+    ctx->pushBoolState( GL_BLEND );
+    ctx->pushBoolState( GL_DEPTH_TEST );
+    ctx->pushBoolState( GL_STENCIL_TEST );
+    ctx->pushBoolState( GL_SCISSOR_TEST );
+    ctx->pushBoolState( GL_CULL_FACE );
+
+    // Blend function and equation
+    ctx->pushBlendFuncSeparate();
+    ctx->pushBlendEquationSeparate();
+
+    // Masks
+    ctx->pushColorMask( ctx->getColorMask().r, ctx->getColorMask().g, ctx->getColorMask().b, ctx->getColorMask().a );
+    ctx->pushDepthMask( ctx->getDepthMask() );
+    ctx->pushStencilMask( ctx->getStencilMask().x, ctx->getStencilMask().y );
+
+    // Stencil function and operation
+    ctx->pushStencilFunc( GL_ALWAYS, 0, 0xFF );  // Push current state - Cinder will query GL if stack is empty
+    ctx->pushStencilOp( GL_KEEP, GL_KEEP, GL_KEEP );
+
+    // Front face (Rive uses CW, Cinder expects CCW)
+    ctx->pushFrontFace();
+
+    // Cull face mode
+    ctx->pushCullFace();
+
+    // Depth function
+    ctx->pushDepthFunc();
+
+    // Line width (wireframe mode)
+    ctx->pushLineWidth();
+
+    // Viewport and scissor
+    ctx->pushViewport();
+    ctx->pushScissor();
+}
+
 void CanvasGl::restoreHostState( const ivec2 &size )
 {
     // First unbind Rive's internal GL resources
@@ -208,124 +332,136 @@ void CanvasGl::restoreHostState( const ivec2 &size )
         mRiveContextGl->unbindGLInternalResources();
     }
 
-    // Clear any pending GL errors
-    while( glGetError() != GL_NO_ERROR ) {}
+    auto* ctx = gl::context();
+    if( ! ctx ) return;
 
-    // === Reset raw GL state ===
+    // === Pop all GL state with forceRestore=true ===
+    // This ensures the actual GL state matches what Cinder had before
 
-    // Buffer bindings
-    glBindBuffer( GL_ARRAY_BUFFER, 0 );
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
-    glBindBuffer( GL_UNIFORM_BUFFER, 0 );
+    // Viewport and scissor (pop first since they affect rendering)
+    ctx->popScissor( true );
+    ctx->popViewport( true );
 
-    // Framebuffer - restore to screen or FBO
-    if( mFbo ) {
-        mFbo->bindFramebuffer();
-    } else {
-        glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+    // Line width
+    ctx->popLineWidth( true );
+
+    // Depth function
+    ctx->popDepthFunc( true );
+
+    // Cull face mode
+    ctx->popCullFace( true );
+
+    // Front face
+    ctx->popFrontFace( true );
+
+    // Stencil function and operation
+    ctx->popStencilOp( true );
+    ctx->popStencilFunc( true );
+
+    // Masks
+    ctx->popStencilMask( true );
+    ctx->popDepthMask( true );
+    ctx->popColorMask( true );
+
+    // Blend equation and function
+    ctx->popBlendEquationSeparate( true );
+    ctx->popBlendFuncSeparate( true );
+
+    // Bool states
+    ctx->popBoolState( GL_CULL_FACE, true );
+    ctx->popBoolState( GL_SCISSOR_TEST, true );
+    ctx->popBoolState( GL_STENCIL_TEST, true );
+    ctx->popBoolState( GL_DEPTH_TEST, true );
+    ctx->popBoolState( GL_BLEND, true );
+
+    // Texture bindings (pop in reverse order - LIFO)
+    for( int i = 7; i >= 0; --i ) {
+#if defined( CINDER_GL_HAS_SAMPLERS )
+        ctx->popSamplerBinding( i, true );
+#endif
+        ctx->popTextureBinding( GL_TEXTURE_2D, i, true );
     }
+    // Pop active texture AFTER texture bindings (matches push order: active texture first, then bindings)
+    ctx->popActiveTexture( true );
 
-    // Reset all texture units and samplers
-    for( int i = 0; i < 8; ++i ) {
-        glActiveTexture( GL_TEXTURE0 + i );
-        glBindTexture( GL_TEXTURE_2D, 0 );
-        glBindSampler( i, 0 );
-    }
-    glActiveTexture( GL_TEXTURE0 );
+    // Framebuffer
+    ctx->popFramebuffer( GL_FRAMEBUFFER );
 
-    // Rive sets GL_CW winding, Cinder expects GL_CCW (default)
-    glFrontFace( GL_CCW );
+    // Buffer bindings - first restore the invalidated bindings from cache
+    ctx->restoreInvalidatedBufferBinding( GL_UNIFORM_BUFFER );
+    ctx->restoreInvalidatedBufferBinding( GL_ELEMENT_ARRAY_BUFFER );
+    ctx->restoreInvalidatedBufferBinding( GL_ARRAY_BUFFER );
+    ctx->popBufferBinding( GL_UNIFORM_BUFFER );
+    ctx->popBufferBinding( GL_ELEMENT_ARRAY_BUFFER );
+    ctx->popBufferBinding( GL_ARRAY_BUFFER );
 
-    // Reset enable states
-    glDisable( GL_CULL_FACE );
-    glDisable( GL_SCISSOR_TEST );
-    glDisable( GL_DEPTH_TEST );
-    glDisable( GL_STENCIL_TEST );
-    glColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
-    glDepthMask( GL_TRUE );
+    // VAO - restore invalidated state first, then pop
+    ctx->restoreInvalidatedVao();
+    ctx->popGlslProg( true );
+    ctx->popVao();
 
-    // Reset line width that Rive's wireframe mode may change
-    glLineWidth( 1.0f );
-
-    // Re-enable blending with Cinder's expected blend func
-    glEnable( GL_BLEND );
-    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-
-    // === Synchronize Cinder's internal GL state tracking ===
-    auto* ctx_gl = gl::context();
-    if( ctx_gl ) {
-        // Invalidate buffer binding caches
-        ctx_gl->invalidateBufferBindingCache( GL_ARRAY_BUFFER );
-        ctx_gl->invalidateBufferBindingCache( GL_ELEMENT_ARRAY_BUFFER );
-        ctx_gl->invalidateBufferBindingCache( GL_UNIFORM_BUFFER );
-
-        // Reset actual GL state for VAO and program
-        glUseProgram( 0 );
-        glBindVertexArray( 0 );
-
-        // Tell Cinder its tracking is invalid
-        ctx_gl->bindGlslProg( nullptr );
-        ctx_gl->bindVao( nullptr );
-
-        // Bind Cinder's default VAO
-        gl::Vao* defaultVao = ctx_gl->getDefaultVao();
-        if( defaultVao ) {
-            ctx_gl->bindVao( defaultVao );
-        }
-
-        // Get and bind the stock shader
-        auto defaultShader = gl::getStockShader( gl::ShaderDef().color() );
-        if( defaultShader ) {
-            defaultShader->bind();
-        }
-
-        // Unbind textures using Cinder's tracking to keep cache in sync
-        for( uint8_t i = 0; i < 8; ++i ) {
-            ctx_gl->bindTexture( GL_TEXTURE_2D, 0, i );
-            ctx_gl->bindSampler( i, 0 );
-        }
-        ctx_gl->setActiveTexture( 0 );
-    }
-
-    // Reset viewport and matrices AFTER binding shader so uniforms get set
-    gl::viewport( 0, 0, size.x, size.y );
+    // Set matrices for the size
     gl::setMatricesWindow( size );
 }
 
-void CanvasGl::setFbo( const gl::FboRef &fbo )
+gl::Texture2dRef CanvasGl::getTexture() const
 {
-    if( mInFrame ) {
-        CI_LOG_W( "Cannot change FBO while in frame" );
-        return;
+    if( mRenderMode == RenderMode::Offscreen && mOffscreenFbo ) {
+        return mOffscreenFbo->getColorTexture();
     }
-    mFbo = fbo;
+    return nullptr;
+}
+
+ivec2 CanvasGl::getFboSize() const
+{
+    if( mRenderMode == RenderMode::Offscreen ) {
+        return mOffscreenSize;
+    }
+    return ivec2( 0, 0 );
+}
+
+void CanvasGl::begin()
+{
+    // Offscreen mode - use FBO dimensions
+    CI_ASSERT_MSG( mRenderMode == RenderMode::Offscreen, "begin() without size argument is only valid for offscreen canvases. Use begin(size) for window mode." );
+    CI_ASSERT_MSG( mOffscreenFbo, "Offscreen FBO not created" );
+    begin( mOffscreenSize );
 }
 
 void CanvasGl::begin( const ivec2 &size )
 {
     CI_ASSERT_MSG( ! mInFrame, "begin() called while already in frame - did you forget to call end()?" );
+    CI_ASSERT_MSG( size.x > 0 && size.y > 0, "begin() size must be positive" );
+
+    // For offscreen mode, resize FBO if needed
+    if( mRenderMode == RenderMode::Offscreen && size != mOffscreenSize ) {
+        gl::Fbo::Format format;
+        format.colorTexture( gl::Texture::Format()
+            .internalFormat( GL_RGBA16F )
+            .minFilter( GL_LINEAR )
+            .magFilter( GL_LINEAR ) );
+        mOffscreenFbo = gl::Fbo::create( size.x, size.y, format );
+        mOffscreenSize = size;
+        CI_LOG_I( "Resized offscreen FBO to: " << size.x << "x" << size.y );
+    }
 
     mFrameSize = size;
     mInFrame = true;
 
-    // Create or resize internal floating-point FBO if needed
-    if( mUseFloatingPointBuffer && ! mFbo ) {
-        if( ! mInternalFbo || mInternalFbo->getWidth() != size.x || mInternalFbo->getHeight() != size.y ) {
-            gl::Fbo::Format format;
-            format.colorTexture( gl::Texture::Format()
-                .internalFormat( GL_RGBA16F )
-                .minFilter( GL_LINEAR )
-                .magFilter( GL_LINEAR ) );
-            mInternalFbo = gl::Fbo::create( size.x, size.y, format );
-            CI_LOG_I( "Created internal RGBA16F FBO: " << size.x << "x" << size.y );
-        }
-    }
-
     if( mRiveContext ) {
+        // Save host GL state before Rive takes over
+        saveHostState();
+
         RenderContext::FrameDescriptor frameDesc;
         frameDesc.renderTargetWidth = size.x;
         frameDesc.renderTargetHeight = size.y;
-        frameDesc.loadAction = gpu::LoadAction::preserveRenderTarget;  // Preserve host app's background
+        // Clear offscreen FBO, preserve window framebuffer (so app's gl::clear works)
+        if( mRenderMode == RenderMode::Offscreen ) {
+            frameDesc.loadAction = gpu::LoadAction::clear;
+            frameDesc.clearColor = 0x00000000;  // Transparent black
+        } else {
+            frameDesc.loadAction = gpu::LoadAction::preserveRenderTarget;
+        }
         frameDesc.clockwiseFillOverride = true; // Enable feathering for any fill rule
 
         // Invalidate GL state since Cinder may have modified it
@@ -333,8 +469,9 @@ void CanvasGl::begin( const ivec2 &size )
 
         mRiveContext->beginFrame( frameDesc );
 
-        // Create RiveRenderer for this frame
-        mRiveRenderer = std::make_unique<RiveRenderer>( mRiveContext.get() );
+        // Create RiveRenderer for this frame and set base class pointer
+        mOwnedRiveRenderer = std::make_unique<RiveRenderer>( mRiveContext.get() );
+        mRiveRenderer = mOwnedRiveRenderer.get();
     }
 }
 
@@ -342,24 +479,26 @@ void CanvasGl::end()
 {
     CI_ASSERT_MSG( mInFrame, "end() called without begin()" );
 
-    // Destroy the renderer before flush
-    mRiveRenderer.reset();
+    // Clear base class pointer and destroy the renderer before flush
+    mRiveRenderer = nullptr;
+    mOwnedRiveRenderer.reset();
 
     if( mRiveContext ) {
-        // Create render target for the appropriate framebuffer
+        // Determine target FBO and sample count
         GLuint framebufferId = 0;
         int sampleCount = 1;
 
-        // Determine the target FBO
-        gl::FboRef targetFbo = mFbo;  // User-provided FBO
-        if( ! targetFbo && mInternalFbo ) {
-            targetFbo = mInternalFbo;  // Use internal floating-point FBO
-        }
-
-        if( targetFbo ) {
-            framebufferId = targetFbo->getId();
-            sampleCount = targetFbo->getFormat().getSamples();
-            if( sampleCount == 0 ) sampleCount = 1;
+        if( mRenderMode == RenderMode::Offscreen && mOffscreenFbo ) {
+            // Offscreen: render to our internal FBO
+            framebufferId = mOffscreenFbo->getId();
+            sampleCount = 1;  // Always single-sample for atomic mode
+        } else if( mRenderMode == RenderMode::Window ) {
+            // Window: render directly to default framebuffer
+            framebufferId = 0;
+            // Get the actual sample count from the window
+            GLint samples = 0;
+            glGetIntegerv( GL_SAMPLES, &samples );
+            sampleCount = std::max( 1, (int)samples );
         }
 
         auto renderTarget = make_rcp<FramebufferRenderTargetGL>(
@@ -372,270 +511,24 @@ void CanvasGl::end()
 
         // Restore Cinder's expected GL state
         restoreHostState( mFrameSize );
-
-        // If using internal FBO, blit to screen
-        if( mInternalFbo && ! mFbo ) {
-            gl::ScopedViewport vp( mFrameSize );
-            gl::ScopedMatrices matrices;
-            gl::setMatricesWindow( mFrameSize );
-            gl::ScopedBlendPremult blend;
-            gl::ScopedColor color( Color::white() );
-            gl::draw( mInternalFbo->getColorTexture(), Rectf( 0, 0, (float)mFrameSize.x, (float)mFrameSize.y ) );
-        }
     }
 
     mInFrame = false;
 }
 
-void CanvasGl::save()
-{
-    mTransformStack.push_back( mTransform );
-    // Also save Rive's clip state
-    if( mInFrame && mRiveRenderer ) {
-        mRiveRenderer->save();
-    }
-}
+// Transform methods (translate, rotate, scale, transform, setTransform, resetTransform)
+// are now implemented in Canvas base class
 
-void CanvasGl::restore()
-{
-    if( ! mTransformStack.empty() ) {
-        mTransform = mTransformStack.back();
-        mTransformStack.pop_back();
-    }
-    // Also restore Rive's clip state
-    if( mInFrame && mRiveRenderer ) {
-        mRiveRenderer->restore();
-    }
-}
+// Drawing Primitives (fillRect, strokeRect, fillCircle, strokeCircle, etc.)
+// are now implemented in Canvas base class using Path2d
 
-void CanvasGl::translate( const vec2 &offset )
-{
-    mat3 t( 1.0f );
-    t[2][0] = offset.x;
-    t[2][1] = offset.y;
-    mTransform = mTransform * t;
-}
-
-void CanvasGl::rotate( float radians )
-{
-    float c = std::cos( radians );
-    float s = std::sin( radians );
-    mat3 r( 1.0f );
-    r[0][0] = c;  r[0][1] = s;
-    r[1][0] = -s; r[1][1] = c;
-    mTransform = mTransform * r;
-}
-
-void CanvasGl::scale( const vec2 &s )
-{
-    mat3 sc( 1.0f );
-    sc[0][0] = s.x;
-    sc[1][1] = s.y;
-    mTransform = mTransform * sc;
-}
-
-void CanvasGl::transform( const mat3 &m )
-{
-    mTransform = mTransform * m;
-}
-
-void CanvasGl::setTransform( const mat3 &m )
-{
-    mTransform = m;
-}
-
-void CanvasGl::resetTransform()
-{
-    mTransform = mat3();
-}
-
-// ------------------------------------------------------------------------------------------------
-// Drawing Primitives
-// ------------------------------------------------------------------------------------------------
-
-void CanvasGl::fillRect( const Rectf &rect, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end() - call begin() first" );
-
-    RawPath rawPath;
-    rawPath.addRect( AABB{ rect.x1, rect.y1, rect.x2, rect.y2 } );
-
-    drawPathInternal( std::move( rawPath ), paint, true, false );
-}
-
-void CanvasGl::strokeRect( const Rectf &rect, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath;
-    rawPath.addRect( AABB{ rect.x1, rect.y1, rect.x2, rect.y2 } );
-
-    drawPathInternal( std::move( rawPath ), paint, false, true );
-}
-
-void CanvasGl::fillRoundedRect( const Rectf &rect, float radius, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    // Build rounded rect path manually
-    RawPath rawPath;
-    float x1 = rect.x1, y1 = rect.y1, x2 = rect.x2, y2 = rect.y2;
-    float r = std::min( radius, std::min( rect.getWidth(), rect.getHeight() ) / 2.0f );
-
-    rawPath.moveTo( x1 + r, y1 );
-    rawPath.lineTo( x2 - r, y1 );
-    rawPath.cubicTo( x2 - r * 0.45f, y1, x2, y1 + r * 0.45f, x2, y1 + r );
-    rawPath.lineTo( x2, y2 - r );
-    rawPath.cubicTo( x2, y2 - r * 0.45f, x2 - r * 0.45f, y2, x2 - r, y2 );
-    rawPath.lineTo( x1 + r, y2 );
-    rawPath.cubicTo( x1 + r * 0.45f, y2, x1, y2 - r * 0.45f, x1, y2 - r );
-    rawPath.lineTo( x1, y1 + r );
-    rawPath.cubicTo( x1, y1 + r * 0.45f, x1 + r * 0.45f, y1, x1 + r, y1 );
-    rawPath.close();
-
-    drawPathInternal( std::move( rawPath ), paint, true, false );
-}
-
-void CanvasGl::strokeRoundedRect( const Rectf &rect, float radius, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath;
-    float x1 = rect.x1, y1 = rect.y1, x2 = rect.x2, y2 = rect.y2;
-    float r = std::min( radius, std::min( rect.getWidth(), rect.getHeight() ) / 2.0f );
-
-    rawPath.moveTo( x1 + r, y1 );
-    rawPath.lineTo( x2 - r, y1 );
-    rawPath.cubicTo( x2 - r * 0.45f, y1, x2, y1 + r * 0.45f, x2, y1 + r );
-    rawPath.lineTo( x2, y2 - r );
-    rawPath.cubicTo( x2, y2 - r * 0.45f, x2 - r * 0.45f, y2, x2 - r, y2 );
-    rawPath.lineTo( x1 + r, y2 );
-    rawPath.cubicTo( x1 + r * 0.45f, y2, x1, y2 - r * 0.45f, x1, y2 - r );
-    rawPath.lineTo( x1, y1 + r );
-    rawPath.cubicTo( x1, y1 + r * 0.45f, x1 + r * 0.45f, y1, x1 + r, y1 );
-    rawPath.close();
-
-    drawPathInternal( std::move( rawPath ), paint, false, true );
-}
-
-void CanvasGl::fillCircle( const vec2 &center, float radius, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath;
-    rawPath.addOval( AABB{ center.x - radius, center.y - radius,
-                          center.x + radius, center.y + radius } );
-
-    drawPathInternal( std::move( rawPath ), paint, true, false );
-}
-
-void CanvasGl::strokeCircle( const vec2 &center, float radius, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath;
-    rawPath.addOval( AABB{ center.x - radius, center.y - radius,
-                          center.x + radius, center.y + radius } );
-
-    drawPathInternal( std::move( rawPath ), paint, false, true );
-}
-
-void CanvasGl::fillEllipse( const vec2 &center, const vec2 &radii, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath;
-    rawPath.addOval( AABB{ center.x - radii.x, center.y - radii.y,
-                          center.x + radii.x, center.y + radii.y } );
-
-    drawPathInternal( std::move( rawPath ), paint, true, false );
-}
-
-void CanvasGl::strokeEllipse( const vec2 &center, const vec2 &radii, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath;
-    rawPath.addOval( AABB{ center.x - radii.x, center.y - radii.y,
-                          center.x + radii.x, center.y + radii.y } );
-
-    drawPathInternal( std::move( rawPath ), paint, false, true );
-}
-
-void CanvasGl::drawLine( const vec2 &p0, const vec2 &p1, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath;
-    rawPath.moveTo( p0.x, p0.y );
-    rawPath.lineTo( p1.x, p1.y );
-
-    drawPathInternal( std::move( rawPath ), paint, false, true );
-}
-
-// ------------------------------------------------------------------------------------------------
-// Path Drawing (uncached)
-// ------------------------------------------------------------------------------------------------
-
-void CanvasGl::fillPath( const Path2d &path, const Paint &paint, FillRule rule )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath = toRivePath( path );
-    drawPathInternal( std::move( rawPath ), paint, true, false, rule );
-}
-
-void CanvasGl::strokePath( const Path2d &path, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath = toRivePath( path );
-    drawPathInternal( std::move( rawPath ), paint, false, true );
-}
-
-void CanvasGl::fillShape( const Shape2d &shape, const Paint &paint, FillRule rule )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath = toRivePath( shape );
-    drawPathInternal( std::move( rawPath ), paint, true, false, rule );
-}
-
-void CanvasGl::strokeShape( const Shape2d &shape, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath = toRivePath( shape );
-    drawPathInternal( std::move( rawPath ), paint, false, true );
-}
-
-void CanvasGl::strokePolyLine( const PolyLine2f &polyline, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath = toRivePath( polyline );
-    drawPathInternal( std::move( rawPath ), paint, false, true );
-}
-
-void CanvasGl::fillPolyLine( const PolyLine2f &polyline, const Paint &paint, FillRule rule )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    RawPath rawPath = toRivePath( polyline );
-    rawPath.close();
-    drawPathInternal( std::move( rawPath ), paint, true, false, rule );
-}
+// implFillShape and implStrokeShape are now implemented in Canvas base class
 
 // ------------------------------------------------------------------------------------------------
 // Cached Path API
 // ------------------------------------------------------------------------------------------------
 
-CachedPathRef CanvasGl::createPath( const Path2d &path )
-{
-    Shape2d shape;
-    shape.appendContour( path );
-    return createPath( shape );
-}
+// createPath(Path2d) is implemented in Canvas base class - it converts to Shape2d
 
 CachedPathRef CanvasGl::createPath( const Shape2d &shape )
 {
@@ -671,9 +564,84 @@ CachedPathRef CanvasGl::createPath( const Shape2d &shape )
     return cachedPath;
 }
 
+// ------------------------------------------------------------------------------------------------
+// Path Drawing (uncached) - Override for DisplayList recording
+// ------------------------------------------------------------------------------------------------
+
+void CanvasGl::fillPath( const Path2d &path, const Paint &paint, FillRule rule )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( path );
+        if( cachedPath ) {
+            mRecordingDisplayList->recordFillPath( cachedPath, paint, rule );
+        }
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::fillPath( path, paint, rule );
+}
+
+void CanvasGl::strokePath( const Path2d &path, const Paint &paint )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( path );
+        if( cachedPath ) {
+            mRecordingDisplayList->recordStrokePath( cachedPath, paint );
+        }
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::strokePath( path, paint );
+}
+
+void CanvasGl::fillShape( const Shape2d &shape, const Paint &paint, FillRule rule )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( shape );
+        if( cachedPath ) {
+            mRecordingDisplayList->recordFillPath( cachedPath, paint, rule );
+        }
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::fillShape( shape, paint, rule );
+}
+
+void CanvasGl::strokeShape( const Shape2d &shape, const Paint &paint )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( shape );
+        if( cachedPath ) {
+            mRecordingDisplayList->recordStrokePath( cachedPath, paint );
+        }
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::strokeShape( shape, paint );
+}
+
+// ------------------------------------------------------------------------------------------------
+// Cached Path API
+// ------------------------------------------------------------------------------------------------
+
 void CanvasGl::fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule )
 {
     if( ! path ) return;
+
+    // If recording, redirect to DisplayList
+    if( mRecordingDisplayList ) {
+        mRecordingDisplayList->recordFillPath( path, paint, rule );
+        return;
+    }
+
     auto glPath = std::dynamic_pointer_cast<CachedPathGl>( path );
     if( glPath ) {
         drawCachedPathInternal( glPath.get(), paint, true, false, rule );
@@ -683,6 +651,13 @@ void CanvasGl::fillPath( const CachedPathRef &path, const Paint &paint, FillRule
 void CanvasGl::strokePath( const CachedPathRef &path, const Paint &paint )
 {
     if( ! path ) return;
+
+    // If recording, redirect to DisplayList
+    if( mRecordingDisplayList ) {
+        mRecordingDisplayList->recordStrokePath( path, paint );
+        return;
+    }
+
     auto glPath = std::dynamic_pointer_cast<CachedPathGl>( path );
     if( glPath ) {
         drawCachedPathInternal( glPath.get(), paint, false, true );
@@ -776,12 +751,7 @@ ImageRef CanvasGl::createImage( const Surface &surface )
     return image;
 }
 
-void CanvasGl::drawImage( const ImageRef &image, const vec2 &position )
-{
-    if( ! image ) return;
-    Rectf destRect( position, position + vec2( image->getSize() ) );
-    drawImage( image, destRect );
-}
+// drawImage(position) is now implemented in Canvas base class
 
 void CanvasGl::drawImage( const ImageRef &image, const Rectf &destRect )
 {
@@ -888,207 +858,16 @@ void CanvasGl::drawImageMesh( const ImageRef &image,
     );
 }
 
-// ------------------------------------------------------------------------------------------------
-// Text API
-// ------------------------------------------------------------------------------------------------
+// Text API (drawString, createTextPath) is now implemented in Canvas base class
 
-void CanvasGl::drawString( const std::string &text, const vec2 &position,
-                            const Font &font, const Paint &paint )
-{
-    if( ! mInFrame || ! mRiveRenderer || text.empty() ) return;
-
-    // Get glyphs from the font
-    std::vector<Font::Glyph> glyphs = font.getGlyphs( text );
-
-    float x = position.x;
-    float y = position.y;
-
-    for( Font::Glyph glyph : glyphs ) {
-        // Get cached glyph path
-        auto glyphPath = mGlyphCache.getGlyph( this, font, glyph );
-
-        if( glyphPath ) {
-            save();
-            translate( vec2( x, y ) );
-            fillPath( glyphPath, paint );
-            restore();
-        }
-
-        // Advance position
-        Rectf bbox = font.getGlyphBoundingBox( glyph );
-        // Use glyph advance (approximate from bounding box for now)
-        x += bbox.getWidth() + 2.0f; // Add small spacing
-    }
-}
-
-CachedPathRef CanvasGl::createTextPath( const std::string &text, const Font &font )
-{
-    if( text.empty() ) return nullptr;
-
-    Shape2d textShape;
-    std::vector<Font::Glyph> glyphs = font.getGlyphs( text );
-
-    float x = 0;
-    for( Font::Glyph glyph : glyphs ) {
-        Shape2d glyphShape = font.getGlyphShape( glyph );
-
-        // Translate glyph to current position
-        mat3 glyphTransform;
-        glyphTransform[2][0] = x;
-
-        for( const auto& contour : glyphShape.getContours() ) {
-            Path2d transformedContour = contour.transformed( glyphTransform );
-            textShape.appendContour( transformedContour );
-        }
-
-        Rectf bbox = font.getGlyphBoundingBox( glyph );
-        x += bbox.getWidth() + 2.0f;
-    }
-
-    return createPath( textShape );
-}
-
-// ------------------------------------------------------------------------------------------------
-// Instanced Drawing API
-// ------------------------------------------------------------------------------------------------
-
-CachedPathRef CanvasGl::getOrCreateCirclePath( float radius )
-{
-    auto it = mCirclePathCache.find( radius );
-    if( it != mCirclePathCache.end() ) {
-        return it->second;
-    }
-
-    // Create circle path centered at origin
-    Path2d circlePath;
-    circlePath.arc( vec2( 0 ), radius, 0, float( M_PI * 2 ), true );
-    circlePath.close();
-
-    auto cached = createPath( circlePath );
-    mCirclePathCache[radius] = cached;
-    return cached;
-}
-
-CachedPathRef CanvasGl::getOrCreateRectPath( const vec2 &size )
-{
-    // Pack size into uint64 for map key
-    uint32_t w = *reinterpret_cast<const uint32_t*>( &size.x );
-    uint32_t h = *reinterpret_cast<const uint32_t*>( &size.y );
-    uint64_t key = (uint64_t( w ) << 32) | h;
-
-    auto it = mRectPathCache.find( key );
-    if( it != mRectPathCache.end() ) {
-        return it->second;
-    }
-
-    Path2d rectPath;
-    rectPath.moveTo( 0, 0 );
-    rectPath.lineTo( size.x, 0 );
-    rectPath.lineTo( size.x, size.y );
-    rectPath.lineTo( 0, size.y );
-    rectPath.close();
-
-    auto cached = createPath( rectPath );
-    mRectPathCache[key] = cached;
-    return cached;
-}
-
-void CanvasGl::drawCircles( std::span<const vec2> positions, float radius, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    auto circlePath = getOrCreateCirclePath( radius );
-    if( ! circlePath ) return;
-
-    for( const vec2& pos : positions ) {
-        save();
-        translate( pos );
-        fillPath( circlePath, paint );
-        restore();
-    }
-}
-
-void CanvasGl::drawCircles( std::span<const mat3> transforms, float radius, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    auto circlePath = getOrCreateCirclePath( radius );
-    if( ! circlePath ) return;
-
-    for( const mat3& xform : transforms ) {
-        save();
-        transform( xform );
-        fillPath( circlePath, paint );
-        restore();
-    }
-}
-
-void CanvasGl::drawRects( std::span<const vec2> positions, const vec2 &size, const Paint &paint )
-{
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
-
-    auto rectPath = getOrCreateRectPath( size );
-    if( ! rectPath ) return;
-
-    for( const vec2& pos : positions ) {
-        save();
-        translate( pos );
-        fillPath( rectPath, paint );
-        restore();
-    }
-}
-
-void CanvasGl::drawPaths( std::span<const vec2> positions, const CachedPathRef &path, const Paint &paint )
-{
-    if( ! mInFrame || ! mRiveRenderer || ! path ) return;
-
-    for( const vec2& pos : positions ) {
-        save();
-        translate( pos );
-        fillPath( path, paint );
-        restore();
-    }
-}
-
-void CanvasGl::drawPaths( std::span<const mat3> transforms, const CachedPathRef &path, const Paint &paint )
-{
-    if( ! mInFrame || ! mRiveRenderer || ! path ) return;
-
-    for( const mat3& xform : transforms ) {
-        save();
-        transform( xform );
-        fillPath( path, paint );
-        restore();
-    }
-}
+// Instanced Drawing API (drawCircles, drawRects, drawPaths, getOrCreateCirclePath, getOrCreateRectPath)
+// is now implemented in Canvas base class
 
 // ------------------------------------------------------------------------------------------------
 // Internal helpers
 // ------------------------------------------------------------------------------------------------
 
-void CanvasGl::drawPathInternal( RawPath rawPath, const Paint &paint,
-                                  bool fill, bool stroke, FillRule rule )
-{
-    if( ! mRiveContext ) return;
-
-    auto path = mRiveContext->makeRenderPath( rawPath, toRiveFillRule( rule ) );
-
-    if( fill ) {
-        auto rivePaint = paint.createRivePaint( mRiveContext.get(), false );
-        mRiveRenderer->save();
-        mRiveRenderer->transform( toRiveMat( mTransform ) );
-        mRiveRenderer->drawPath( path.get(), rivePaint.get() );
-        mRiveRenderer->restore();
-    }
-
-    if( stroke ) {
-        auto rivePaint = paint.createRivePaint( mRiveContext.get(), true );
-        mRiveRenderer->save();
-        mRiveRenderer->transform( toRiveMat( mTransform ) );
-        mRiveRenderer->drawPath( path.get(), rivePaint.get() );
-        mRiveRenderer->restore();
-    }
-}
+// drawPathInternal is now implemented in Canvas base class
 
 void CanvasGl::drawCachedPathInternal( const CachedPathGl* cachedPath, const Paint &paint,
                                         bool fill, bool stroke, FillRule rule )
@@ -1112,400 +891,339 @@ void CanvasGl::drawCachedPathInternal( const CachedPathGl* cachedPath, const Pai
     }
 }
 
-RawPath CanvasGl::toRivePath( const Path2d &path )
+// toRivePath implementations are now in Canvas base class
+// implClipPath is now implemented in Canvas base class
+// SVG rendering is handled by the base Canvas class using SvgRendererVg
+
+// ------------------------------------------------------------------------------------------------
+// FrozenPath API - Pre-tessellation caching for repeated path drawing
+// NOTE: Currently implemented as stubs that delegate to regular CachedPath drawing.
+// True tessellation caching requires deep Rive integration and is planned for future.
+// ------------------------------------------------------------------------------------------------
+
+FrozenPathRef CanvasGl::freezePathFill( const CachedPathRef &path, const Paint &paint, FillRule rule )
 {
-    RawPath rawPath;
-
-    if( path.getNumPoints() == 0 )
-        return rawPath;
-
-    // In Cinder Path2d:
-    // - Point 0 is always the moveTo point (no corresponding segment)
-    // - Segments (LINETO, QUADTO, etc.) consume points starting at index 1
-    // - sSegmentTypePointCounts = { 0, 1, 2, 3, 0 } for MOVETO, LINETO, QUADTO, CUBICTO, CLOSE
-
-    // Start with the moveTo point
-    vec2 startPt = path.getPoint( 0 );
-    rawPath.moveTo( startPt.x, startPt.y );
-
-    // Track point index starting at 1 (after moveTo)
-    size_t pointIndex = 1;
-
-    // Track last point for quad-to-cubic conversion
-    vec2 lastPt = startPt;
-
-    for( size_t seg = 0; seg < path.getNumSegments(); ++seg ) {
-        switch( path.getSegmentType( seg ) ) {
-            case Path2d::LINETO: {
-                vec2 p = path.getPoint( pointIndex++ );
-                rawPath.lineTo( p.x, p.y );
-                lastPt = p;
-                break;
-            }
-            case Path2d::QUADTO: {
-                // Convert quadratic bezier to cubic bezier
-                // Rive's computeCoarseArea doesn't support quads (hits RIVE_UNREACHABLE)
-                // Formula: C1 = P0 + 2/3*(P1-P0), C2 = P2 + 2/3*(P1-P2)
-                vec2 p1 = path.getPoint( pointIndex++ );  // Control point
-                vec2 p2 = path.getPoint( pointIndex++ );  // End point
-
-                vec2 c1 = lastPt + (2.0f / 3.0f) * (p1 - lastPt);
-                vec2 c2 = p2 + (2.0f / 3.0f) * (p1 - p2);
-
-                rawPath.cubicTo( c1.x, c1.y, c2.x, c2.y, p2.x, p2.y );
-                lastPt = p2;
-                break;
-            }
-            case Path2d::CUBICTO: {
-                vec2 p1 = path.getPoint( pointIndex++ );
-                vec2 p2 = path.getPoint( pointIndex++ );
-                vec2 p3 = path.getPoint( pointIndex++ );
-                rawPath.cubicTo( p1.x, p1.y, p2.x, p2.y, p3.x, p3.y );
-                lastPt = p3;
-                break;
-            }
-            case Path2d::CLOSE:
-                rawPath.close();
-                lastPt = startPt;
-                break;
-            default:
-                break;
-        }
+    // Stub implementation - just store a reference to the cached path
+    // The actual "freezing" (tessellation caching) is not yet implemented
+    if( ! path ) {
+        return nullptr;
     }
 
-    if( path.isClosed() && path.getNumSegments() > 0 &&
-        path.getSegmentType( path.getNumSegments() - 1 ) != Path2d::CLOSE ) {
-        rawPath.close();
-    }
+    auto frozenPath = std::make_shared<FrozenPathGl>();
+    frozenPath->mFillRule = rule;
+    frozenPath->mImpl->cachedPath = path;
+    frozenPath->mImpl->isStroke = false;
 
-    return rawPath;
+    return frozenPath;
 }
 
-RawPath CanvasGl::toRivePath( const Shape2d &shape )
+FrozenPathRef CanvasGl::freezePathStroke( const CachedPathRef &path, const Paint &paint )
 {
-    RawPath rawPath;
-
-    for( const auto& contour : shape.getContours() ) {
-        RawPath contourPath = toRivePath( contour );
-        rawPath.addPath( contourPath, nullptr ); // nullptr = identity transform
+    // Stub implementation - just store a reference to the cached path
+    if( ! path ) {
+        return nullptr;
     }
 
-    return rawPath;
+    auto frozenPath = std::make_shared<FrozenPathGl>();
+    frozenPath->mFillRule = FillRule::NonZero;  // Strokes always use non-zero
+    frozenPath->mImpl->cachedPath = path;
+    frozenPath->mImpl->isStroke = true;
+
+    return frozenPath;
 }
 
-RawPath CanvasGl::toRivePath( const PolyLine2f &polyline )
+void CanvasGl::drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint )
 {
-    RawPath rawPath;
+    // Stub implementation - delegate to regular path drawing
+    if( ! frozenPath ) return;
 
-    const auto& points = polyline.getPoints();
-    if( points.empty() ) return rawPath;
-
-    rawPath.moveTo( points[0].x, points[0].y );
-    for( size_t i = 1; i < points.size(); ++i ) {
-        rawPath.lineTo( points[i].x, points[i].y );
+    auto glFrozen = std::dynamic_pointer_cast<FrozenPathGl>( frozenPath );
+    if( ! glFrozen || ! glFrozen->isValid() ) {
+        return;
     }
 
-    if( polyline.isClosed() ) {
-        rawPath.close();
+    // Delegate to regular cached path drawing
+    if( glFrozen->mImpl->isStroke ) {
+        strokePath( glFrozen->mImpl->cachedPath, paint );
     }
-
-    return rawPath;
+    else {
+        fillPath( glFrozen->mImpl->cachedPath, paint, glFrozen->mFillRule );
+    }
 }
 
 // ------------------------------------------------------------------------------------------------
-// Clipping API
+// DisplayListGl implementation - Recording and replaying Canvas commands
 // ------------------------------------------------------------------------------------------------
 
-void CanvasGl::clipRect( const Rectf &rect )
+DisplayListGl::DisplayListGl( CanvasGl* canvas )
+    : mOwnerCanvas( canvas )
 {
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Clipping outside of begin()/end()" );
-
-    // Create a rect path and clip with it
-    RawPath rawPath;
-    rawPath.moveTo( rect.x1, rect.y1 );
-    rawPath.lineTo( rect.x2, rect.y1 );
-    rawPath.lineTo( rect.x2, rect.y2 );
-    rawPath.lineTo( rect.x1, rect.y2 );
-    rawPath.close();
-
-    auto path = mRiveContext->makeRenderPath( rawPath, rive::FillRule::nonZero );
-
-    // Apply transform, clip, then restore transform (but keep clip)
-    // Rive clips accumulate within a save/restore block
-    mRiveRenderer->transform( toRiveMat( mTransform ) );
-    mRiveRenderer->clipPath( path.get() );
-    mRiveRenderer->transform( toRiveMat( glm::inverse( mTransform ) ) );
 }
 
-void CanvasGl::clipPath( const Path2d &path, FillRule rule )
+DisplayListGl::~DisplayListGl() = default;
+
+void DisplayListGl::beginRecording( Canvas* canvas )
 {
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Clipping outside of begin()/end()" );
+    if( mRecording ) {
+        CI_LOG_W( "DisplayListGl::beginRecording called while already recording" );
+        return;
+    }
 
-    RawPath rawPath = toRivePath( path );
-    auto rivePath = mRiveContext->makeRenderPath( rawPath, toRiveFillRule( rule ) );
+    mRecordingCanvas = canvas;
+    mRecording = true;
+    mValid = false;
+    mCommands.clear();
+    mBounds = Rectf();
 
-    // Apply transform, clip, then restore transform (but keep clip)
-    mRiveRenderer->transform( toRiveMat( mTransform ) );
-    mRiveRenderer->clipPath( rivePath.get() );
-    mRiveRenderer->transform( toRiveMat( glm::inverse( mTransform ) ) );
+    // Set the recording pointer on the CanvasGl so draw calls get redirected
+    auto* glCanvas = dynamic_cast<CanvasGl*>( canvas );
+    if( glCanvas ) {
+        glCanvas->mRecordingDisplayList = this;
+    }
 }
 
-void CanvasGl::clipShape( const Shape2d &shape, FillRule rule )
+void DisplayListGl::endRecording()
 {
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Clipping outside of begin()/end()" );
+    if( ! mRecording ) {
+        CI_LOG_W( "DisplayListGl::endRecording called without beginRecording" );
+        return;
+    }
 
-    RawPath rawPath = toRivePath( shape );
-    auto rivePath = mRiveContext->makeRenderPath( rawPath, toRiveFillRule( rule ) );
+    // Clear the recording pointer on the CanvasGl
+    auto* glCanvas = dynamic_cast<CanvasGl*>( mRecordingCanvas );
+    if( glCanvas ) {
+        glCanvas->mRecordingDisplayList = nullptr;
+    }
 
-    // Apply transform, clip, then restore transform (but keep clip)
-    mRiveRenderer->transform( toRiveMat( mTransform ) );
-    mRiveRenderer->clipPath( rivePath.get() );
-    mRiveRenderer->transform( toRiveMat( glm::inverse( mTransform ) ) );
+    mRecording = false;
+    mRecordingCanvas = nullptr;
+    mValid = ! mCommands.empty();
 }
 
-void CanvasGl::clipPath( const CachedPathRef &path, FillRule rule )
+void DisplayListGl::replay( Canvas* canvas )
 {
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Clipping outside of begin()/end()" );
-    if( ! path ) return;
+    if( ! mValid || mCommands.empty() ) {
+        return;
+    }
 
-    auto glPath = std::dynamic_pointer_cast<CachedPathGl>( path );
-    if( ! glPath || ! glPath->mImpl || ! glPath->mImpl->rivePath ) return;
+    auto* glCanvas = dynamic_cast<CanvasGl*>( canvas );
+    if( ! glCanvas ) {
+        CI_LOG_W( "DisplayListGl::replay requires a CanvasGl" );
+        return;
+    }
 
-    // Apply transform, clip, then restore transform (but keep clip)
-    mRiveRenderer->transform( toRiveMat( mTransform ) );
-    mRiveRenderer->clipPath( glPath->mImpl->rivePath.get() );
-    mRiveRenderer->transform( toRiveMat( glm::inverse( mTransform ) ) );
+    for( const auto& cmd : mCommands ) {
+        switch( cmd.type ) {
+            case CommandType::Save:
+                canvas->save();
+                break;
+
+            case CommandType::Restore:
+                canvas->restore();
+                break;
+
+            case CommandType::SetTransform:
+                canvas->setTransform( cmd.transform );
+                break;
+
+            case CommandType::FillPath:
+                if( cmd.frozenPath && cmd.frozenPath->isValid() ) {
+                    glCanvas->drawFrozenPath( cmd.frozenPath, cmd.paint );
+                }
+                else if( cmd.cachedPath ) {
+                    glCanvas->fillPath( cmd.cachedPath, cmd.paint, cmd.fillRule );
+                }
+                break;
+
+            case CommandType::StrokePath:
+                if( cmd.frozenPath && cmd.frozenPath->isValid() ) {
+                    glCanvas->drawFrozenPath( cmd.frozenPath, cmd.paint );
+                }
+                else if( cmd.cachedPath ) {
+                    glCanvas->strokePath( cmd.cachedPath, cmd.paint );
+                }
+                break;
+
+            case CommandType::DrawImage:
+                if( cmd.image ) {
+                    if( cmd.srcRect.getWidth() > 0 && cmd.srcRect.getHeight() > 0 ) {
+                        canvas->drawImage( cmd.image, cmd.srcRect, cmd.destRect );
+                    }
+                    else {
+                        canvas->drawImage( cmd.image, cmd.destRect );
+                    }
+                }
+                break;
+
+            case CommandType::Clip:
+                if( cmd.cachedPath ) {
+                    canvas->clipPath( cmd.cachedPath, cmd.fillRule );
+                }
+                break;
+        }
+    }
 }
 
-// ------------------------------------------------------------------------------------------------
-// SVG Rendering
-// ------------------------------------------------------------------------------------------------
+void DisplayListGl::clear()
+{
+    mCommands.clear();
+    mValid = false;
+    mBounds = Rectf();
+    mFrozenPathsCreated = false;
+}
 
-// Internal SVG renderer that uses vg::Canvas
-class SvgRendererVg : public svg::Renderer {
-public:
-    SvgRendererVg( CanvasGl* canvas )
-        : mCanvas( canvas )
-    {
-        // Initialize stacks with defaults
-        mFillStack.push_back( svg::Paint( Color::black() ) );
-        mStrokeStack.push_back( svg::Paint() );
-        mFillOpacityStack.push_back( 1.0f );
-        mStrokeOpacityStack.push_back( 1.0f );
-        mStrokeWidthStack.push_back( 1.0f );
-        mFillRuleStack.push_back( svg::FILL_RULE_NONZERO );
-        mLineCapStack.push_back( svg::LINE_CAP_BUTT );
-        mLineJoinStack.push_back( svg::LINE_JOIN_MITER );
-    }
+void DisplayListGl::recordFillPath( const CachedPathRef& path, const Paint& paint, FillRule rule )
+{
+    if( ! mRecording || ! path ) return;
 
-    void pushGroup( const svg::Group & /*group*/, float /*opacity*/ ) override {}
-    void popGroup() override {}
+    Command cmd;
+    cmd.type = CommandType::FillPath;
+    cmd.cachedPath = path;
+    cmd.paint = paint;
+    cmd.fillRule = rule;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
 
-    void drawPath( const svg::Path &path ) override {
-        drawShapeInternal( path.getShape2d() );
-    }
-
-    void drawPolygon( const svg::Polygon &polygon ) override {
-        // Convert PolyLine to Path2d for Shape2d
-        const PolyLine2f& polyline = polygon.getPolyLine();
-        Path2d path;
-        if( ! polyline.getPoints().empty() ) {
-            path.moveTo( polyline.getPoints()[0] );
-            for( size_t i = 1; i < polyline.getPoints().size(); ++i ) {
-                path.lineTo( polyline.getPoints()[i] );
-            }
-            path.close();
-        }
-        Shape2d shape;
-        shape.appendContour( path );
-        drawShapeInternal( shape );
-    }
-
-    void drawPolyline( const svg::Polyline &polyline ) override {
-        // Polyline is stroke-only (not closed)
-        if( mStrokeStack.back().isNone() ) return;
-
-        const PolyLine2f& poly = polyline.getPolyLine();
-        Paint strokePaint = createStrokePaint();
-        mCanvas->strokePolyLine( poly, strokePaint );
-    }
-
-    void drawLine( const svg::Line &line ) override {
-        if( mStrokeStack.back().isNone() ) return;
-
-        Paint strokePaint = createStrokePaint();
-        mCanvas->drawLine( line.getPoint1(), line.getPoint2(), strokePaint );
-    }
-
-    void drawRect( const svg::Rect &rect ) override {
-        if( ! mFillStack.back().isNone() ) {
-            Paint fillPaint = createFillPaint();
-            mCanvas->fillRect( rect.getRect(), fillPaint );
-        }
-        if( ! mStrokeStack.back().isNone() ) {
-            Paint strokePaint = createStrokePaint();
-            mCanvas->strokeRect( rect.getRect(), strokePaint );
-        }
-    }
-
-    void drawCircle( const svg::Circle &circle ) override {
-        if( ! mFillStack.back().isNone() ) {
-            Paint fillPaint = createFillPaint();
-            mCanvas->fillCircle( circle.getCenter(), circle.getRadius(), fillPaint );
-        }
-        if( ! mStrokeStack.back().isNone() ) {
-            Paint strokePaint = createStrokePaint();
-            mCanvas->strokeCircle( circle.getCenter(), circle.getRadius(), strokePaint );
-        }
-    }
-
-    void drawEllipse( const svg::Ellipse &ellipse ) override {
-        if( ! mFillStack.back().isNone() ) {
-            Paint fillPaint = createFillPaint();
-            mCanvas->fillEllipse( ellipse.getCenter(), vec2( ellipse.getRadiusX(), ellipse.getRadiusY() ), fillPaint );
-        }
-        if( ! mStrokeStack.back().isNone() ) {
-            Paint strokePaint = createStrokePaint();
-            mCanvas->strokeEllipse( ellipse.getCenter(), vec2( ellipse.getRadiusX(), ellipse.getRadiusY() ), strokePaint );
-        }
-    }
-
-    void drawImage( const svg::Image & /*image*/ ) override {
-        // TODO: implement image drawing
-    }
-
-    void drawTextSpan( const svg::TextSpan & /*span*/ ) override {
-        // TODO: implement text rendering
-    }
-
-    void pushMatrix( const mat3 &m ) override {
-        mCanvas->save();
-        mCanvas->transform( m );
-    }
-
-    void popMatrix() override {
-        mCanvas->restore();
-    }
-
-    void pushFill( const svg::Paint &paint ) override { mFillStack.push_back( paint ); }
-    void popFill() override { mFillStack.pop_back(); }
-    void pushStroke( const svg::Paint &paint ) override { mStrokeStack.push_back( paint ); }
-    void popStroke() override { mStrokeStack.pop_back(); }
-    void pushFillOpacity( float opacity ) override { mFillOpacityStack.push_back( opacity ); }
-    void popFillOpacity() override { mFillOpacityStack.pop_back(); }
-    void pushStrokeOpacity( float opacity ) override { mStrokeOpacityStack.push_back( opacity ); }
-    void popStrokeOpacity() override { mStrokeOpacityStack.pop_back(); }
-    void pushStrokeWidth( float width ) override { mStrokeWidthStack.push_back( width ); }
-    void popStrokeWidth() override { mStrokeWidthStack.pop_back(); }
-    void pushFillRule( svg::FillRule rule ) override { mFillRuleStack.push_back( rule ); }
-    void popFillRule() override { mFillRuleStack.pop_back(); }
-    void pushLineCap( svg::LineCap cap ) override { mLineCapStack.push_back( cap ); }
-    void popLineCap() override { mLineCapStack.pop_back(); }
-    void pushLineJoin( svg::LineJoin join ) override { mLineJoinStack.push_back( join ); }
-    void popLineJoin() override { mLineJoinStack.pop_back(); }
-
-private:
-    void drawShapeInternal( const Shape2d &shape ) {
-        FillRule rule = ( mFillRuleStack.back() == svg::FILL_RULE_EVENODD ) ? FillRule::EvenOdd : FillRule::NonZero;
-
-        if( ! mFillStack.back().isNone() ) {
-            Paint fillPaint = createFillPaint();
-            mCanvas->fillShape( shape, fillPaint, rule );
-        }
-        if( ! mStrokeStack.back().isNone() ) {
-            Paint strokePaint = createStrokePaint();
-            mCanvas->strokeShape( shape, strokePaint );
-        }
-    }
-
-    Paint createFillPaint() {
-        Paint paint;
-        const svg::Paint& svgPaint = mFillStack.back();
-
-        if( svgPaint.isLinearGradient() ) {
-            // Create multi-stop gradient
-            std::vector<GradientStop> stops;
-            for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
-                stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
-            }
-            paint.setLinearGradient( svgPaint.getCoords0(), svgPaint.getCoords1(), stops );
-        }
-        else if( svgPaint.isRadialGradient() ) {
-            std::vector<GradientStop> stops;
-            for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
-                stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
-            }
-            paint.setRadialGradient( svgPaint.getCoords0(), svgPaint.getRadius(), stops );
+    // Expand bounds
+    if( path->getBounds().getWidth() > 0 ) {
+        if( mBounds.getWidth() == 0 ) {
+            mBounds = path->getBounds();
         }
         else {
-            ColorAf color( svgPaint.getColor() );
-            color.a = mFillOpacityStack.back();
-            paint.setColor( color );
+            mBounds.include( path->getBounds() );
         }
-
-        return paint;
     }
 
-    Paint createStrokePaint() {
-        Paint paint;
-        const svg::Paint& svgPaint = mStrokeStack.back();
+    mCommands.push_back( std::move( cmd ) );
+}
 
-        if( svgPaint.isLinearGradient() ) {
-            std::vector<GradientStop> stops;
-            for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
-                stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
-            }
-            paint.setLinearGradient( svgPaint.getCoords0(), svgPaint.getCoords1(), stops );
-        }
-        else if( svgPaint.isRadialGradient() ) {
-            std::vector<GradientStop> stops;
-            for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
-                stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
-            }
-            paint.setRadialGradient( svgPaint.getCoords0(), svgPaint.getRadius(), stops );
+void DisplayListGl::recordStrokePath( const CachedPathRef& path, const Paint& paint )
+{
+    if( ! mRecording || ! path ) return;
+
+    Command cmd;
+    cmd.type = CommandType::StrokePath;
+    cmd.cachedPath = path;
+    cmd.paint = paint;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+
+    // Expand bounds (with stroke width consideration)
+    if( path->getBounds().getWidth() > 0 ) {
+        Rectf strokeBounds = path->getBounds();
+        float expansion = paint.getStrokeWidth() / 2.0f;
+        strokeBounds.inflate( vec2( expansion, expansion ) );
+
+        if( mBounds.getWidth() == 0 ) {
+            mBounds = strokeBounds;
         }
         else {
-            ColorAf color( svgPaint.getColor() );
-            color.a = mStrokeOpacityStack.back();
-            paint.setColor( color );
+            mBounds.include( strokeBounds );
         }
-
-        paint.setStrokeWidth( mStrokeWidthStack.back() );
-
-        // Convert line cap
-        switch( mLineCapStack.back() ) {
-            case svg::LINE_CAP_ROUND:  paint.setLineCap( LineCap::Round ); break;
-            case svg::LINE_CAP_SQUARE: paint.setLineCap( LineCap::Square ); break;
-            default:                   paint.setLineCap( LineCap::Butt ); break;
-        }
-
-        // Convert line join
-        switch( mLineJoinStack.back() ) {
-            case svg::LINE_JOIN_ROUND: paint.setLineJoin( LineJoin::Round ); break;
-            case svg::LINE_JOIN_BEVEL: paint.setLineJoin( LineJoin::Bevel ); break;
-            default:                   paint.setLineJoin( LineJoin::Miter ); break;
-        }
-
-        return paint;
     }
 
-    CanvasGl* mCanvas;
-    std::vector<svg::Paint> mFillStack;
-    std::vector<svg::Paint> mStrokeStack;
-    std::vector<float> mFillOpacityStack;
-    std::vector<float> mStrokeOpacityStack;
-    std::vector<float> mStrokeWidthStack;
-    std::vector<svg::FillRule> mFillRuleStack;
-    std::vector<svg::LineCap> mLineCapStack;
-    std::vector<svg::LineJoin> mLineJoinStack;
-};
+    mCommands.push_back( std::move( cmd ) );
+}
 
-void CanvasGl::draw( const svg::Doc &svg )
+void DisplayListGl::recordDrawImage( const ImageRef& image, const Rectf& destRect )
 {
-    CI_ASSERT_MSG( mInFrame && mRiveRenderer, "Drawing outside of begin()/end()" );
+    if( ! mRecording || ! image ) return;
 
-    SvgRendererVg renderer( this );
-    svg.render( renderer );
+    Command cmd;
+    cmd.type = CommandType::DrawImage;
+    cmd.image = image;
+    cmd.destRect = destRect;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+
+    if( mBounds.getWidth() == 0 ) {
+        mBounds = destRect;
+    }
+    else {
+        mBounds.include( destRect );
+    }
+
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordDrawImage( const ImageRef& image, const Rectf& srcRect, const Rectf& destRect )
+{
+    if( ! mRecording || ! image ) return;
+
+    Command cmd;
+    cmd.type = CommandType::DrawImage;
+    cmd.image = image;
+    cmd.srcRect = srcRect;
+    cmd.destRect = destRect;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+
+    if( mBounds.getWidth() == 0 ) {
+        mBounds = destRect;
+    }
+    else {
+        mBounds.include( destRect );
+    }
+
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordSave()
+{
+    if( ! mRecording ) return;
+
+    Command cmd;
+    cmd.type = CommandType::Save;
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordRestore()
+{
+    if( ! mRecording ) return;
+
+    Command cmd;
+    cmd.type = CommandType::Restore;
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordSetTransform( const mat3& transform )
+{
+    if( ! mRecording ) return;
+
+    Command cmd;
+    cmd.type = CommandType::SetTransform;
+    cmd.transform = transform;
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::recordClip( const CachedPathRef& path, FillRule rule )
+{
+    if( ! mRecording || ! path ) return;
+
+    Command cmd;
+    cmd.type = CommandType::Clip;
+    cmd.cachedPath = path;
+    cmd.fillRule = rule;
+    mCommands.push_back( std::move( cmd ) );
+}
+
+void DisplayListGl::createFrozenPaths()
+{
+    if( mFrozenPathsCreated || ! mOwnerCanvas ) return;
+
+    for( auto& cmd : mCommands ) {
+        if( cmd.cachedPath && ! cmd.frozenPath ) {
+            if( cmd.type == CommandType::FillPath ) {
+                cmd.frozenPath = mOwnerCanvas->freezePathFill( cmd.cachedPath, cmd.paint, cmd.fillRule );
+            }
+            else if( cmd.type == CommandType::StrokePath ) {
+                cmd.frozenPath = mOwnerCanvas->freezePathStroke( cmd.cachedPath, cmd.paint );
+            }
+        }
+    }
+
+    mFrozenPathsCreated = true;
+}
+
+DisplayListRef CanvasGl::createDisplayList()
+{
+    return std::make_shared<DisplayListGl>( this );
 }
 
 } } // namespace cinder::vg

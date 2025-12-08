@@ -804,6 +804,9 @@
     <ClCompile Include="..\..\src\cinder\gl\wrapper.cpp">
       <Filter>Source Files\gl</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\cinder\vg\Canvas.cpp">
+      <Filter>Source Files\vg</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\cinder\vg\CanvasGl.cpp">
       <Filter>Source Files\vg</Filter>
     </ClCompile>

@@ -2592,4 +2592,5 @@ void StencilClipReset::pushToRenderContext(RenderContext::LogicalFlush* flush,
     assert(subpassIndex == 0);
     flush->pushStencilClipResetDraw(this);
 }
+
 } // namespace rive::gpu

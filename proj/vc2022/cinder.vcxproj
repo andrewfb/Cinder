@@ -489,6 +489,7 @@
     <ClCompile Include="..\..\src\cinder\gl\Vbo.cpp" />
     <ClCompile Include="..\..\src\cinder\gl\VboMesh.cpp" />
     <ClCompile Include="..\..\src\cinder\gl\wrapper.cpp" />
+    <ClCompile Include="..\..\src\cinder\vg\Canvas.cpp" />
     <ClCompile Include="..\..\src\cinder\vg\CanvasGl.cpp" />
     <ClCompile Include="..\..\src\cinder\vg\Paint.cpp" />
     <ClCompile Include="..\..\src\cinder\vg\rive\core\color.cpp">

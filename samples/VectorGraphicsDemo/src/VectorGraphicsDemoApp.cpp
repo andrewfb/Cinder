@@ -2,6 +2,11 @@
  VectorGraphicsDemo - Interactive demo framework using Cinder's built-in ImGui
 */
 
+// Toggle between direct-to-window rendering (0) and offscreen FBO rendering (1)
+// - Direct to window: Uses MSAA from RendererGl, renders directly to screen
+// - Offscreen FBO: Uses atomic mode with analytical AA, blits result to screen
+#define USE_OFFSCREEN_FBO 0
+
 #include "cinder/app/App.h"
 #include "cinder/app/RendererGl.h"
 #include "cinder/gl/gl.h"
@@ -983,6 +988,445 @@ private:
 };
 
 // ============================================================================
+// Demo 10: Image Mesh
+// ============================================================================
+class ImageMeshDemo : public Demo {
+public:
+    std::string getName() const override { return "Image Mesh"; }
+    std::string getDescription() const override { return "drawImageMesh - arbitrary mesh distortions"; }
+    Rectf getContentBounds() const override { return Rectf( 0, 0, 700, 500 ); }
+
+    void setup( vg::CanvasGlRef canvas ) override {
+        // Create checkerboard texture
+        Surface8u surf( 64, 64, true );
+        auto iter = surf.getIter();
+        while( iter.line() ) {
+            while( iter.pixel() ) {
+                bool light = ((iter.x()/8) + (iter.y()/8)) % 2 == 0;
+                iter.r() = light ? 255 : 60;
+                iter.g() = light ? 220 : 100;
+                iter.b() = light ? 100 : 200;
+                iter.a() = 255;
+            }
+        }
+        mImage = canvas->createImage( surf );
+        rebuildMesh();
+    }
+
+    void rebuildMesh() {
+        mVertices.clear();
+        mUvs.clear();
+        mIndices.clear();
+
+        // Create NxN grid of vertices
+        int n = mGridSize + 1;
+        for( int y = 0; y < n; y++ ) {
+            for( int x = 0; x < n; x++ ) {
+                float u = x / (float)mGridSize;
+                float v = y / (float)mGridSize;
+                mUvs.push_back( vec2( u, v ) );
+                // Position will be computed in update based on warp
+                mVertices.push_back( vec2( mMeshRect.x1 + u * mMeshRect.getWidth(),
+                                           mMeshRect.y1 + v * mMeshRect.getHeight() ) );
+            }
+        }
+
+        // Create triangle indices (two triangles per cell)
+        for( int y = 0; y < mGridSize; y++ ) {
+            for( int x = 0; x < mGridSize; x++ ) {
+                uint16_t i = y * n + x;
+                // First triangle
+                mIndices.push_back( i );
+                mIndices.push_back( i + 1 );
+                mIndices.push_back( i + n );
+                // Second triangle
+                mIndices.push_back( i + 1 );
+                mIndices.push_back( i + n + 1 );
+                mIndices.push_back( i + n );
+            }
+        }
+    }
+
+    void update( double dt ) override {
+        if( mAnimate ) mTime += dt * mSpeed;
+
+        // Apply warp to vertices
+        int n = mGridSize + 1;
+        for( int y = 0; y < n; y++ ) {
+            for( int x = 0; x < n; x++ ) {
+                float u = x / (float)mGridSize;
+                float v = y / (float)mGridSize;
+
+                // Base position
+                vec2 pos( mMeshRect.x1 + u * mMeshRect.getWidth(),
+                          mMeshRect.y1 + v * mMeshRect.getHeight() );
+
+                // Apply warps based on mode
+                if( mWarpMode == 0 ) {
+                    // Wave warp
+                    float wave = sin( u * M_PI * mWaveFreq + mTime * 2 ) * mWarpAmount;
+                    pos.y += wave;
+                    float wave2 = sin( v * M_PI * mWaveFreq + mTime * 1.5f ) * mWarpAmount * 0.5f;
+                    pos.x += wave2;
+                }
+                else if( mWarpMode == 1 ) {
+                    // Bulge/pinch
+                    vec2 center = mMeshRect.getCenter();
+                    vec2 toCenter = pos - center;
+                    float dist = glm::length( toCenter );
+                    float maxDist = glm::length( mMeshRect.getSize() ) * 0.5f;
+                    float t = 1.0f - glm::clamp( dist / maxDist, 0.0f, 1.0f );
+                    float bulge = t * t * mWarpAmount * (sin( mTime ) * 0.5f + 0.5f);
+                    pos += glm::normalize( toCenter + vec2(0.001f) ) * bulge;
+                }
+                else if( mWarpMode == 2 ) {
+                    // Twist
+                    vec2 center = mMeshRect.getCenter();
+                    vec2 toCenter = pos - center;
+                    float dist = glm::length( toCenter );
+                    float maxDist = glm::length( mMeshRect.getSize() ) * 0.5f;
+                    float angle = (1.0f - dist / maxDist) * mWarpAmount * 0.02f * sin( mTime );
+                    float c = cos( angle ), s = sin( angle );
+                    pos = center + vec2( toCenter.x * c - toCenter.y * s,
+                                         toCenter.x * s + toCenter.y * c );
+                }
+                else if( mWarpMode == 3 ) {
+                    // Flag wave
+                    float wave = sin( u * M_PI * 3 + mTime * 3 ) * mWarpAmount * (1.0f - u * 0.5f);
+                    pos.y += wave;
+                }
+
+                mVertices[y * n + x] = pos;
+            }
+        }
+    }
+
+    void draw( vg::CanvasGlRef canvas ) override {
+        if( !mImage ) return;
+
+        // Draw the mesh
+        canvas->drawImageMesh( mImage, mVertices, mUvs, mIndices, mOpacity );
+
+        // Draw grid overlay if enabled
+        if( mShowGrid ) {
+            vg::Paint gridPaint;
+            gridPaint.setColor( ColorAf( 0.3f, 0.8f, 0.3f, 0.5f ) ).setStrokeWidth( 1 );
+            int n = mGridSize + 1;
+            // Horizontal lines
+            for( int y = 0; y < n; y++ ) {
+                for( int x = 0; x < mGridSize; x++ ) {
+                    canvas->drawLine( mVertices[y * n + x], mVertices[y * n + x + 1], gridPaint );
+                }
+            }
+            // Vertical lines
+            for( int x = 0; x < n; x++ ) {
+                for( int y = 0; y < mGridSize; y++ ) {
+                    canvas->drawLine( mVertices[y * n + x], mVertices[(y + 1) * n + x], gridPaint );
+                }
+            }
+        }
+
+        // Draw control point for interactive vertex (corner handles)
+        if( mShowHandles ) {
+            vg::Paint handlePaint;
+            handlePaint.setColor( ColorAf( 1, 0.5f, 0.2f, 0.8f ) );
+            int n = mGridSize + 1;
+            // Draw corner handles
+            canvas->fillCircle( mVertices[0], 6, handlePaint );             // TL
+            canvas->fillCircle( mVertices[mGridSize], 6, handlePaint );     // TR
+            canvas->fillCircle( mVertices[mGridSize * n], 6, handlePaint ); // BL
+            canvas->fillCircle( mVertices[n * n - 1], 6, handlePaint );     // BR
+        }
+
+        // Second example: simple quad distortion
+        float qx = 450, qy = 50;
+        std::vector<vec2> quadVerts = {
+            vec2( qx, qy ),
+            vec2( qx + 180, qy + sin(mTime) * 20 ),
+            vec2( qx + 200, qy + 180 + cos(mTime * 1.3f) * 30 ),
+            vec2( qx - 20 + sin(mTime * 0.7f) * 15, qy + 160 )
+        };
+        std::vector<vec2> quadUvs = {
+            vec2( 0, 0 ), vec2( 1, 0 ), vec2( 1, 1 ), vec2( 0, 1 )
+        };
+        std::vector<uint16_t> quadIndices = { 0, 1, 2, 0, 2, 3 };
+        canvas->drawImageMesh( mImage, quadVerts, quadUvs, quadIndices, mOpacity );
+
+        if( mShowGrid ) {
+            vg::Paint outlinePaint;
+            outlinePaint.setColor( ColorAf( 0.8f, 0.5f, 0.3f, 0.6f ) ).setStrokeWidth( 1 );
+            canvas->drawLine( quadVerts[0], quadVerts[1], outlinePaint );
+            canvas->drawLine( quadVerts[1], quadVerts[2], outlinePaint );
+            canvas->drawLine( quadVerts[2], quadVerts[3], outlinePaint );
+            canvas->drawLine( quadVerts[3], quadVerts[0], outlinePaint );
+        }
+
+        // Labels
+        vg::Paint textPaint;
+        textPaint.setColor( ColorAf( 0.7f, 0.7f, 0.7f, 1 ) );
+        Font font( "Arial", 12 );
+        canvas->drawString( "Grid mesh with warp", vec2( 80, 280 ), font, textPaint );
+        canvas->drawString( "Simple quad", vec2( 500, 260 ), font, textPaint );
+    }
+
+    void drawUI() override {
+        const char* warpNames[] = { "Wave", "Bulge", "Twist", "Flag" };
+        ImGui::Combo( "Warp Mode", &mWarpMode, warpNames, 4 );
+        ImGui::SliderFloat( "Warp Amount", &mWarpAmount, 0, 50 );
+        if( mWarpMode == 0 ) {
+            ImGui::SliderFloat( "Wave Freq", &mWaveFreq, 1, 5 );
+        }
+        ImGui::Separator();
+        if( ImGui::SliderInt( "Grid Size", &mGridSize, 2, 20 ) ) {
+            rebuildMesh();
+        }
+        ImGui::SliderFloat( "Opacity", &mOpacity, 0, 1 );
+        ImGui::Separator();
+        ImGui::Checkbox( "Show Grid", &mShowGrid );
+        ImGui::Checkbox( "Show Handles", &mShowHandles );
+        ImGui::Checkbox( "Animate", &mAnimate );
+        if( mAnimate ) ImGui::SliderFloat( "Speed", &mSpeed, 0.1f, 3.0f );
+    }
+
+private:
+    vg::ImageRef mImage;
+    std::vector<vec2> mVertices;
+    std::vector<vec2> mUvs;
+    std::vector<uint16_t> mIndices;
+
+    Rectf mMeshRect{ 50, 50, 300, 250 };
+    int mGridSize = 8;
+    int mWarpMode = 0;
+    float mWarpAmount = 20;
+    float mWaveFreq = 2;
+    float mOpacity = 1.0f;
+    float mTime = 0, mSpeed = 1.0f;
+    bool mAnimate = true;
+    bool mShowGrid = true;
+    bool mShowHandles = true;
+};
+
+// ============================================================================
+// Demo 11: Shadow (Dynamic Lighting Simulation)
+// ============================================================================
+class ShadowDemo : public Demo {
+public:
+    std::string getName() const override { return "Shadow"; }
+    std::string getDescription() const override { return "Dynamic lighting simulation with feathered shadows"; }
+    Rectf getContentBounds() const override { return Rectf( 0, 0, 600, 500 ); }
+
+    void setup( vg::CanvasGlRef canvas ) override {
+        mCanvas = canvas;
+        mCenter = vec2( 300, 250 );
+        mLightPos = vec2( 450, 100 );  // Start top-right
+    }
+
+    void draw( vg::CanvasGlRef canvas ) override {
+        vec2 center = mCenter;
+        float sphereRadius = mSphereRadius;
+        vec2 center2 = center + vec2( -120, -60 );
+        float radius2 = sphereRadius * 0.5f;
+
+        // Safe normalize helper to avoid NaN when light is at sphere center
+        auto safeNorm = [](const vec2 &v) {
+            float len = glm::length(v);
+            return len > 1e-4f ? v / len : vec2(0, -1);
+        };
+
+        // Per-sphere light directions - each sphere reacts independently!
+        vec2 lightDir1 = safeNorm( mLightPos - center );
+        vec2 lightDir2 = safeNorm( mLightPos - center2 );
+
+        float lightDist1 = glm::distance( mLightPos, center );
+        float lightDist2 = glm::distance( mLightPos, center2 );
+        float normalizedDist1 = glm::clamp( lightDist1 / 400.0f, 0.0f, 1.0f );
+        float normalizedDist2 = glm::clamp( lightDist2 / 400.0f, 0.0f, 1.0f );
+
+        // Shadow parameters
+        float shadowScale1 = 1.0f + normalizedDist1 * mShadowSpread;
+        float shadowScale2 = 1.0f + normalizedDist2 * mShadowSpread;
+        float shadowAlpha1 = mShadowOpacity * (1.0f - normalizedDist1 * 0.3f);
+        float shadowAlpha2 = mShadowOpacity * (1.0f - normalizedDist2 * 0.3f) * 0.8f;
+
+        // Draw ground plane hint
+        if( mShowGround ) {
+            vg::Paint groundPaint;
+            groundPaint.setColor( ColorAf( 0.15f, 0.15f, 0.18f, 1.0f ) );
+            canvas->fillRect( Rectf( 50, center.y + sphereRadius + 50, 550, center.y + sphereRadius + 55 ), groundPaint );
+        }
+
+        // === PASS 1: Draw ALL shadows first ===
+
+        // Main sphere shadow (uses lightDir1)
+        {
+            vec2 shadowOffset = -lightDir1 * mShadowOffset * (1.0f + normalizedDist1 * 0.5f);
+            float shadowRadius = sphereRadius * shadowScale1;
+            vg::Paint shadowPaint;
+            float shadowFeather = mShadowFeather * (1.0f + normalizedDist1 * 0.5f);
+            shadowPaint.setColor( ColorAf( 0, 0, 0, shadowAlpha1 ) )
+                       .setFeather( shadowFeather );
+            vec2 shadowRadii( shadowRadius * 1.2f, shadowRadius * 0.4f );
+            vec2 shadowPos = center + shadowOffset + vec2( 0, sphereRadius * 0.8f );
+            canvas->fillEllipse( shadowPos, shadowRadii, shadowPaint );
+        }
+
+        // Second sphere shadow (uses lightDir2)
+        if( mShowSecondSphere ) {
+            vec2 shadowOffset2 = -lightDir2 * mShadowOffset * 0.7f * (1.0f + normalizedDist2 * 0.5f);
+            float shadowRadius2 = radius2 * shadowScale2;
+            vg::Paint shadowPaint2;
+            float shadowFeather2 = mShadowFeather * 0.7f * (1.0f + normalizedDist2 * 0.5f);
+            shadowPaint2.setColor( ColorAf( 0, 0, 0, shadowAlpha2 ) )
+                       .setFeather( shadowFeather2 );
+            vec2 shadowRadii2( shadowRadius2 * 1.2f, shadowRadius2 * 0.4f );
+            vec2 shadowPos2 = center2 + shadowOffset2 + vec2( 0, radius2 * 0.8f );
+            canvas->fillEllipse( shadowPos2, shadowRadii2, shadowPaint2 );
+        }
+
+        // === PASS 2: Draw ALL spheres with layered shading ===
+        // Layer order: base lambert -> AO -> subsurface -> rim -> bounce -> wide spec -> tight spec
+
+        // Helper to draw a sphere with full PBR-like layering
+        auto drawSphere = [&]( vec2 sphereCenter, float radius, vec2 lightDir, float normDist, const ColorAf& baseColor ) {
+            // 1. Base Lambert gradient
+            vec2 highlightCenter = sphereCenter + lightDir * radius * 0.4f;
+            ColorAf highlightColor = baseColor;
+            highlightColor.r = glm::min( 1.0f, highlightColor.r * 1.5f );
+            highlightColor.g = glm::min( 1.0f, highlightColor.g * 1.5f );
+            highlightColor.b = glm::min( 1.0f, highlightColor.b * 1.5f );
+            ColorAf shadowColor = baseColor;
+            shadowColor.r *= 0.25f;
+            shadowColor.g *= 0.25f;
+            shadowColor.b *= 0.25f;
+            vg::Paint basePaint;
+            basePaint.setRadialGradient( highlightCenter, radius * 1.8f, highlightColor, shadowColor );
+            canvas->fillCircle( sphereCenter, radius, basePaint );
+
+            // 2. Ambient occlusion at base
+            if( mShowRim ) {
+                vec2 aoCenter = sphereCenter + vec2( 0, radius * 0.7f );
+                vg::Paint ao;
+                ao.setRadialGradient( aoCenter, radius * 0.9f,
+                                      ColorAf( 0, 0, 0, 0.3f ), ColorAf( 0, 0, 0, 0.0f ) )
+                  .setFeather( radius * 0.3f );
+                canvas->fillEllipse( aoCenter, vec2( radius * 0.9f, radius * 0.5f ), ao );
+            }
+
+            // 3. Fresnel rim lighting (glow on edge opposite light)
+            if( mShowRim ) {
+                vec2 rimCenter = sphereCenter - lightDir * radius * 0.15f;
+                vg::Paint rim;
+                rim.setRadialGradient( rimCenter, radius * 1.05f,
+                                       ColorAf( 1, 1, 1, 0.0f ), ColorAf( 1, 1, 1, 0.2f ) )
+                   .setFeather( radius * 0.2f );
+                canvas->fillCircle( sphereCenter, radius * 1.0f, rim );
+            }
+
+            // 5. Ground bounce (faint up-light from below)
+            if( mShowRim ) {
+                vec2 bounceCenter = sphereCenter + vec2( 0, radius * 0.5f );
+                vg::Paint bounce;
+                bounce.setRadialGradient( bounceCenter, radius * 0.9f,
+                                          ColorAf( 0.5f, 0.45f, 0.4f, 0.12f ), ColorAf( 0.5f, 0.45f, 0.4f, 0.0f ) );
+                canvas->fillCircle( sphereCenter, radius * 0.95f, bounce );
+            }
+
+            // 6. Wide specular lobe (soft highlight spread)
+            if( mShowSpecular ) {
+                vec2 specularPos = sphereCenter + lightDir * radius * 0.5f;
+                vg::Paint specWide;
+                specWide.setRadialGradient( specularPos, radius * 0.35f,
+                                            ColorAf( 1, 1, 1, 0.3f ), ColorAf( 1, 1, 1, 0.0f ) );
+                canvas->fillCircle( specularPos, radius * 0.35f, specWide );
+            }
+
+            // 7. Tight specular hotspot
+            if( mShowSpecular ) {
+                vec2 specularPos = sphereCenter + lightDir * radius * 0.55f;
+                float specRadius = radius * 0.12f;
+                vg::Paint specTight;
+                specTight.setRadialGradient( specularPos, specRadius,
+                                             ColorAf( 1, 1, 1, 0.95f ), ColorAf( 1, 1, 1, 0.0f ) );
+                canvas->fillCircle( specularPos, specRadius, specTight );
+            }
+        };
+
+        // Draw main sphere
+        drawSphere( center, sphereRadius, lightDir1, normalizedDist1, mSphereColor );
+
+        // Draw second sphere
+        if( mShowSecondSphere ) {
+            ColorAf color2( 0.3f, 0.7f, 0.9f, 1.0f );
+            drawSphere( center2, radius2, lightDir2, normalizedDist2, color2 );
+        }
+
+        // Draw light source indicator
+        if( mShowLightIndicator ) {
+            vg::Paint lightPaint;
+            lightPaint.setRadialGradient( mLightPos, 25,
+                                          ColorAf( 1, 1, 0.8f, 1.0f ),
+                                          ColorAf( 1, 0.8f, 0.2f, 0.0f ) );
+            canvas->fillCircle( mLightPos, 20, lightPaint );
+
+            // Draw light rays
+            vg::Paint rayPaint;
+            rayPaint.setColor( ColorAf( 1, 1, 0.5f, 0.3f ) ).setStrokeWidth( 2 );
+            for( int i = 0; i < 8; i++ ) {
+                float angle = i * M_PI / 4.0f;
+                vec2 rayStart = mLightPos + vec2( cos(angle), sin(angle) ) * 25.0f;
+                vec2 rayEnd = mLightPos + vec2( cos(angle), sin(angle) ) * 35.0f;
+                canvas->drawLine( rayStart, rayEnd, rayPaint );
+            }
+        }
+    }
+
+    bool onMouseMove( ci::app::MouseEvent event ) override {
+        if( ! mCanvasUi ) return false;
+        mLightPos = mCanvasUi->toContent( vec2( event.getPos() ) );
+        return true;
+    }
+
+    bool onMouseDrag( ci::app::MouseEvent event ) override {
+        if( ! mCanvasUi ) return false;
+        mLightPos = mCanvasUi->toContent( vec2( event.getPos() ) );
+        return true;
+    }
+
+    void drawUI() override {
+        ImGui::Text( "Move mouse to control light position" );
+        ImGui::Separator();
+        ImGui::SliderFloat( "Sphere Radius", &mSphereRadius, 30, 120 );
+        ImGui::SliderFloat( "Shadow Offset", &mShadowOffset, 10, 100 );
+        ImGui::SliderFloat( "Shadow Feather", &mShadowFeather, 5, 80 );
+        ImGui::SliderFloat( "Shadow Opacity", &mShadowOpacity, 0.1f, 1.0f );
+        ImGui::SliderFloat( "Shadow Spread", &mShadowSpread, 0.0f, 1.0f );
+        ImGui::Separator();
+        ImGui::ColorEdit3( "Sphere Color", &mSphereColor.r );
+        ImGui::Separator();
+        ImGui::Checkbox( "Show Specular", &mShowSpecular );
+        ImGui::Checkbox( "Show Rim/AO", &mShowRim );
+        ImGui::Checkbox( "Show Light Indicator", &mShowLightIndicator );
+        ImGui::Checkbox( "Show Ground", &mShowGround );
+        ImGui::Checkbox( "Show Second Sphere", &mShowSecondSphere );
+    }
+
+private:
+    vec2 mCenter;
+    vec2 mLightPos;
+    float mSphereRadius = 80;
+    float mShadowOffset = 40;
+    float mShadowFeather = 30;
+    float mShadowOpacity = 0.6f;
+    float mShadowSpread = 0.3f;
+    ColorAf mSphereColor{ 0.9f, 0.4f, 0.3f, 1.0f };
+    bool mShowSpecular = true;
+    bool mShowRim = true;
+    bool mShowLightIndicator = true;
+    bool mShowGround = true;
+    bool mShowSecondSphere = true;
+};
+
+// ============================================================================
 // Main App
 // ============================================================================
 class VectorGraphicsDemoApp : public App {
@@ -1012,11 +1456,14 @@ private:
 void VectorGraphicsDemoApp::setup()
 {
     try {
-        vg::CanvasOptions options;
-        options.useFloatingPointBuffer = false;
-        mCanvas = vg::createCanvasGl( options );
-
-        mCanvas = vg::createCanvasGl( options );
+#if USE_OFFSCREEN_FBO
+        // Offscreen mode: atomic rendering with analytical AA
+        // FBO will be created/resized on first begin(size) call
+        mCanvas = vg::CanvasGl::create( 1, 1 );
+#else
+        // Window mode: direct rendering, auto-detects MSAA
+        mCanvas = vg::CanvasGl::create();
+#endif
     } catch( const std::exception &e ) {
         CI_LOG_E( "Canvas init failed: " << e.what() );
         return;
@@ -1033,7 +1480,9 @@ void VectorGraphicsDemoApp::setup()
         std::make_shared<InstancingDemo>(),
         std::make_shared<BlendModesDemo>(),
         std::make_shared<ClippingDemo>(),
-        std::make_shared<ImagesDemo>()
+        std::make_shared<ImagesDemo>(),
+        std::make_shared<ImageMeshDemo>(),
+        std::make_shared<ShadowDemo>()
     };
     for( auto& d : mDemos ) d->setup( mCanvas );
     switchDemo( 0 );
@@ -1083,10 +1532,16 @@ void VectorGraphicsDemoApp::draw()
     if( mDemo ) mDemo->drawUI();
     ImGui::Separator();
     ImGui::Text( "FPS: %.0f", mFps );
+#if USE_OFFSCREEN_FBO
+    ImGui::Text( "Mode: Offscreen FBO (atomic)" );
+#else
+    ImGui::Text( "Mode: Direct to window" );
+#endif
     ImGui::Text( "Keys: 1-9 demos, 0 fit, Q quit" );
     ImGui::End();
 
-    // Canvas
+    // Canvas rendering - both modes use begin(size) now
+    // Offscreen mode will auto-resize FBO if window size changes
     mCanvas->begin( toPixels( getWindowSize() ) );
     mCanvas->setTransform( mCanvasUi.getTransform2d() );
 
@@ -1096,6 +1551,11 @@ void VectorGraphicsDemoApp::draw()
         mCanvas->strokeRect( mDemo->getContentBounds(), bp );
     }
     mCanvas->end();
+
+#if USE_OFFSCREEN_FBO
+    // Blit the offscreen FBO to the window
+    gl::draw( mCanvas->getTexture(), getWindowBounds() );
+#endif
 }
 
 void VectorGraphicsDemoApp::keyDown( KeyEvent event )
@@ -1136,4 +1596,10 @@ void prepareSettings( VectorGraphicsDemoApp::Settings* s )
     s->setWindowSize( 1200, 800 );
 }
 
+#if USE_OFFSCREEN_FBO
+// Offscreen mode: no MSAA needed (atomic mode uses analytical AA)
+CINDER_APP( VectorGraphicsDemoApp, RendererGl, prepareSettings )
+#else
+// Window mode: use MSAA for hardware antialiasing
 CINDER_APP( VectorGraphicsDemoApp, RendererGl( RendererGl::Options().msaa( 16 ) ), prepareSettings )
+#endif

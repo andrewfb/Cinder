@@ -515,6 +515,7 @@ list( APPEND SRC_SET_APP_GLFW
 # ----------------------------------------------------------------------------------------------------------------------
 
 list( APPEND SRC_SET_CINDER_VG
+	${CINDER_SRC_DIR}/cinder/vg/Canvas.cpp
 	${CINDER_SRC_DIR}/cinder/vg/CanvasGl.cpp
 	${CINDER_SRC_DIR}/cinder/vg/Paint.cpp
 )

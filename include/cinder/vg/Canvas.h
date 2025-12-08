@@ -36,37 +36,44 @@
 #include <memory>
 #include <vector>
 #include <span>
+#include <unordered_map>
 
 namespace cinder { namespace svg { class Doc; } }
+
+// Forward declarations for Rive types (implementation details, not exposed in API)
+namespace rive {
+    class RiveRenderer;
+    class RawPath;
+    class RenderPath;
+    class RenderPaint;
+    namespace gpu {
+        class RenderContext;
+    }
+}
 
 namespace cinder { namespace vg {
 
 //! Exception type for vector graphics errors
-class CI_API VgExc : public Exception {
+class CI_API Exc : public Exception {
 public:
-    VgExc( const std::string &description ) : Exception( description ) {}
+    Exc( const std::string &description ) : Exception( description ) {}
 };
 
-//! Options for canvas creation.
-//! Platform defaults are set automatically - macOS disables PLS/FSI since GL 4.1 doesn't support them.
-struct CI_API CanvasOptions {
-#if defined( CINDER_MAC )
-    bool disablePixelLocalStorage = true;       //!< Disable PLS (required for macOS GL 4.1)
-    bool disableFragmentShaderInterlock = true; //!< Disable FSI (required for macOS GL 4.1)
-#else
-    bool disablePixelLocalStorage = false;      //!< Disable PLS (not needed on most platforms)
-    bool disableFragmentShaderInterlock = false;//!< Disable FSI (not needed on most platforms)
-#endif
-    bool useFloatingPointBuffer = false;        //!< Use RGBA16F internal buffer (may improve gradient/feathering quality)
+//! Rendering mode for CanvasGl
+enum class CI_API RenderMode {
+    Window,     //!< Render to window (auto-detects MSAA, renders directly)
+    Offscreen   //!< Render to offscreen FBO (atomic mode with analytical AA)
 };
 
 // Forward declarations
 class Canvas;
 class CachedPath;
 class Image;
+class FrozenPath;
 
 using CachedPathRef = std::shared_ptr<CachedPath>;
 using ImageRef = std::shared_ptr<Image>;
+using FrozenPathRef = std::shared_ptr<FrozenPath>;
 
 // ------------------------------------------------------------------------------------------------
 // CachedPath - Cached path for efficient repeated drawing
@@ -92,10 +99,6 @@ protected:
     Rectf mBounds;
 };
 
-// ------------------------------------------------------------------------------------------------
-// Image - GPU image for drawing
-// ------------------------------------------------------------------------------------------------
-
 //! A GPU image that can be drawn to the canvas.
 //! Created via Canvas::createImage(). Wraps a texture for use with Rive renderer.
 class CI_API Image {
@@ -103,9 +106,11 @@ public:
     virtual ~Image() = default;
 
     //! Get the image dimensions
-    ivec2 getSize() const { return mSize; }
-    int getWidth() const { return mSize.x; }
-    int getHeight() const { return mSize.y; }
+    ivec2	getSize() const { return mSize; }
+    int		getWidth() const { return mSize.x; }
+    int		getHeight() const { return mSize.y; }
+	float	getAspectRatio() const { return getWidth() / (float)getHeight(); }
+	Area	getBounds() const { return Area( 0, 0, getWidth(), getHeight() ); }
 
 protected:
     friend class Canvas;
@@ -115,14 +120,165 @@ protected:
 };
 
 // ------------------------------------------------------------------------------------------------
-// Canvas - Main drawing interface
+// FrozenPath - Pre-tessellated path for efficient repeated drawing
+// ------------------------------------------------------------------------------------------------
+
+//! A pre-tessellated path that caches expensive tessellation computations.
+//! Created via Canvas::freezePath(). When drawn, skips the expensive Wang's formula
+//! calculations that normally happen during path tessellation.
+//!
+//! Use FrozenPath when:
+//! - The same path is drawn many times per frame (e.g., particle systems, repeated icons)
+//! - The path geometry doesn't change between draws
+//! - Performance profiling shows tessellation is a bottleneck
+//!
+//! Note: FrozenPath caches tessellation data computed at a specific transform scale.
+//! The cached tessellation remains valid when the path is translated or rotated,
+//! but may produce visual artifacts if drawn at a significantly different scale.
+//!
+//! Example:
+//!     // Create frozen path once (or when path changes)
+//!     auto frozen = canvas->freezePath( cachedPath, paint );
+//!
+//!     // Draw efficiently many times
+//!     for( const auto& transform : transforms ) {
+//!         canvas->drawFrozenPath( frozen, transform, paint );
+//!     }
+class CI_API FrozenPath {
+public:
+    virtual ~FrozenPath() = default;
+
+    //! Get the original source CachedPath
+    CachedPathRef getSourcePath() const { return mSourcePath; }
+
+    //! Get axis-aligned bounding box (in local path coordinates)
+    Rectf getBounds() const { return mBounds; }
+
+    //! Check if this frozen path is valid (tessellation was captured successfully)
+    virtual bool isValid() const = 0;
+
+    //! Check if this frozen path is for a stroke operation
+    bool isStroke() const { return mIsStroke; }
+
+    //! Get the stroke width (0 for fills)
+    float getStrokeWidth() const { return mStrokeWidth; }
+
+protected:
+    friend class Canvas;
+    FrozenPath() = default;
+
+    CachedPathRef mSourcePath;
+    Rectf mBounds;
+    bool mIsStroke = false;
+    float mStrokeWidth = 0.0f;
+};
+
+// ------------------------------------------------------------------------------------------------
+// DisplayList - Recorded drawing commands with frozen paths
+// ------------------------------------------------------------------------------------------------
+
+class Canvas;  // Forward declaration
+
+//! A recorded list of drawing commands that can be replayed efficiently.
+//! DisplayList captures Canvas draw commands and creates FrozenPaths for
+//! each path encountered. On replay, the frozen paths are used, skipping
+//! expensive tessellation calculations.
+//!
+//! Use DisplayList when:
+//! - Rendering complex static content like SVGs repeatedly
+//! - The content doesn't change between frames
+//! - Performance profiling shows SVG/path rendering is a bottleneck
+//!
+//! Example:
+//!     // Recording phase (do once when content changes)
+//!     auto displayList = canvas->createDisplayList();
+//!     displayList->beginRecording( canvas );
+//!     canvas->draw( *svgDoc );  // Draw commands are captured
+//!     displayList->endRecording();
+//!
+//!     // Playback phase (do every frame)
+//!     canvas->begin( windowSize );
+//!     canvas->setTransform( viewMatrix );
+//!     displayList->replay( canvas );  // Fast - uses frozen paths
+//!     canvas->end();
+class CI_API DisplayList {
+public:
+    virtual ~DisplayList() = default;
+
+    //! Begin recording draw commands. The canvas must be in a frame (between begin/end).
+    virtual void beginRecording( Canvas* canvas ) = 0;
+
+    //! End recording and freeze all captured paths.
+    virtual void endRecording() = 0;
+
+    //! Check if currently recording
+    virtual bool isRecording() const = 0;
+
+    //! Replay the recorded commands using frozen paths.
+    //! The canvas must be in a frame (between begin/end).
+    virtual void replay( Canvas* canvas ) = 0;
+
+    //! Check if the display list is valid (has recorded content)
+    virtual bool isValid() const = 0;
+
+    //! Clear the display list
+    virtual void clear() = 0;
+
+    //! Get the number of draw commands recorded
+    virtual size_t getCommandCount() const = 0;
+
+    //! Get the axis-aligned bounding box of the recorded content
+    virtual Rectf getBounds() const = 0;
+
+protected:
+    DisplayList() = default;
+};
+
+using DisplayListRef = std::shared_ptr<DisplayList>;
+
+// ------------------------------------------------------------------------------------------------
+// GlyphCache - Internal glyph shape cache for text rendering
+// ------------------------------------------------------------------------------------------------
+
+class GlyphCache {
+public:
+    CachedPathRef getGlyph( Canvas* canvas, const Font &font, Font::Glyph glyphIndex );
+    void clear();
+
+private:
+    // Key: font name + size + glyph index
+    struct GlyphKey {
+        std::string fontName;
+        float fontSize;
+        Font::Glyph glyphIndex;
+
+        bool operator==( const GlyphKey &other ) const {
+            return fontName == other.fontName && fontSize == other.fontSize && glyphIndex == other.glyphIndex;
+        }
+    };
+
+    struct GlyphKeyHash {
+        size_t operator()( const GlyphKey &k ) const {
+            size_t h1 = std::hash<std::string>{}( k.fontName );
+            size_t h2 = std::hash<float>{}( k.fontSize );
+            size_t h3 = std::hash<Font::Glyph>{}( k.glyphIndex );
+            return h1 ^ (h2 << 1) ^ (h3 << 2);
+        }
+    };
+
+    std::unordered_map<GlyphKey, CachedPathRef, GlyphKeyHash> mCache;
+};
+
+// ------------------------------------------------------------------------------------------------
+// Canvas - Abstract base class for vector graphics rendering
 // ------------------------------------------------------------------------------------------------
 
 //! Canvas provides the main drawing interface for vector graphics.
 //! This is an abstract base class - use CanvasGl for OpenGL rendering.
+//! Provides shared implementation for transforms, instanced drawing, and text.
 class CI_API Canvas {
 public:
-    virtual ~Canvas() = default;
+    virtual ~Canvas();
 
     // === Frame Management ===
     //! Begin rendering at the given size. Must be paired with end().
@@ -138,95 +294,98 @@ public:
     virtual bool inFrame() const = 0;
 
     // === Transform Stack ===
-    //! Push current transform state onto the stack
-    virtual void save() = 0;
+    //! Push current transform and clipping state onto the stack
+    void save();
 
-    //! Pop transform state from the stack
-    virtual void restore() = 0;
+    //! Pop transform and clipping state from the stack
+    void restore();
 
-    //! Translate the current transform
-    virtual void translate( const vec2 &offset ) = 0;
+    //! Translate the current transform (base implementation provided)
+    virtual void translate( const vec2 &offset );
     void translate( float x, float y ) { translate( vec2( x, y ) ); }
 
-    //! Rotate the current transform (radians)
-    virtual void rotate( float radians ) = 0;
+    //! Rotate the current transform (radians) (base implementation provided)
+    virtual void rotate( float radians );
 
-    //! Scale the current transform
-    virtual void scale( const vec2 &s ) = 0;
+    //! Scale the current transform (base implementation provided)
+    virtual void scale( const vec2 &s );
     void scale( float sx, float sy ) { scale( vec2( sx, sy ) ); }
     void scale( float s ) { scale( vec2( s, s ) ); }
 
-    //! Concatenate a transform matrix
-    virtual void transform( const mat3 &m ) = 0;
+    //! Concatenate a transform matrix (base implementation provided)
+    virtual void transform( const mat3 &m );
 
-    //! Set the transform matrix directly
-    virtual void setTransform( const mat3 &m ) = 0;
+    //! Set the transform matrix directly (base implementation provided)
+    virtual void setTransform( const mat3 &m );
 
-    //! Reset transform to identity
-    virtual void resetTransform() = 0;
+    //! Reset transform to identity (base implementation provided)
+    virtual void resetTransform();
 
     //! Get the current transform matrix
-    virtual mat3 getTransform() const = 0;
+    mat3 getTransform() const { return mTransform; }
 
     // === Drawing Primitives ===
+    // These have base implementations using fillPath/strokePath, but can be overridden for efficiency
     //! Fill a rectangle
-    virtual void fillRect( const Rectf &rect, const Paint &paint ) = 0;
+    virtual void fillRect( const Rectf &rect, const Paint &paint );
 
     //! Stroke a rectangle
-    virtual void strokeRect( const Rectf &rect, const Paint &paint ) = 0;
+    virtual void strokeRect( const Rectf &rect, const Paint &paint );
 
     //! Fill a rounded rectangle
-    virtual void fillRoundedRect( const Rectf &rect, float radius, const Paint &paint ) = 0;
+    virtual void fillRoundedRect( const Rectf &rect, float radius, const Paint &paint );
 
     //! Stroke a rounded rectangle
-    virtual void strokeRoundedRect( const Rectf &rect, float radius, const Paint &paint ) = 0;
+    virtual void strokeRoundedRect( const Rectf &rect, float radius, const Paint &paint );
 
     //! Fill a circle
-    virtual void fillCircle( const vec2 &center, float radius, const Paint &paint ) = 0;
+    virtual void fillCircle( const vec2 &center, float radius, const Paint &paint );
 
     //! Stroke a circle
-    virtual void strokeCircle( const vec2 &center, float radius, const Paint &paint ) = 0;
+    virtual void strokeCircle( const vec2 &center, float radius, const Paint &paint );
 
     //! Fill an ellipse
-    virtual void fillEllipse( const vec2 &center, const vec2 &radii, const Paint &paint ) = 0;
+    virtual void fillEllipse( const vec2 &center, const vec2 &radii, const Paint &paint );
 
     //! Stroke an ellipse
-    virtual void strokeEllipse( const vec2 &center, const vec2 &radii, const Paint &paint ) = 0;
+    virtual void strokeEllipse( const vec2 &center, const vec2 &radii, const Paint &paint );
 
     //! Draw a line (stroked only)
-    virtual void drawLine( const vec2 &p0, const vec2 &p1, const Paint &paint ) = 0;
+    virtual void drawLine( const vec2 &p0, const vec2 &p1, const Paint &paint );
 
     // === Path Drawing (uncached) ===
+    // These are implemented in base class and delegate to implFillShape/implStrokeShape
     //! Fill a Path2d
-    virtual void fillPath( const Path2d &path, const Paint &paint, FillRule rule = FillRule::NonZero ) = 0;
+    virtual void fillPath( const Path2d &path, const Paint &paint, FillRule rule = FillRule::NonZero );
 
     //! Stroke a Path2d
-    virtual void strokePath( const Path2d &path, const Paint &paint ) = 0;
+    virtual void strokePath( const Path2d &path, const Paint &paint );
 
     //! Fill a Shape2d
-    virtual void fillShape( const Shape2d &shape, const Paint &paint, FillRule rule = FillRule::NonZero ) = 0;
+    virtual void fillShape( const Shape2d &shape, const Paint &paint, FillRule rule = FillRule::NonZero );
 
     //! Stroke a Shape2d
-    virtual void strokeShape( const Shape2d &shape, const Paint &paint ) = 0;
+    virtual void strokeShape( const Shape2d &shape, const Paint &paint );
 
     //! Stroke a PolyLine
-    virtual void strokePolyLine( const PolyLine2f &polyline, const Paint &paint ) = 0;
+    virtual void strokePolyLine( const PolyLine2f &polyline, const Paint &paint );
 
     //! Fill a closed PolyLine
-    virtual void fillPolyLine( const PolyLine2f &polyline, const Paint &paint, FillRule rule = FillRule::NonZero ) = 0;
+    virtual void fillPolyLine( const PolyLine2f &polyline, const Paint &paint, FillRule rule = FillRule::NonZero );
 
     // === Cached Path API ===
     //! Create a cached path from a Path2d. Cached paths are more efficient for repeated drawing.
-    virtual CachedPathRef createPath( const Path2d &path ) = 0;
+    //! Base implementation converts to Shape2d and calls createPath(Shape2d).
+    virtual CachedPathRef createPath( const Path2d &path );
 
-    //! Create a cached path from a Shape2d
+    //! Create a cached path from a Shape2d - must be implemented by subclass
     virtual CachedPathRef createPath( const Shape2d &shape ) = 0;
 
-    //! Fill a cached path
-    virtual void fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule = FillRule::NonZero ) = 0;
+    //! Fill a cached path - base implementation uses source shape
+    virtual void fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule = FillRule::NonZero );
 
-    //! Stroke a cached path
-    virtual void strokePath( const CachedPathRef &path, const Paint &paint ) = 0;
+    //! Stroke a cached path - base implementation uses source shape
+    virtual void strokePath( const CachedPathRef &path, const Paint &paint );
 
     // === Image API ===
     //! Create an image from a gl::Texture2d
@@ -235,8 +394,8 @@ public:
     //! Create an image from a Surface (uploads to GPU)
     virtual ImageRef createImage( const Surface &surface ) = 0;
 
-    //! Draw an image at a position (1:1 pixel mapping)
-    virtual void drawImage( const ImageRef &image, const vec2 &position ) = 0;
+    //! Draw an image at a position (1:1 pixel mapping) - base implementation provided
+    virtual void drawImage( const ImageRef &image, const vec2 &position );
 
     //! Draw an image scaled to fit a destination rectangle
     virtual void drawImage( const ImageRef &image, const Rectf &destRect ) = 0;
@@ -255,28 +414,56 @@ public:
                                 float opacity = 1.0f ) = 0;
 
     // === Text API ===
-    //! Draw a string at a position using Cinder's Font
+    //! Draw a string at a position using Cinder's Font - base implementation provided
     virtual void drawString( const std::string &text, const vec2 &position,
-                             const Font &font, const Paint &paint ) = 0;
+                             const Font &font, const Paint &paint );
 
-    //! Create a cached path from text (for custom effects like stroking text)
-    virtual CachedPathRef createTextPath( const std::string &text, const Font &font ) = 0;
+    //! Create a cached path from text (for custom effects like stroking text) - base implementation provided
+    virtual CachedPathRef createTextPath( const std::string &text, const Font &font );
 
     // === Instanced Drawing API ===
-    //! Draw multiple circles at different positions (same radius, same paint)
-    virtual void drawCircles( std::span<const vec2> positions, float radius, const Paint &paint ) = 0;
+    //! Draw multiple circles at different positions (same radius, same paint) - base implementation provided
+    virtual void drawCircles( std::span<const vec2> positions, float radius, const Paint &paint );
 
-    //! Draw multiple circles with full transforms (same radius, same paint)
-    virtual void drawCircles( std::span<const mat3> transforms, float radius, const Paint &paint ) = 0;
+    //! Draw multiple circles with full transforms (same radius, same paint) - base implementation provided
+    virtual void drawCircles( std::span<const mat3> transforms, float radius, const Paint &paint );
 
-    //! Draw multiple rectangles at different positions (same size, same paint)
-    virtual void drawRects( std::span<const vec2> positions, const vec2 &size, const Paint &paint ) = 0;
+    //! Draw multiple rectangles at different positions (same size, same paint) - base implementation provided
+    virtual void drawRects( std::span<const vec2> positions, const vec2 &size, const Paint &paint );
 
-    //! Draw multiple cached paths at different positions (same paint)
-    virtual void drawPaths( std::span<const vec2> positions, const CachedPathRef &path, const Paint &paint ) = 0;
+    //! Draw multiple cached paths at different positions (same paint) - base implementation provided
+    virtual void drawPaths( std::span<const vec2> positions, const CachedPathRef &path, const Paint &paint );
 
-    //! Draw multiple cached paths with full transforms (same paint)
-    virtual void drawPaths( std::span<const mat3> transforms, const CachedPathRef &path, const Paint &paint ) = 0;
+    //! Draw multiple cached paths with full transforms (same paint) - base implementation provided
+    virtual void drawPaths( std::span<const mat3> transforms, const CachedPathRef &path, const Paint &paint );
+
+    // === FrozenPath API ===
+    //! Create a frozen path for efficient repeated drawing (fill operation).
+    //! The tessellation is computed once using the current transform scale.
+    //! Must be implemented by subclass.
+    virtual FrozenPathRef freezePathFill( const CachedPathRef &path, const Paint &paint,
+                                          FillRule rule = FillRule::NonZero ) = 0;
+
+    //! Create a frozen path for efficient repeated drawing (stroke operation).
+    //! The tessellation is computed once using the current transform scale.
+    //! Must be implemented by subclass.
+    virtual FrozenPathRef freezePathStroke( const CachedPathRef &path, const Paint &paint ) = 0;
+
+    //! Draw a frozen path using the current transform.
+    //! The frozen tessellation is reused, skipping expensive Wang's formula calculations.
+    //! Must be implemented by subclass.
+    virtual void drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint ) = 0;
+
+    //! Draw multiple frozen paths at different positions (same paint).
+    //! Efficient for particle systems, repeated icons, etc.
+    virtual void drawFrozenPaths( std::span<const vec2> positions,
+                                   const FrozenPathRef &frozenPath,
+                                   const Paint &paint );
+
+    //! Draw multiple frozen paths with full transforms (same paint).
+    virtual void drawFrozenPaths( std::span<const mat3> transforms,
+                                   const FrozenPathRef &frozenPath,
+                                   const Paint &paint );
 
     // === Clipping API ===
     // Clips are accumulated (intersected) within a save/restore block.
@@ -284,23 +471,83 @@ public:
     // Call save() before clipping to preserve the previous clip state, then restore() to revert.
 
     //! Clip subsequent drawing to a rectangle (intersected with current clip)
-    virtual void clipRect( const Rectf &rect ) = 0;
+    void clipRect( const Rectf &rect );
 
     //! Clip subsequent drawing to a path (intersected with current clip)
-    virtual void clipPath( const Path2d &path, FillRule rule = FillRule::NonZero ) = 0;
+    void clipPath( const Path2d &path, FillRule rule = FillRule::NonZero );
 
     //! Clip subsequent drawing to a shape (intersected with current clip)
-    virtual void clipShape( const Shape2d &shape, FillRule rule = FillRule::NonZero ) = 0;
+    void clipShape( const Shape2d &shape, FillRule rule = FillRule::NonZero );
 
     //! Clip subsequent drawing to a cached path (intersected with current clip)
-    virtual void clipPath( const CachedPathRef &path, FillRule rule = FillRule::NonZero ) = 0;
+    void clipPath( const CachedPathRef &path, FillRule rule = FillRule::NonZero );
 
     // === SVG Rendering ===
-    //! Render an SVG document
-    virtual void draw( const svg::Doc &svg ) = 0;
+    //! Render an SVG document (base implementation provided)
+    virtual void draw( const svg::Doc &svg );
+
+    // === DisplayList API ===
+    //! Create a display list for recording draw commands
+    virtual DisplayListRef createDisplayList() = 0;
+
+    //! Clear the glyph cache (call if fonts are unloaded)
+    void clearGlyphCache() { mGlyphCache.clear(); }
 
 protected:
-    Canvas() = default;
+    Canvas();
+
+    // === Path conversion (Cinder -> Rive) ===
+    //! Convert a Path2d to Rive RawPath
+    rive::RawPath toRivePath( const Path2d &path );
+
+    //! Convert a Shape2d to Rive RawPath
+    rive::RawPath toRivePath( const Shape2d &shape );
+
+    //! Convert a PolyLine to Rive RawPath
+    rive::RawPath toRivePath( const PolyLine2f &polyline );
+
+    // === Internal drawing ===
+    //! Draw a path with the given paint (fill and/or stroke)
+    void drawPathInternal( rive::RawPath rawPath, const Paint &paint,
+                           bool fill, bool stroke, FillRule rule = FillRule::NonZero );
+
+    // === Clipping implementation ===
+    //! Called by clip methods to apply a clip path with current transform
+    void implClipPath( const Path2d &path, FillRule rule );
+
+    //! Called by clipPath(CachedPathRef) - uses source shape
+    void implClipPath( const CachedPathRef &path, FillRule rule );
+
+    //! Fill a shape (converts to Rive path internally)
+    void implFillShape( const Shape2d &shape, const Paint &paint, FillRule rule );
+
+    //! Stroke a shape (converts to Rive path internally)
+    void implStrokeShape( const Shape2d &shape, const Paint &paint );
+
+    //! Get or create a cached circle path at origin
+    CachedPathRef getOrCreateCirclePath( float radius );
+
+    //! Get or create a cached rectangle path at origin
+    CachedPathRef getOrCreateRectPath( const vec2 &size );
+
+    // === Rive context (owned by subclass, set during construction) ===
+    std::unique_ptr<rive::gpu::RenderContext> mRiveContext;
+
+    // Rive renderer (created per-frame in begin(), destroyed in end())
+    std::unique_ptr<rive::RiveRenderer> mOwnedRiveRenderer;
+    rive::RiveRenderer* mRiveRenderer = nullptr;
+
+    // Frame state
+    bool mInFrame = false;
+
+    // Transform state
+    mat3 mTransform;
+    std::vector<mat3> mTransformStack;
+
+    // Caches
+    GlyphCache mGlyphCache;
+    std::unordered_map<float, CachedPathRef> mCirclePathCache;  // radius -> path
+    std::unordered_map<uint64_t, CachedPathRef> mRectPathCache;  // packed size -> path
 };
 
 using CanvasRef = std::shared_ptr<Canvas>;
