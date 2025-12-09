@@ -328,4 +328,29 @@ vector<Shape2d::Intersection> Shape2d::findIntersections( const Path2d &path, fl
 	return result;
 }
 
+bool Shape2d::isCoincident( const Shape2d &other, float tolerance ) const
+{
+	// Must have same number of contours
+	if( mContours.size() != other.mContours.size() )
+		return false;
+
+	// Check all contours are coincident (reuses Path2d::isCoincident)
+	for( size_t i = 0; i < mContours.size(); ++i ) {
+		if( !mContours[i].isCoincident( other.mContours[i], tolerance ) )
+			return false;
+	}
+
+	return true;
+}
+
+bool Shape2d::isCoincident( const Path2d &path, float tolerance ) const
+{
+	// Check if any contour is coincident with the path (reuses Path2d::isCoincident)
+	for( size_t i = 0; i < mContours.size(); ++i ) {
+		if( mContours[i].isCoincident( path, tolerance ) )
+			return true;
+	}
+	return false;
+}
+
 } // namespace cinder

@@ -2528,11 +2528,40 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 	return results;
 }
 
+bool Path2d::isCoincident( const Path2d &other, float tolerance ) const
+{
+	// Must have same number of points
+	if( mPoints.size() != other.mPoints.size() )
+		return false;
+
+	// Check all control points are within tolerance
+	for( size_t i = 0; i < mPoints.size(); ++i ) {
+		if( glm::distance( mPoints[i], other.mPoints[i] ) > tolerance )
+			return false;
+	}
+
+	return true;
+}
+
+bool Path2d::isCoincident( const Shape2d &shape, float tolerance ) const
+{
+	// Check if this path is coincident with any contour of the shape
+	for( size_t i = 0; i < shape.getNumContours(); ++i ) {
+		if( isCoincident( shape.getContour( i ), tolerance ) )
+			return true;
+	}
+	return false;
+}
+
 std::vector<Path2d::Intersection> Path2d::findIntersections( const Path2d &other, float tolerance ) const
 {
 	std::vector<Intersection> results;
 
 	if( mSegments.empty() || mPoints.empty() || other.mSegments.empty() || other.mPoints.empty() )
+		return results;
+
+	// Check for coincident paths - prevents pathological behavior with overlapping curves
+	if( isCoincident( other, tolerance ) )
 		return results;
 
 	// Helper to get segment control points for intersection testing

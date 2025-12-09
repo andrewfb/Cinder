@@ -1289,6 +1289,255 @@ TEST_CASE("offset() with removeSelfIntersections")
 }
 
 //=============================================================================
+// Path2d::isCoincident and Shape2d::isCoincident Tests
+//=============================================================================
+
+TEST_CASE("Path2d::isCoincident")
+{
+	SECTION("Identical paths are coincident")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 0 );
+		path1.lineTo( 100, 100 );
+		path1.curveTo( 150, 50, 200, 150, 250, 100 );
+
+		Path2d path2 = path1;
+
+		REQUIRE( path1.isCoincident( path2 ) );
+		REQUIRE( path2.isCoincident( path1 ) );
+	}
+
+	SECTION("Paths within tolerance are coincident")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 0 );
+		path1.lineTo( 100, 100 );
+
+		Path2d path2;
+		path2.moveTo( 0.5f, 0.5f );
+		path2.lineTo( 100.5f, 100.5f );
+
+		// Within default tolerance of 1.0
+		REQUIRE( path1.isCoincident( path2, 1.0f ) );
+
+		// Not within tighter tolerance
+		REQUIRE_FALSE( path1.isCoincident( path2, 0.1f ) );
+	}
+
+	SECTION("Different paths are not coincident")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 0 );
+		path1.lineTo( 100, 100 );
+
+		Path2d path2;
+		path2.moveTo( 0, 0 );
+		path2.lineTo( 200, 200 );
+
+		REQUIRE_FALSE( path1.isCoincident( path2 ) );
+	}
+
+	SECTION("Paths with different segment counts are not coincident")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 0 );
+		path1.lineTo( 100, 100 );
+
+		Path2d path2;
+		path2.moveTo( 0, 0 );
+		path2.lineTo( 50, 50 );
+		path2.lineTo( 100, 100 );
+
+		REQUIRE_FALSE( path1.isCoincident( path2 ) );
+	}
+
+	SECTION("Empty paths are coincident")
+	{
+		Path2d path1;
+		Path2d path2;
+
+		REQUIRE( path1.isCoincident( path2 ) );
+	}
+
+	SECTION("Path2d::isCoincident with Shape2d")
+	{
+		Path2d path;
+		path.moveTo( 0, 0 );
+		path.lineTo( 100, 100 );
+
+		Shape2d shape;
+		shape.moveTo( 0, 0 );
+		shape.lineTo( 100, 100 );
+
+		REQUIRE( path.isCoincident( shape ) );
+
+		// Add another contour to shape - path should still be coincident with it
+		shape.moveTo( 200, 200 );
+		shape.lineTo( 300, 300 );
+
+		REQUIRE( path.isCoincident( shape ) );
+	}
+
+	SECTION("Path2d not coincident with unrelated Shape2d")
+	{
+		Path2d path;
+		path.moveTo( 0, 0 );
+		path.lineTo( 100, 100 );
+
+		Shape2d shape;
+		shape.moveTo( 500, 500 );
+		shape.lineTo( 600, 600 );
+
+		REQUIRE_FALSE( path.isCoincident( shape ) );
+	}
+}
+
+TEST_CASE("Shape2d::isCoincident")
+{
+	SECTION("Identical shapes are coincident")
+	{
+		Shape2d shape1;
+		shape1.moveTo( 0, 0 );
+		shape1.lineTo( 100, 0 );
+		shape1.lineTo( 100, 100 );
+		shape1.close();
+
+		Shape2d shape2 = shape1;
+
+		REQUIRE( shape1.isCoincident( shape2 ) );
+		REQUIRE( shape2.isCoincident( shape1 ) );
+	}
+
+	SECTION("Shapes within tolerance are coincident")
+	{
+		Shape2d shape1;
+		shape1.moveTo( 0, 0 );
+		shape1.lineTo( 100, 100 );
+
+		Shape2d shape2;
+		shape2.moveTo( 0.3f, 0.3f );
+		shape2.lineTo( 100.3f, 100.3f );
+
+		REQUIRE( shape1.isCoincident( shape2, 1.0f ) );
+		REQUIRE_FALSE( shape1.isCoincident( shape2, 0.1f ) );
+	}
+
+	SECTION("Shapes with different contour counts are not coincident")
+	{
+		Shape2d shape1;
+		shape1.moveTo( 0, 0 );
+		shape1.lineTo( 100, 100 );
+
+		Shape2d shape2;
+		shape2.moveTo( 0, 0 );
+		shape2.lineTo( 100, 100 );
+		shape2.moveTo( 200, 200 );
+		shape2.lineTo( 300, 300 );
+
+		REQUIRE_FALSE( shape1.isCoincident( shape2 ) );
+	}
+
+	SECTION("Empty shapes are coincident")
+	{
+		Shape2d shape1;
+		Shape2d shape2;
+
+		REQUIRE( shape1.isCoincident( shape2 ) );
+	}
+
+	SECTION("Shape2d::isCoincident with Path2d")
+	{
+		Shape2d shape;
+		shape.moveTo( 0, 0 );
+		shape.lineTo( 100, 100 );
+		shape.moveTo( 200, 200 );
+		shape.lineTo( 300, 300 );
+
+		Path2d path;
+		path.moveTo( 200, 200 );
+		path.lineTo( 300, 300 );
+
+		// Shape has a contour coincident with path
+		REQUIRE( shape.isCoincident( path ) );
+
+		// Different path should not be coincident
+		Path2d differentPath;
+		differentPath.moveTo( 500, 500 );
+		differentPath.lineTo( 600, 600 );
+
+		REQUIRE_FALSE( shape.isCoincident( differentPath ) );
+	}
+
+	SECTION("Multi-contour shape coincidence")
+	{
+		Shape2d shape1;
+		shape1.moveTo( 0, 0 );
+		shape1.lineTo( 100, 100 );
+		shape1.moveTo( 200, 200 );
+		shape1.lineTo( 300, 300 );
+
+		Shape2d shape2;
+		shape2.moveTo( 0, 0 );
+		shape2.lineTo( 100, 100 );
+		shape2.moveTo( 200, 200 );
+		shape2.lineTo( 300, 300 );
+
+		REQUIRE( shape1.isCoincident( shape2 ) );
+
+		// Modify second contour of shape2
+		shape2.getContour( 1 ).translate( vec2( 50, 50 ) );
+		REQUIRE_FALSE( shape1.isCoincident( shape2 ) );
+	}
+}
+
+TEST_CASE("isCoincident prevents pathological findIntersections")
+{
+	SECTION("Coincident paths return empty intersections")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 0 );
+		path1.curveTo( 33, 100, 67, 100, 100, 0 );
+
+		Path2d path2 = path1;
+
+		// Should detect coincidence and return empty
+		auto results = path1.findIntersections( path2 );
+		REQUIRE( results.empty() );
+	}
+
+	SECTION("Nearly coincident paths return empty intersections")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 0 );
+		path1.curveTo( 33, 100, 67, 100, 100, 0 );
+
+		Path2d path2;
+		// Use tiny offset that's within findIntersections's default tolerance (1e-4f)
+		path2.moveTo( 0.00005f, 0.00005f );
+		path2.curveTo( 33.00005f, 100.00005f, 67.00005f, 100.00005f, 100.00005f, 0.00005f );
+
+		// These are within default findIntersections tolerance (1e-4f), should return empty
+		auto results = path1.findIntersections( path2 );
+		REQUIRE( results.empty() );
+	}
+
+	SECTION("Non-coincident paths still find intersections")
+	{
+		Path2d path1;
+		path1.moveTo( 0, 0 );
+		path1.lineTo( 100, 100 );
+
+		Path2d path2;
+		path2.moveTo( 0, 100 );
+		path2.lineTo( 100, 0 );
+
+		// These are not coincident, should find intersection
+		auto results = path1.findIntersections( path2 );
+		REQUIRE( results.size() == 1 );
+	}
+}
+
+//=============================================================================
 // Benchmark: findSelfIntersections performance
 //=============================================================================
 

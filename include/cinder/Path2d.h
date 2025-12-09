@@ -236,6 +236,13 @@ class CI_API Path2d {
 	//! Returns intersection results where t1/segment1 refer to this path and t2/segment2 refer to the shape's contours.
 	std::vector<Intersection>	findIntersections( const Shape2d &shape, float tolerance = 1e-4f ) const;
 
+	//! Returns true if this path is coincident with \a other (all control points within \a tolerance).
+	//! Coincident paths have the same geometry and would cause pathological intersection behavior.
+	bool	isCoincident( const Path2d &other, float tolerance = 1.0f ) const;
+
+	//! Returns true if this path is coincident with any contour of \a shape.
+	bool	isCoincident( const Shape2d &shape, float tolerance = 1.0f ) const;
+
 	//! Split the path at parameter \a t, where the integer part is the segment index
 	//! and the fractional part is the position within that segment [0,1). For example,
 	//! \a t = 1.5 means the middle of segment 1. Returns a pair of Path2d objects:

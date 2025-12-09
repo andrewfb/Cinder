@@ -989,31 +989,6 @@ void BezierOffsetApp::drawContent()
 	drawIntersections();
 }
 
-// Check if two shapes are coincident by comparing control points
-static bool areShapesCoincident( const Shape2d& a, const Shape2d& b, float tolerance = 1.0f )
-{
-	// Must have same number of contours
-	if( a.getNumContours() != b.getNumContours() )
-		return false;
-
-	for( size_t c = 0; c < a.getNumContours(); ++c ) {
-		const Path2d& pathA = a.getContour( c );
-		const Path2d& pathB = b.getContour( c );
-
-		// Must have same number of points
-		if( pathA.getNumPoints() != pathB.getNumPoints() )
-			return false;
-
-		// Check all control points
-		for( size_t p = 0; p < pathA.getNumPoints(); ++p ) {
-			if( glm::distance( pathA.getPoint( p ), pathB.getPoint( p ) ) > tolerance )
-				return false;
-		}
-	}
-
-	return true;
-}
-
 void BezierOffsetApp::findAllIntersections()
 {
 	mPathIntersections.clear();
@@ -1022,17 +997,13 @@ void BezierOffsetApp::findAllIntersections()
 		return;
 
 	// Find intersections between all pairs of shapes
+	// Note: coincident path detection is now handled in Path2d::findIntersections
 	for( size_t i = 0; i < mShapes.size(); ++i ) {
 		if( mShapes[i].shape.empty() || !mShapes[i].visible )
 			continue;
 
 		for( size_t j = i + 1; j < mShapes.size(); ++j ) {
 			if( mShapes[j].shape.empty() || !mShapes[j].visible )
-				continue;
-
-			// Skip coincident shapes (all control points within tolerance)
-			// This prevents pathological intersection behavior with duplicates
-			if( areShapesCoincident( mShapes[i].shape, mShapes[j].shape ) )
 				continue;
 
 			auto isects = mShapes[i].shape.findIntersections( mShapes[j].shape );

@@ -138,6 +138,13 @@ class CI_API Shape2d {
 	//! @return Vector of intersection results; contour2 is always 0 for the path
 	std::vector<Intersection>	findIntersections( const Path2d &path, float tolerance = 1e-4f ) const;
 
+	//! Returns true if this shape is coincident with \a other (all contours and control points within \a tolerance).
+	//! Coincident shapes have the same geometry and would cause pathological intersection behavior.
+	bool	isCoincident( const Shape2d &other, float tolerance = 1.0f ) const;
+
+	//! Returns true if any contour of this shape is coincident with \a path.
+	bool	isCoincident( const Path2d &path, float tolerance = 1.0f ) const;
+
 	//! Iterates all of the contours and points of a Shape2d.
 	/** Expects a template parameter that implements
 		\code bool operator()( Path2d::SegmentType type, vec2 *points, vec2 *previousPoint ) \endcode.
