@@ -1092,65 +1092,6 @@ void offsetCubic( const CubicBezD& c, double d, double tolerance, BezPathD& resu
 // Stroke Algorithm: Arc and Join Helpers
 //=============================================================================
 
-struct ArcD {
-	glm::dvec2 center;
-	glm::dvec2 radii;
-	double startAngle;
-	double sweepAngle;
-	double rotation;
-
-	ArcD( const glm::dvec2& c, const glm::dvec2& r, double start, double sweep, double rot = 0.0 )
-		: center( c ), radii( r ), startAngle( start ), sweepAngle( sweep ), rotation( rot ) {}
-
-	void toCubicBeziers( double tolerance, BezPathD& path ) const {
-		double angle = sweepAngle;
-		if( std::abs( angle ) < 1e-12 ) return;
-
-		double effectiveRadius = std::max( std::abs( radii.x ), std::abs( radii.y ) );
-		effectiveRadius = std::max( effectiveRadius, 1e-9 );
-
-		double maxAngle = PI / 2.0;
-		if( tolerance < effectiveRadius ) {
-			double toleranceAngle = std::pow( 54.0 * tolerance / effectiveRadius, 0.25 );
-			maxAngle = std::min( maxAngle, toleranceAngle );
-		}
-
-		int numSegments = static_cast<int>( std::ceil( std::abs( angle ) / maxAngle ) );
-		numSegments = std::max( 1, numSegments );
-		double segmentAngle = angle / numSegments;
-
-		double cosRot = std::cos( rotation );
-		double sinRot = std::sin( rotation );
-
-		double currentAngle = startAngle;
-		for( int i = 0; i < numSegments; ++i ) {
-			double endAngle = currentAngle + segmentAngle;
-			double alpha = ( 4.0 / 3.0 ) * std::tan( segmentAngle / 4.0 );
-
-			double cos0 = std::cos( currentAngle );
-			double sin0 = std::sin( currentAngle );
-			double cos1 = std::cos( endAngle );
-			double sin1 = std::sin( endAngle );
-
-			glm::dvec2 p0( radii.x * cos0, radii.y * sin0 );
-			glm::dvec2 p3( radii.x * cos1, radii.y * sin1 );
-
-			glm::dvec2 p1 = p0 + alpha * glm::dvec2( -radii.x * sin0, radii.y * cos0 );
-			glm::dvec2 p2 = p3 - alpha * glm::dvec2( -radii.x * sin1, radii.y * cos1 );
-
-			auto transform = [&]( const glm::dvec2& p ) {
-				return center + glm::dvec2(
-					cosRot * p.x - sinRot * p.y,
-					sinRot * p.x + cosRot * p.y
-				);
-			};
-
-			path.curveTo( transform( p1 ), transform( p2 ), transform( p3 ) );
-			currentAngle = endAngle;
-		}
-	}
-};
-
 void roundCap( BezPathD& out, double tolerance, const glm::dvec2& center, const glm::dvec2& norm );
 void roundJoin( BezPathD& out, double tolerance, const glm::dvec2& center,
 				const glm::dvec2& norm, double angle );
