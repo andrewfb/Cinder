@@ -179,7 +179,7 @@ class CI_API Path2d {
 	//! Returns whether the path is defined in clockwise order.
 	bool calcClockwise() const;
 	//! Returns whether the path is defined in counter-clockwise order.
-	bool calcCounterClockwise() const { return !calcClockwise(); }
+	bool calcCounterClockwise() const { return ! calcClockwise(); }
 
 	//! Returns whether the point \a pt is contained within the boundaries of the Path2d. If \a evenOddFill is \c true (the default) then Even-Odd fill rule is used, otherwise, the Winding fill rule is applied.
 	bool	contains( const vec2 &pt, bool evenOddFill = true ) const;
@@ -215,9 +215,8 @@ class CI_API Path2d {
 		size_t segment2;    //!< Second segment index
 	};
 
-	//! Find all points where the path crosses itself.
-	//! @param tolerance Approximation tolerance for intersection detection
-	//! @return Vector of self-intersection results, each containing the two t-values and the intersection point
+	//! Find all points where the path crosses itself. \a tolerance controls approximation accuracy.
+	//! Returns a vector of self-intersection results, each containing the two t-values and the intersection point.
 	std::vector<SelfIntersection>	findSelfIntersections( float tolerance = 1e-4f ) const;
 
 	//! Result of a path-to-path intersection search
@@ -229,36 +228,29 @@ class CI_API Path2d {
 		size_t segment2;    //!< Segment index on the other path
 	};
 
-	//! Find all points where this path intersects with \a other.
-	//! @param other The path to test for intersections with
-	//! @param tolerance Approximation tolerance for intersection detection
-	//! @return Vector of intersection results, where t1/segment1 refer to this path and t2/segment2 refer to \a other
+	//! Find all points where this path intersects with \a other. \a tolerance controls approximation accuracy.
+	//! Returns intersection results where t1/segment1 refer to this path and t2/segment2 refer to \a other.
 	std::vector<Intersection>	findIntersections( const Path2d &other, float tolerance = 1e-4f ) const;
 
-	//! Find all points where this path intersects with any contour of \a shape.
-	//! @param shape The shape to test for intersections with
-	//! @param tolerance Approximation tolerance for intersection detection
-	//! @return Vector of intersection results, where t1/segment1 refer to this path and t2/segment2 refer to the shape's contours
+	//! Find all points where this path intersects with any contour of \a shape. \a tolerance controls approximation accuracy.
+	//! Returns intersection results where t1/segment1 refer to this path and t2/segment2 refer to the shape's contours.
 	std::vector<Intersection>	findIntersections( const Shape2d &shape, float tolerance = 1e-4f ) const;
 
 	//! Split the path at parameter \a t, where the integer part is the segment index
-	//! and the fractional part is the position within that segment [0,1).
-	//! @param t Parameter value where to split (e.g., 1.5 means middle of segment 1)
-	//! @return Pair of Path2d objects: first contains path up to split point,
-	//!         second contains path from split point to end
+	//! and the fractional part is the position within that segment [0,1). For example,
+	//! \a t = 1.5 means the middle of segment 1. Returns a pair of Path2d objects:
+	//! first contains path up to split point, second contains path from split point to end.
 	std::pair<Path2d, Path2d>	splitAt( float t ) const;
 
-	//! Split the path at multiple parameter values.
-	//! @param tValues Sorted array of parameter values where to split
-	//! @return Vector of Path2d segments between split points
+	//! Split the path at multiple parameter values. \a tValues should be sorted.
+	//! Returns a vector of Path2d segments between split points.
 	std::vector<Path2d>	splitAtMultiple( const std::vector<float>& tValues ) const;
 
 	//! Remove self-intersecting loops from the path using planar graph decomposition.
 	//! For offset curves, this removes the "inner" loops that occur at sharp corners.
-	//! Uses a graph-based algorithm that correctly handles complex cases like stars.
-	//! @param keepOutermost If true, keep outermost portions (for positive offsets);
-	//!                      if false, keep innermost portions (for negative offsets)
-	//! @return A Shape2d with self-intersections removed (may have multiple contours)
+	//! If \a keepOutermost is true, keeps outermost portions (for positive offsets);
+	//! if false, keeps innermost portions (for negative offsets).
+	//! Returns a Shape2d with self-intersections removed (may have multiple contours).
 	Shape2d	removeSelfIntersections( bool keepOutermost = true ) const;
 
 	static int	calcQuadraticBezierMonotoneRegions( const vec2 p[3], float resultT[2] );
@@ -345,5 +337,117 @@ class CI_API Path2dCalcCache {
 
 class CI_API Path2dExc : public Exception {
 };
+
+//=============================================================================
+// Stroke and Offset Style Parameters
+//=============================================================================
+
+//! Join style for corners (used by both stroke and offset)
+enum class Join {
+	Bevel,  //!< Straight line connecting segments
+	Miter,  //!< Extend segments to natural intersection
+	Round   //!< Arc between segments
+};
+
+//! Cap style for stroke endpoints
+enum class Cap {
+	Butt,   //!< Flat cap
+	Square, //!< Square cap extending half stroke width
+	Round   //!< Rounded cap with radius = half stroke width
+};
+
+// Backwards compatibility aliases
+using StrokeJoin = Join;
+using StrokeCap = Cap;
+
+//! Visual style for a stroke
+struct CI_API StrokeStyle {
+	StrokeStyle() = default;
+	explicit StrokeStyle( float w ) : mWidth( w ) {}
+
+	float getWidth() const { return mWidth; }
+	Join getJoin() const { return mJoin; }
+	float getMiterLimit() const { return mMiterLimit; }
+	Cap getStartCap() const { return mStartCap; }
+	Cap getEndCap() const { return mEndCap; }
+	const std::vector<float>& getDashPattern() const { return mDashPattern; }
+	float getDashOffset() const { return mDashOffset; }
+
+	void setWidth( float w ) { mWidth = w; }
+	void setJoin( Join j ) { mJoin = j; }
+	void setMiterLimit( float limit ) { mMiterLimit = limit; }
+	void setStartCap( Cap c ) { mStartCap = c; }
+	void setEndCap( Cap c ) { mEndCap = c; }
+	void setCaps( Cap c ) { mStartCap = mEndCap = c; }
+	void setDashes( float offset, const std::vector<float>& pattern ) { mDashOffset = offset; mDashPattern = pattern; }
+
+	StrokeStyle& width( float w ) { mWidth = w; return *this; }
+	StrokeStyle& join( Join j ) { mJoin = j; return *this; }
+	StrokeStyle& miterLimit( float limit ) { mMiterLimit = limit; return *this; }
+	StrokeStyle& startCap( Cap c ) { mStartCap = c; return *this; }
+	StrokeStyle& endCap( Cap c ) { mEndCap = c; return *this; }
+	StrokeStyle& caps( Cap c ) { mStartCap = mEndCap = c; return *this; }
+	StrokeStyle& dashes( float offset, const std::vector<float>& pattern ) { mDashOffset = offset; mDashPattern = pattern; return *this; }
+
+  private:
+	float mWidth = 1.0f;
+	Join mJoin = Join::Round;
+	float mMiterLimit = 4.0f;
+	Cap mStartCap = Cap::Round;
+	Cap mEndCap = Cap::Round;
+	std::vector<float> mDashPattern;
+	float mDashOffset = 0.0f;
+};
+
+//=============================================================================
+// Path Offsetting
+//=============================================================================
+
+//! Offset a Path2d by a signed distance. Positive values offset outward (to the left
+//! when traversing the path), negative values offset inward. \a distance is the signed
+//! offset distance, \a join specifies the corner style, and \a miterLimit is the ratio
+//! of miter length to offset distance. \a tolerance controls approximation accuracy
+//! (smaller = more accurate, larger = faster). If \a removeSelfIntersections is true,
+//! self-intersecting loops at sharp corners are removed. Returns the offset path as a
+//! Shape2d (may contain multiple contours for paths with cusps).
+CI_API Shape2d offset( const Path2d& path, float distance, Join join, float miterLimit, float tolerance = 0.25f, bool removeSelfIntersections = false );
+
+//! Offset a Path2d with default join style (Round).
+CI_API Shape2d offset( const Path2d& path, float distance, float tolerance = 0.25f, bool removeSelfIntersections = false );
+
+//! Offset a Shape2d by a signed \a distance. See the Path2d version for parameter details.
+CI_API Shape2d offset( const Shape2d& shape, float distance, Join join, float miterLimit, float tolerance = 0.25f, bool removeSelfIntersections = false );
+
+//! Offset a Shape2d with default join style (Round).
+CI_API Shape2d offset( const Shape2d& shape, float distance, float tolerance = 0.25f, bool removeSelfIntersections = false );
+
+//=============================================================================
+// Path Stroking
+//=============================================================================
+
+//! Expand a Path2d stroke into a filled Shape2d using \a style parameters.
+//! \a tolerance controls curve approximation accuracy.
+CI_API Shape2d stroke( const Path2d& path, const StrokeStyle& style, float tolerance = 0.25f );
+
+//! Expand a Path2d stroke with simple parameters. Uses \a width with default round caps/joins.
+CI_API Shape2d stroke( const Path2d& path, float width, float tolerance = 0.25f );
+
+//! Expand a Shape2d stroke into a filled Shape2d using \a style parameters.
+CI_API Shape2d stroke( const Shape2d& shape, const StrokeStyle& style, float tolerance = 0.25f );
+
+//! Expand a Shape2d stroke with simple parameters. Uses \a width with default round caps/joins.
+CI_API Shape2d stroke( const Shape2d& shape, float width, float tolerance = 0.25f );
+
+//=============================================================================
+// Dashing
+//=============================================================================
+
+//! Apply a dash pattern to a Path2d. \a offset is the starting offset into the pattern,
+//! and \a pattern contains alternating on/off dash lengths. Returns multiple contours,
+//! one for each dash segment.
+CI_API Shape2d dash( const Path2d& path, float offset, const std::vector<float>& pattern );
+
+//! Apply a dash pattern to a Shape2d. See the Path2d version for parameter details.
+CI_API Shape2d dash( const Shape2d& shape, float offset, const std::vector<float>& pattern );
 
 } // namespace cinder

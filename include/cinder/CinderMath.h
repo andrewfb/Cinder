@@ -1,8 +1,9 @@
 /*
- Copyright (c) 2010, The Barbarian Group
+ Copyright (c) 2010, The Cinder Project
  All rights reserved.
 
  Portions Copyright (c) 2004, Laminar Research.
+ Portions Copyright (c) 2018, Raph Levien (kurbo library, Apache-2.0 OR MIT).
 
  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
  the following conditions are met:
@@ -405,6 +406,7 @@ inline glm::tvec2<T> perp( const glm::tvec2<T>& v )
 }
 
 // Numerically Stable Polynomial Solvers
+// Ported from kurbo (https://github.com/linebender/kurbo) by Raph Levien.
 //
 // These "Stable" variants complement the existing solveQuadratic() and solveCubic()
 // functions with improved numerical stability for edge cases:
@@ -417,14 +419,14 @@ inline glm::tvec2<T> perp( const glm::tvec2<T>& v )
 //                         computing one root via the standard formula and the other via
 //                         Vieta's formula (c/q). Uses copysign() to always add terms of
 //                         the same sign in the discriminant.
-//                         Reference: Press et al., "Numerical Recipes" §5.6
-//                         https://numerical.recipes/book.html
+//                         Reference: https://math.stackexchange.com/questions/866331
+//                         See also: Press et al., "Numerical Recipes" §5.6
 //
 // solveCubicStable():     Uses Jim Blinn's method which is more numerically robust than
 //                         Cardano's formula, especially for the "three real roots" case
 //                         where it uses trigonometric identities instead of complex cube roots.
-//                         Reference: Blinn, "How to Solve a Cubic Equation" (IEEE CG&A 2006-2007)
-//                         https://courses.cs.washington.edu/courses/cse590b/13au/lecture_notes/solvecubic_p5.pdf
+//                         Reference: https://momentsingraphics.de/CubicRoots.html
+//                         Based on: Blinn, "How to Solve a Cubic Equation" (IEEE CG&A 2006-2007)
 //
 // Note: Coefficient order differs - stable versions use c0 + c1*x + c2*x² form
 //       (constant term first), while the original uses ax² + bx + c form.
@@ -533,6 +535,7 @@ inline int solveCubicStable( T c0, T c1, T c2, T c3, T result[3] )
 
 //! ITP (Interpolate-Truncate-Project) root finding. Finds x in [\a a, \a b] where f(x) = 0.
 //! Hybrid bisection/regula-falsi with guaranteed worst-case convergence. Requires \a ya = f(a) < 0 and \a yb = f(b) > 0.
+//! Ported from kurbo. Reference: https://en.wikipedia.org/wiki/ITP_Method
 template<typename T, typename F>
 inline T solveItp( F&& f, T a, T b, T epsilon, int n0, T k1, T ya, T yb )
 {
@@ -728,7 +731,8 @@ constexpr double GAUSS_LEGENDRE_5_NODES[] = {
 };
 
 //=============================================================================
-// Line-Segment Intersection (ported from Kurbo)
+// Line-Segment Intersection
+// Ported from kurbo (https://github.com/linebender/kurbo) by Raph Levien.
 //=============================================================================
 
 //! Result of a line-segment intersection with parameters \a segmentT and \a lineT in [0,1].

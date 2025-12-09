@@ -67,10 +67,6 @@
 		001E3561115D5EFA000C228C /* Xml.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 001E355E115D5EFA000C228C /* Xml.cpp */; };
 		001E3565115D5F14000C228C /* Xml.h in Headers */ = {isa = PBXBuildFile; fileRef = 001E3562115D5F14000C228C /* Xml.h */; };
 		001F520A0FCF99A10021731E /* Path2d.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 001F52090FCF99A10021731E /* Path2d.cpp */; };
-		999848A92BCB474DB0C9EB3C /* Path2dStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 441247F6342B4A1C9912B40E /* Path2dStroke.cpp */; };
-		C352ECCC529940A7B935AC3D /* Path2dStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 441247F6342B4A1C9912B40E /* Path2dStroke.cpp */; };
-		88D2B86E792344A08EF029B9 /* Path2dStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 441247F6342B4A1C9912B40E /* Path2dStroke.cpp */; };
-		F57433EE59BE4280BC77AC98 /* Path2dStroke.h in Headers */ = {isa = PBXBuildFile; fileRef = BE5688266CE44F0BA2637D8D /* Path2dStroke.h */; };
 		0023064523FE06F5002FB696 /* Filesystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0023064423FE06F5002FB696 /* Filesystem.cpp */; };
 		0023064623FE06F5002FB696 /* Filesystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0023064423FE06F5002FB696 /* Filesystem.cpp */; };
 		0023064723FE06F5002FB696 /* Filesystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0023064423FE06F5002FB696 /* Filesystem.cpp */; };
@@ -1125,9 +1121,11 @@
 		84A3FFF524048D6200932807 /* imgui_widgets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 84A3FFEE24048D6200932807 /* imgui_widgets.cpp */; };
 		84A3FFF624048D6200932807 /* imgui_freetype.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 84A3FFEF24048D6200932807 /* imgui_freetype.cpp */; };
 		84A3FFF724048D6200932807 /* imgui_demo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 84A3FFF024048D6200932807 /* imgui_demo.cpp */; };
+		88D2B86E792344A08EF029B9 /* Path2dStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 441247F6342B4A1C9912B40E /* Path2dStroke.cpp */; };
 		92AF10066D6041E09E56B37A /* posix_module.c in Sources */ = {isa = PBXBuildFile; fileRef = 6CACD51097F141AFA99A589B /* posix_module.c */; };
 		949F123AD40D4D2E8698B2E6 /* cocoa_init.m in Sources */ = {isa = PBXBuildFile; fileRef = 434F29DBC77B48938219C983 /* cocoa_init.m */; };
 		98E3B86D2C4849E0A6AD6B2E /* null_init.c in Sources */ = {isa = PBXBuildFile; fileRef = 45400D9FA51249A890BAEFA4 /* null_init.c */; };
+		999848A92BCB474DB0C9EB3C /* Path2dStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 441247F6342B4A1C9912B40E /* Path2dStroke.cpp */; };
 		B0245F5919BEDF3200BC878D /* Query.h in Headers */ = {isa = PBXBuildFile; fileRef = B0245F5819BEDF3200BC878D /* Query.h */; };
 		B06DE70319C74935008B9E1B /* Query.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B06DE70219C74935008B9E1B /* Query.cpp */; };
 		B31987EB1ACB9D8B00DEB9EF /* draw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B31987EA1ACB9D8B00DEB9EF /* draw.cpp */; };
@@ -1606,6 +1604,7 @@
 		B3EA41001DD0F15400E34348 /* bdflib.c in Sources */ = {isa = PBXBuildFile; fileRef = B3EA40FD1DD0F15400E34348 /* bdflib.c */; settings = {COMPILER_FLAGS = "-Wno-conversion"; }; };
 		BC8926A0BB4E427D81B6D719 /* RendererImplGlfwMetal.h in Headers */ = {isa = PBXBuildFile; fileRef = A4CAB7B961E94B2CBF92D779 /* RendererImplGlfwMetal.h */; };
 		BF1ABC3D9ABF4B8D8A48AEFE /* RendererMetal.h in Headers */ = {isa = PBXBuildFile; fileRef = EAD54ABCA3F84D849EB0BD2C /* RendererMetal.h */; };
+		C352ECCC529940A7B935AC3D /* Path2dStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 441247F6342B4A1C9912B40E /* Path2dStroke.cpp */; };
 		C70E19FF106AA38700E63577 /* Buffer.h in Headers */ = {isa = PBXBuildFile; fileRef = C70E19FE106AA38700E63577 /* Buffer.h */; };
 		C70E1A03106AA39D00E63577 /* Buffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C70E1A01106AA39D00E63577 /* Buffer.cpp */; };
 		C7BA40890FA8C13A00AADC07 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C7BA40880FA8C13A00AADC07 /* AudioToolbox.framework */; };
@@ -1682,8 +1681,6 @@
 		001E355E115D5EFA000C228C /* Xml.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Xml.cpp; sourceTree = "<group>"; };
 		001E3562115D5F14000C228C /* Xml.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Xml.h; sourceTree = "<group>"; };
 		001F52090FCF99A10021731E /* Path2d.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Path2d.cpp; sourceTree = "<group>"; };
-		441247F6342B4A1C9912B40E /* Path2dStroke.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Path2dStroke.cpp; sourceTree = "<group>"; };
-		BE5688266CE44F0BA2637D8D /* Path2dStroke.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Path2dStroke.h; sourceTree = "<group>"; };
 		0023064423FE06F5002FB696 /* Filesystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Filesystem.cpp; sourceTree = "<group>"; };
 		002419CD0E8035D3004D34EB /* App.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = App.h; path = app/App.h; sourceTree = "<group>"; };
 		00241A0C0E80375A004D34EB /* Cinder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Cinder.h; sourceTree = "<group>"; };
@@ -2147,6 +2144,7 @@
 		43ED0FE11220949A003AEB0B /* UrlImplCocoa.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UrlImplCocoa.h; sourceTree = "<group>"; };
 		43F78EF11516DAB700EB63B5 /* Json.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Json.cpp; sourceTree = "<group>"; };
 		43F78EF51516DAE200EB63B5 /* Json.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Json.h; sourceTree = "<group>"; };
+		441247F6342B4A1C9912B40E /* Path2dStroke.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Path2dStroke.cpp; sourceTree = "<group>"; };
 		4539F08A8F9446C6A2B53201 /* cocoa_monitor.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = cocoa_monitor.m; path = ../../src/glfw/src/cocoa_monitor.m; sourceTree = "<group>"; };
 		45400D9FA51249A890BAEFA4 /* null_init.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = null_init.c; path = ../../src/glfw/src/null_init.c; sourceTree = "<group>"; };
 		4B82AF195C934322A85B2A3B /* nsgl_context.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = nsgl_context.m; path = ../../src/glfw/src/nsgl_context.m; sourceTree = "<group>"; };
@@ -2723,7 +2721,6 @@
 				CCEA2460CD2F4C1C93972D5F /* CanvasUi.h */,
 				002DFD530FA5602900E45AE0 /* ObjLoader.h */,
 				00CFE37B113B85F60091E310 /* Path2d.h */,
-				BE5688266CE44F0BA2637D8D /* Path2dStroke.h */,
 				00D2F1150F8D825C00A7189A /* Perlin.h */,
 				0014407E14CDB8D900D99000 /* Plane.h */,
 				009EE46D0F7A9F6700F17CB1 /* PolyLine.h */,
@@ -4546,7 +4543,6 @@
 				0076581C11226084005547DF /* CinderResources.h in Headers */,
 				B3EA3F3A1DD0EEA900E34348 /* ftmodule.h in Headers */,
 				00CFE37D113B85F60091E310 /* Path2d.h in Headers */,
-				F57433EE59BE4280BC77AC98 /* Path2dStroke.h in Headers */,
 				00CFE37E113B85F60091E310 /* Thread.h in Headers */,
 				B3EA403C1DD0EEA900E34348 /* ttunpat.h in Headers */,
 				B3EA3FC41DD0EEA900E34348 /* ftdebug.h in Headers */,

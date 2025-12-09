@@ -1,6 +1,11 @@
 /*
  Copyright (c) 2024, The Cinder Project, All rights reserved.
 
+ This code includes algorithms ported from the Kurbo library
+ (https://github.com/linebender/kurbo) by Raph Levien, which is licensed
+ under either the Apache License, Version 2.0 or the MIT license, at your
+ option. See the Kurbo repository for full license text.
+
  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
  the following conditions are met:
 
@@ -19,10 +24,8 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
-// Path2dStroke.cpp - Consolidated path offset and stroke expansion
-// Based on algorithms from Kurbo (https://github.com/linebender/kurbo)
-
-#include "cinder/Path2dStroke.h"
+#include "cinder/Path2d.h"
+#include "cinder/Shape2d.h"
 #include "cinder/CinderMath.h"
 #include "cinder/CinderGlm.h"
 #include <cmath>
@@ -1331,30 +1334,30 @@ struct InternalStrokeStyle {
 InternalStrokeStyle convertStrokeStyle( const StrokeStyle& style )
 {
 	InternalStrokeStyle result;
-	result.width = static_cast<double>( style.width );
-	result.miterLimit = static_cast<double>( style.miterLimit );
-	result.dashOffset = static_cast<double>( style.dashOffset );
+	result.width = static_cast<double>( style.getWidth() );
+	result.miterLimit = static_cast<double>( style.getMiterLimit() );
+	result.dashOffset = static_cast<double>( style.getDashOffset() );
 
-	switch( style.join ) {
+	switch( style.getJoin() ) {
 		case StrokeJoin::Bevel: result.join = InternalJoin::Bevel; break;
 		case StrokeJoin::Miter: result.join = InternalJoin::Miter; break;
 		case StrokeJoin::Round: result.join = InternalJoin::Round; break;
 	}
 
-	switch( style.startCap ) {
+	switch( style.getStartCap() ) {
 		case StrokeCap::Butt: result.startCap = InternalCap::Butt; break;
 		case StrokeCap::Square: result.startCap = InternalCap::Square; break;
 		case StrokeCap::Round: result.startCap = InternalCap::Round; break;
 	}
 
-	switch( style.endCap ) {
+	switch( style.getEndCap() ) {
 		case StrokeCap::Butt: result.endCap = InternalCap::Butt; break;
 		case StrokeCap::Square: result.endCap = InternalCap::Square; break;
 		case StrokeCap::Round: result.endCap = InternalCap::Round; break;
 	}
 
-	result.dashPattern.reserve( style.dashPattern.size() );
-	for( float d : style.dashPattern ) {
+	result.dashPattern.reserve( style.getDashPattern().size() );
+	for( float d : style.getDashPattern() ) {
 		result.dashPattern.push_back( static_cast<double>( d ) );
 	}
 
@@ -2578,6 +2581,16 @@ Shape2d offset( const Shape2d& shape, float distance, Join join, float miterLimi
 		result.append( offsetContour );
 	}
 	return result;
+}
+
+Shape2d offset( const Path2d& path, float distance, float tolerance, bool removeSelfIntersections )
+{
+	return offset( path, distance, Join::Round, 4.0f, tolerance, removeSelfIntersections );
+}
+
+Shape2d offset( const Shape2d& shape, float distance, float tolerance, bool removeSelfIntersections )
+{
+	return offset( shape, distance, Join::Round, 4.0f, tolerance, removeSelfIntersections );
 }
 
 Shape2d stroke( const Path2d& path, const StrokeStyle& style, float tolerance )

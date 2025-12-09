@@ -1,7 +1,6 @@
 #include "cinder/app/App.h"
 #include "cinder/Path2d.h"
 #include "cinder/Shape2d.h"
-#include "cinder/Path2dStroke.h"
 
 #include "catch.hpp"
 

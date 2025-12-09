@@ -8,7 +8,6 @@
 #include "cinder/gl/gl.h"
 #include "cinder/Path2d.h"
 #include "cinder/Shape2d.h"
-#include "cinder/Path2dStroke.h"
 #include "cinder/CanvasUi.h"
 #include "cinder/CinderImGui.h"
 #include "cinder/Font.h"
@@ -598,8 +597,8 @@ void BezierOffsetApp::updateResult()
 	}
 	else {
 		StrokeStyle style( entry.distance );
-		style.withJoin( joinStyle ).withMiterLimit( entry.miterLimit );
-		style.withStartCap( startCap ).withEndCap( endCap );
+		style.join( joinStyle ).miterLimit( entry.miterLimit );
+		style.startCap( startCap ).endCap( endCap );
 
 		if( entry.enableDashing ) {
 			vector<float> pattern;
@@ -610,7 +609,7 @@ void BezierOffsetApp::updateResult()
 				case 3: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff, entry.dashOn2, entry.dashOff }; break;
 				case 4: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff2 }; break;
 			}
-			style.withDashes( entry.dashOffset, pattern );
+			style.dashes( entry.dashOffset, pattern );
 		}
 
 		entry.result = stroke( shape, style, entry.tolerance );
