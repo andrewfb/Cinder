@@ -11,6 +11,7 @@
 #include "cinder/CanvasUi.h"
 #include "cinder/CinderImGui.h"
 #include "cinder/Font.h"
+#include "cinder/Rand.h"
 
 using namespace ci;
 using namespace ci::app;
@@ -44,7 +45,7 @@ static const char* sPresetNames[] = {
 };
 
 class BezierOffsetApp : public App {
-public:
+  public:
 	BezierOffsetApp() : mTrackedPoint( -1 ) {}
 
 	void setup() override;
@@ -52,10 +53,9 @@ public:
 	void mouseUp( MouseEvent event ) override;
 	void mouseDrag( MouseEvent event ) override;
 	void mouseMove( MouseEvent event ) override;
-	void keyDown( KeyEvent event ) override;
 	void draw() override;
 
-private:
+  private:
 	void drawImGuiControls();
 	void updateResult();
 	Shape2d createPresetShape( PresetShape preset );
@@ -65,8 +65,8 @@ private:
 
 	CanvasUi    mCanvas;
 
-	// Mode for offset/stroke
-	enum class Mode { NONE, OFFSET, STROKE };
+	// Mode for offset/stroke/dash
+	enum class Mode { NONE, OFFSET, STROKE, DASH };
 
 	// Multi-shape support - each entry is a Shape2d with its own parameters
 	struct ShapeEntry {
@@ -263,7 +263,7 @@ Shape2d BezierOffsetApp::createPresetShape( PresetShape preset )
 
 void BezierOffsetApp::mouseDown( MouseEvent event )
 {
-	if( event.isLeftDown() && !event.isAltDown() && !ImGui::GetIO().WantCaptureMouse ) {
+	if( event.isLeftDown() && !event.isAltDown() ) {
 		vec2 pos = mCanvas.toContent( event.getPos() );
 
 		if( mHoveredPoint >= 0 ) {
@@ -308,9 +308,6 @@ void BezierOffsetApp::mouseDown( MouseEvent event )
 
 void BezierOffsetApp::mouseDrag( MouseEvent event )
 {
-	if( ImGui::GetIO().WantCaptureMouse )
-		return;
-
 	// Let CanvasUi handle pan if Alt is held
 	if( event.isAltDown() )
 		return;
@@ -385,13 +382,6 @@ void BezierOffsetApp::mouseUp( MouseEvent event )
 
 void BezierOffsetApp::mouseMove( MouseEvent event )
 {
-	if( ImGui::GetIO().WantCaptureMouse ) {
-		mHoveredPoint = -1;
-		mHoveringShape = false;
-		mHoveredShapeIndex = -1;
-		return;
-	}
-
 	vec2 pos = mCanvas.toContent( event.getPos() );
 	float hoverRadius = 12.0f / mCanvas.getZoom();
 
@@ -428,118 +418,6 @@ void BezierOffsetApp::mouseMove( MouseEvent event )
 				mHoveringShape = true;
 			}
 		}
-	}
-}
-
-void BezierOffsetApp::keyDown( KeyEvent event )
-{
-	Path2d* path = getEditablePath();
-	switch( event.getChar() ) {
-		case 'x':
-		case 'X':
-			if( path ) {
-				path->clear();
-				mShapes[mActiveShapeIndex].result.clear();
-				findAllIntersections();
-			}
-			break;
-		case 'c':
-		case 'C':
-			if( path && !path->empty() && !path->isClosed() ) {
-				path->close();
-				updateResult();
-			}
-			break;
-		case 'd':
-		case 'D':
-			// Dump input and output to console as JSON for comparison
-			if( path ) {
-				auto dumpPath = []( const Path2d& p, const string& label ) {
-					cout << label << endl;
-					const auto& pts = p.getPoints();
-					size_t ptIdx = 0;
-					cout << "[";
-					for( size_t i = 0; i < p.getNumSegments(); ++i ) {
-						if( i > 0 ) cout << ",";
-						auto type = p.getSegmentType( i );
-						if( type == Path2d::MOVETO ) {
-							cout << "\n  {\"type\":\"M\",\"p\":[" << pts[ptIdx].x << "," << pts[ptIdx].y << "]}";
-							ptIdx++;
-						} else if( type == Path2d::LINETO ) {
-							cout << "\n  {\"type\":\"L\",\"p\":[" << pts[ptIdx].x << "," << pts[ptIdx].y << "]}";
-							ptIdx++;
-						} else if( type == Path2d::QUADTO ) {
-							cout << "\n  {\"type\":\"Q\",\"c\":[" << pts[ptIdx].x << "," << pts[ptIdx].y
-								 << "],\"p\":[" << pts[ptIdx+1].x << "," << pts[ptIdx+1].y << "]}";
-							ptIdx += 2;
-						} else if( type == Path2d::CUBICTO ) {
-							cout << "\n  {\"type\":\"C\",\"c1\":[" << pts[ptIdx].x << "," << pts[ptIdx].y
-								 << "],\"c2\":[" << pts[ptIdx+1].x << "," << pts[ptIdx+1].y
-								 << "],\"p\":[" << pts[ptIdx+2].x << "," << pts[ptIdx+2].y << "]}";
-							ptIdx += 3;
-						} else if( type == Path2d::CLOSE ) {
-							cout << ",\n  {\"type\":\"Z\"}";
-						}
-					}
-					if( p.isClosed() && (p.getNumSegments() == 0 || p.getSegmentType( p.getNumSegments()-1 ) != Path2d::CLOSE) ) {
-						cout << ",\n  {\"type\":\"Z\"}";
-					}
-					cout << "\n]" << endl;
-				};
-
-				dumpPath( *path, "=== INPUT PATH ===" );
-
-				const ShapeEntry& active = mShapes[mActiveShapeIndex];
-				cout << "\n=== OFFSET PARAMS ===" << endl;
-				float dist = (active.mode == Mode::OFFSET) ? active.distance : active.distance / 2.0f;
-				cout << "{\"distance\":" << dist << ",\"tolerance\":" << active.tolerance << "}" << endl;
-
-				cout << "\n=== OUTPUT SHAPE (" << active.result.getNumContours() << " contours) ===" << endl;
-				for( size_t c = 0; c < active.result.getNumContours(); ++c ) {
-					dumpPath( active.result.getContour( c ), "Contour " + to_string( c ) + ":" );
-				}
-			}
-			break;
-		case 'i':
-		case 'I':
-			// Dump self-intersection debug info
-			if( path && !mShapes.empty() ) {
-				const ShapeEntry& active = mShapes[mActiveShapeIndex];
-				cout << "\n========== SELF-INTERSECTION DEBUG ==========" << endl;
-
-				StrokeJoin joinStyle;
-				switch( active.joinStyle ) {
-					case 0: joinStyle = StrokeJoin::Bevel; break;
-					case 1: joinStyle = StrokeJoin::Miter; break;
-					default: joinStyle = StrokeJoin::Round; break;
-				}
-
-				Shape2d rawOffset = offset( *path, active.distance, joinStyle, active.miterLimit, active.tolerance, false );
-
-				cout << "Raw offset has " << rawOffset.getNumContours() << " contour(s)" << endl;
-
-				for( size_t c = 0; c < rawOffset.getNumContours(); ++c ) {
-					const Path2d& contour = rawOffset.getContour( c );
-					cout << "\n--- Contour " << c << " ---" << endl;
-					cout << "  Segments: " << contour.getNumSegments() << ", Points: " << contour.getNumPoints() << endl;
-					cout << "  isClosed: " << (contour.isClosed() ? "true" : "false") << endl;
-
-					auto isects = contour.findSelfIntersections();
-					cout << "  Self-intersections found: " << isects.size() << endl;
-
-					for( size_t i = 0; i < isects.size(); ++i ) {
-						const auto& si = isects[i];
-						cout << "    [" << i << "] seg1=" << si.segment1 << " seg2=" << si.segment2
-						     << " t1=" << si.t1 << " t2=" << si.t2
-						     << " point=(" << si.point.x << "," << si.point.y << ")" << endl;
-					}
-
-					Shape2d cleanedShape = contour.removeSelfIntersections();
-					cout << "  After removeSelfIntersections: " << cleanedShape.getNumContours() << " contours" << endl;
-				}
-				cout << "==============================================" << endl;
-			}
-			break;
 	}
 }
 
@@ -592,23 +470,38 @@ void BezierOffsetApp::updateResult()
 		default: endCap = StrokeCap::Round; break;
 	}
 
+	// Build dash pattern
+	vector<float> pattern;
+	if( entry.enableDashing ) {
+		switch( entry.dashPreset ) {
+			case 0: pattern = { entry.dashOn, entry.dashOff }; break;
+			case 1: pattern = { entry.dashOn, entry.dashOff }; break;
+			case 2: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff }; break;
+			case 3: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff, entry.dashOn2, entry.dashOff }; break;
+			case 4: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff2 }; break;
+		}
+	}
+
 	if( entry.mode == Mode::OFFSET ) {
 		entry.result = offset( shape, entry.distance, joinStyle, entry.miterLimit, entry.tolerance, entry.removeSelfIntersections );
 	}
+	else if( entry.mode == Mode::DASH ) {
+		// Dash mode: just dashing, no stroke expansion
+		if( entry.enableDashing && !pattern.empty() ) {
+			entry.result = dash( shape, entry.dashOffset, pattern );
+		}
+		else {
+			// No dashing enabled - just copy the original shape
+			entry.result = shape;
+		}
+	}
 	else {
+		// Stroke mode
 		StrokeStyle style( entry.distance );
 		style.join( joinStyle ).miterLimit( entry.miterLimit );
 		style.startCap( startCap ).endCap( endCap );
 
-		if( entry.enableDashing ) {
-			vector<float> pattern;
-			switch( entry.dashPreset ) {
-				case 0: pattern = { entry.dashOn, entry.dashOff }; break;
-				case 1: pattern = { entry.dashOn, entry.dashOff }; break;
-				case 2: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff }; break;
-				case 3: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff, entry.dashOn2, entry.dashOff }; break;
-				case 4: pattern = { entry.dashOn, entry.dashOff, entry.dashOn2, entry.dashOff2 }; break;
-			}
+		if( entry.enableDashing && !pattern.empty() ) {
 			style.dashes( entry.dashOffset, pattern );
 		}
 
@@ -645,6 +538,11 @@ void BezierOffsetApp::drawImGuiControls()
 	if( ImGui::Button( "Add Shape" ) ) {
 		PresetShape preset = static_cast<PresetShape>( mSelectedPreset );
 		Shape2d newShape = createPresetShape( preset );
+
+		// Randomly offset new shape by up to 10px to avoid coincident shapes
+		float randOffsetX = randFloat( -10.0f, 10.0f );
+		float randOffsetY = randFloat( -10.0f, 10.0f );
+		newShape.translate( vec2( randOffsetX, randOffsetY ) );
 
 		// Determine if editable (single contour, not a glyph)
 		bool editable = (preset != PresetShape::GLYPH_A && preset != PresetShape::GLYPH_C);
@@ -737,10 +635,14 @@ void BezierOffsetApp::drawImGuiControls()
 		ImGui::TextColored( ImVec4( 1.0f, 1.0f, 0.2f, 1.0f ), "Active Shape Settings" );
 		ImGui::Separator();
 
-		const char* modes[] = { "None", "Offset", "Stroke" };
-		int modeIdx = (active.mode == Mode::NONE) ? 0 : (active.mode == Mode::OFFSET) ? 1 : 2;
-		if( ImGui::Combo( "Mode", &modeIdx, modes, 3 ) ) {
-			active.mode = (modeIdx == 0) ? Mode::NONE : (modeIdx == 1) ? Mode::OFFSET : Mode::STROKE;
+		const char* modes[] = { "None", "Offset", "Stroke", "Dash" };
+		int modeIdx = (active.mode == Mode::NONE) ? 0 : (active.mode == Mode::OFFSET) ? 1 : (active.mode == Mode::STROKE) ? 2 : 3;
+		if( ImGui::Combo( "Mode", &modeIdx, modes, 4 ) ) {
+			active.mode = (modeIdx == 0) ? Mode::NONE : (modeIdx == 1) ? Mode::OFFSET : (modeIdx == 2) ? Mode::STROKE : Mode::DASH;
+			// Auto-enable dashing when switching to Dash mode
+			if( active.mode == Mode::DASH && !active.enableDashing ) {
+				active.enableDashing = true;
+			}
 			updateResult();
 		}
 
@@ -806,9 +708,14 @@ void BezierOffsetApp::drawImGuiControls()
 				updateResult();
 			}
 		}
+		else if( active.mode == Mode::DASH ) {
+			// Dash mode - just dashing, no stroke expansion
+			ImGui::TextColored( ImVec4( 0.8f, 0.8f, 0.8f, 1.0f ), "Creates dashed path segments" );
+			ImGui::TextColored( ImVec4( 0.8f, 0.8f, 0.8f, 1.0f ), "(no stroke expansion)" );
+		}
 
-		// Dash Pattern (stroke mode only)
-		if( active.mode == Mode::STROKE ) {
+		// Dash Pattern (stroke and dash modes)
+		if( active.mode == Mode::STROKE || active.mode == Mode::DASH ) {
 			ImGui::Spacing();
 			ImGui::TextColored( ImVec4( 0.2f, 0.8f, 1.0f, 1.0f ), "Dash Pattern" );
 			ImGui::Separator();
@@ -926,12 +833,6 @@ void BezierOffsetApp::drawImGuiControls()
 	ImGui::BulletText( "Click empty to add points" );
 	ImGui::BulletText( "Drag to create curves" );
 	ImGui::BulletText( "Drag points to edit" );
-	ImGui::BulletText( "'X' to clear, 'C' to close" );
-	ImGui::Spacing();
-	ImGui::TextColored( ImVec4( 0.8f, 0.8f, 0.8f, 1.0f ), "Navigation" );
-	ImGui::Separator();
-	ImGui::BulletText( "Alt+Drag to pan" );
-	ImGui::BulletText( "Scroll wheel to zoom" );
 
 	ImGui::End();
 }
@@ -957,7 +858,7 @@ void BezierOffsetApp::drawContent()
 	if( mShowResult ) {
 		for( int si = 0; si < (int)mShapes.size(); ++si ) {
 			const ShapeEntry& entry = mShapes[si];
-			if( !entry.visible || entry.result.empty() )
+			if( ! entry.visible || entry.result.empty() )
 				continue;
 
 			bool isActive = (si == mActiveShapeIndex);
@@ -989,8 +890,17 @@ void BezierOffsetApp::drawContent()
 					}
 				}
 			}
+			else if( entry.mode == Mode::DASH ) {
+				// Dash mode: draw as stroked lines (not filled) with thicker line
+				gl::lineWidth( 3.0f );
+				gl::color( ColorA( mResultColor, isActive ? 1.0f : 0.7f ) );
+				for( const auto& contour : entry.result.getContours() ) {
+					gl::draw( contour );
+				}
+				gl::lineWidth( 1.0f );
+			}
 			else {
-				// Single result (original behavior)
+				// Single result (original behavior for Stroke/Offset)
 				gl::color( ColorA( mResultColor, alpha ) );
 				gl::draw( entry.result );
 
@@ -1021,7 +931,7 @@ void BezierOffsetApp::drawContent()
 
 			bool isActive = (si == mActiveShapeIndex);
 			bool isHovered = (si == mHoveredShapeIndex) || (isActive && mDraggingShape);
-			float alpha = isActive ? 1.0f : 0.6f;
+			float alpha = isActive ? 0.5f : 0.3f;  // Draw original at 50% opacity
 
 			// Determine draw color
 			Color drawColor = entry.color;
@@ -1079,11 +989,36 @@ void BezierOffsetApp::drawContent()
 	drawIntersections();
 }
 
+// Check if two shapes are coincident by comparing control points
+static bool areShapesCoincident( const Shape2d& a, const Shape2d& b, float tolerance = 1.0f )
+{
+	// Must have same number of contours
+	if( a.getNumContours() != b.getNumContours() )
+		return false;
+
+	for( size_t c = 0; c < a.getNumContours(); ++c ) {
+		const Path2d& pathA = a.getContour( c );
+		const Path2d& pathB = b.getContour( c );
+
+		// Must have same number of points
+		if( pathA.getNumPoints() != pathB.getNumPoints() )
+			return false;
+
+		// Check all control points
+		for( size_t p = 0; p < pathA.getNumPoints(); ++p ) {
+			if( glm::distance( pathA.getPoint( p ), pathB.getPoint( p ) ) > tolerance )
+				return false;
+		}
+	}
+
+	return true;
+}
+
 void BezierOffsetApp::findAllIntersections()
 {
 	mPathIntersections.clear();
 
-	if( !mShowPathIntersections )
+	if( ! mShowPathIntersections )
 		return;
 
 	// Find intersections between all pairs of shapes
@@ -1093,6 +1028,11 @@ void BezierOffsetApp::findAllIntersections()
 
 		for( size_t j = i + 1; j < mShapes.size(); ++j ) {
 			if( mShapes[j].shape.empty() || !mShapes[j].visible )
+				continue;
+
+			// Skip coincident shapes (all control points within tolerance)
+			// This prevents pathological intersection behavior with duplicates
+			if( areShapesCoincident( mShapes[i].shape, mShapes[j].shape ) )
 				continue;
 
 			auto isects = mShapes[i].shape.findIntersections( mShapes[j].shape );
