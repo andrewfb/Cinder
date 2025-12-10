@@ -2258,9 +2258,11 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 		return results;
 
 	// Helper to get segment control points as double precision for intersection
-	auto getSegmentPoints = [this]( size_t seg, size_t firstPt ) -> std::pair<Path2d::SegmentType, std::vector<dvec2>> {
-		SegmentType type = mSegments[seg];
+	auto getSegmentPoints = [this]( size_t seg, size_t firstPt )
+		-> std::pair<SegmentType, std::vector<dvec2>>
+	{
 		std::vector<dvec2> pts;
+		SegmentType type = mSegments[seg];
 
 		switch( type ) {
 			case LINETO:
@@ -2284,12 +2286,12 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 					pts.push_back( dvec2( mPoints[firstPt] ) );  // Last point before CLOSE
 					pts.push_back( dvec2( mPoints[0] ) );        // First point (MOVETO)
 				}
+				type = LINETO;  // Treat CLOSE as LINETO for intersection purposes
 				break;
 			default:
 				break;
 		}
-		// For CLOSE, return as LINETO for intersection purposes
-		return { (type == CLOSE) ? LINETO : type, pts };
+		return { type, pts };
 	};
 
 	// Build segment info (first point index for each segment)
@@ -3170,25 +3172,8 @@ Shape2d Path2d::removeSelfIntersections() const
 			tValues.insert( isect.t2 );
 	}
 
-	// Split path at all intersection points
-	std::vector<float> splitTs( tValues.begin(), tValues.end() );
-	std::vector<Path2d> atomicEdges = splitAtMultiple( splitTs );
-
-	// Filter out empty or degenerate edges
-	atomicEdges.erase(
-		std::remove_if( atomicEdges.begin(), atomicEdges.end(),
-			[]( const Path2d& p ) {
-				if( p.empty() || p.getNumSegments() == 0 )
-					return true;
-				// Check for degenerate (zero-length)
-				vec2 start = p.getPoint( 0 );
-				vec2 end = p.getPosition( static_cast<float>( p.getNumSegments() ) );
-				return glm::distance( start, end ) < WELD_EPSILON;
-			} ),
-		atomicEdges.end()
-	);
-
-	if( atomicEdges.empty() ) {
+	// If no valid t-values to split at, return original
+	if( tValues.empty() ) {
 		result.appendContour( *this );
 		return result;
 	}
