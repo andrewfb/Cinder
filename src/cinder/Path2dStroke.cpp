@@ -59,6 +59,24 @@ constexpr double SUBDIVIDE_THRESH = 0.1;
 constexpr double DIM_TUNE = 0.25;
 constexpr double DASH_ACCURACY = 1e-6;
 
+// Precomputed Bernstein weights for refineLeastSquares (aWeights[i] = 3*mt*t*mt for t = (i+1)/(N_LSE+1))
+// Formula: t = (i+1)/9, mt = 1-t, weight = 3*mt*t*mt
+constexpr std::array<double, N_LSE> LSE_A_WEIGHTS = {
+	3.0 * (8.0/9.0) * (1.0/9.0) * (8.0/9.0),  // t=1/9
+	3.0 * (7.0/9.0) * (2.0/9.0) * (7.0/9.0),  // t=2/9
+	3.0 * (6.0/9.0) * (3.0/9.0) * (6.0/9.0),  // t=3/9
+	3.0 * (5.0/9.0) * (4.0/9.0) * (5.0/9.0),  // t=4/9
+	3.0 * (4.0/9.0) * (5.0/9.0) * (4.0/9.0),  // t=5/9
+	3.0 * (3.0/9.0) * (6.0/9.0) * (3.0/9.0),  // t=6/9
+	3.0 * (2.0/9.0) * (7.0/9.0) * (2.0/9.0),  // t=7/9
+	3.0 * (1.0/9.0) * (8.0/9.0) * (1.0/9.0),  // t=8/9
+};
+// bWeights is just aWeights reversed
+constexpr std::array<double, N_LSE> LSE_B_WEIGHTS = {
+	LSE_A_WEIGHTS[7], LSE_A_WEIGHTS[6], LSE_A_WEIGHTS[5], LSE_A_WEIGHTS[4],
+	LSE_A_WEIGHTS[3], LSE_A_WEIGHTS[2], LSE_A_WEIGHTS[1], LSE_A_WEIGHTS[0],
+};
+
 //=============================================================================
 // Bezier Evaluation Wrappers (using CinderMath templates)
 //=============================================================================
@@ -842,14 +860,7 @@ std::pair<double, double> CubicOffset::refineLeastSquares( const OffsetRec& rec,
 														   double a, double b,
 														   const ErrEval& err ) const
 {
-	double aWeights[N_LSE], bWeights[N_LSE];
-	for( size_t i = 0; i < N_LSE; ++i ) {
-		double t = static_cast<double>( i + 1 ) / static_cast<double>( N_LSE + 1 );
-		double mt = 1.0 - t;
-		aWeights[i] = 3.0 * mt * t * mt;
-		bWeights[N_LSE - 1 - i] = 3.0 * mt * t * mt;
-	}
-
+	// Use precomputed Bernstein weights (LSE_A_WEIGHTS and LSE_B_WEIGHTS)
 	double aa = 0.0, ab = 0.0, ac = 0.0, bb = 0.0, bc = 0.0;
 
 	for( size_t i = 0; i < N_LSE; ++i ) {
@@ -858,10 +869,10 @@ std::pair<double, double> CubicOffset::refineLeastSquares( const OffsetRec& rec,
 
 		double c_n = glm::dot( errVec, n );
 		double c_t = cross2d( errVec, n );
-		double a_n = aWeights[i] * glm::dot( rec.utan0, n );
-		double a_t = aWeights[i] * cross2d( rec.utan0, n );
-		double b_n = bWeights[i] * glm::dot( rec.utan1, n );
-		double b_t = bWeights[i] * cross2d( rec.utan1, n );
+		double a_n = LSE_A_WEIGHTS[i] * glm::dot( rec.utan0, n );
+		double a_t = LSE_A_WEIGHTS[i] * cross2d( rec.utan0, n );
+		double b_n = LSE_B_WEIGHTS[i] * glm::dot( rec.utan1, n );
+		double b_t = LSE_B_WEIGHTS[i] * cross2d( rec.utan1, n );
 
 		aa += a_n * a_n + BLEND * ( a_t * a_t );
 		ab += a_n * b_n + BLEND * a_t * b_t;
@@ -907,43 +918,49 @@ SubdivisionPoint CubicOffset::findSubdivisionPoint( const OffsetRec& rec ) const
 	int numInflect;
 	auto inflectTs = inflections( mC, numInflect );
 
-	std::vector<glm::dvec2> tangents;
-	std::vector<double> ts;
+	// Use fixed-size stack arrays instead of std::vector (max 4 tangents: 2 endpoints + 2 inflections)
+	std::array<glm::dvec2, 4> tangents;
+	std::array<double, 4> ts;
+	size_t numTangents = 0;
 
-	tangents.push_back( rec.utan0 );
-	ts.push_back( rec.t0 );
+	tangents[numTangents] = rec.utan0;
+	ts[numTangents] = rec.t0;
+	++numTangents;
 
 	for( int i = 0; i < numInflect; ++i ) {
 		double inflectT = inflectTs[i];
 		if( inflectT > rec.t0 && inflectT < rec.t1 ) {
-			tangents.push_back( mQ.eval( inflectT ) );
-			ts.push_back( inflectT );
+			tangents[numTangents] = mQ.eval( inflectT );
+			ts[numTangents] = inflectT;
+			++numTangents;
 		}
 	}
 
-	tangents.push_back( rec.utan1 );
-	ts.push_back( rec.t1 );
+	tangents[numTangents] = rec.utan1;
+	ts[numTangents] = rec.t1;
+	++numTangents;
 
-	std::vector<double> arcAngles;
+	std::array<double, 3> arcAngles;  // max 3 angles between 4 tangents
 	double sum = 0.0;
 
-	for( size_t i = 0; i < tangents.size() - 1; ++i ) {
+	for( size_t i = 0; i < numTangents - 1; ++i ) {
 		glm::dvec2 tan0 = tangents[i];
 		glm::dvec2 tan1 = tangents[i + 1];
 		double th = std::atan2( cross2d( tan0, tan1 ), glm::dot( tan0, tan1 ) );
 		sum += std::abs( th );
-		arcAngles.push_back( th );
+		arcAngles[i] = th;
 	}
+	size_t numAngles = numTangents - 1;
 
 	double target = sum * 0.5;
 	size_t idx = 0;
-	while( idx < arcAngles.size() && std::abs( arcAngles[idx] ) < target ) {
+	while( idx < numAngles && std::abs( arcAngles[idx] ) < target ) {
 		target -= std::abs( arcAngles[idx] );
 		++idx;
 	}
 
-	if( idx >= arcAngles.size() ) {
-		idx = arcAngles.size() - 1;
+	if( idx >= numAngles ) {
+		idx = numAngles - 1;
 	}
 
 	double rotAngle = std::copysign( target, arcAngles[idx] );
