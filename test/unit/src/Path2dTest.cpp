@@ -1190,7 +1190,7 @@ TEST_CASE("Path2d::removeSelfIntersections")
 
 		// Offset inward will create self-intersections at the peaks
 		float offsetDist = -25.0f;  // Negative for inward
-		Shape2d rawOffset = offset( zzPath, offsetDist, Join::Miter, 10.0f, 0.25f, false );
+		Shape2d rawOffset = zzPath.offset( offsetDist, Join::Miter, 10.0f, 0.25f, false );
 
 		REQUIRE( !rawOffset.empty() );
 		const Path2d& offsetPath = rawOffset.getContour( 0 );
@@ -1248,11 +1248,11 @@ TEST_CASE("offset() with removeSelfIntersections")
 		float largeOffset = 30.0f;
 
 		// Without removal - should have self-intersecting loop
-		Shape2d withLoops = offset( path, largeOffset, Join::Miter, 10.0f, 0.25f, false );
+		Shape2d withLoops = path.offset( largeOffset, Join::Miter, 10.0f, 0.25f, false );
 		REQUIRE( !withLoops.empty() );
 
 		// With removal - loops should be removed
-		Shape2d noLoops = offset( path, largeOffset, Join::Miter, 10.0f, 0.25f, true );
+		Shape2d noLoops = path.offset( largeOffset, Join::Miter, 10.0f, 0.25f, true );
 		REQUIRE( !noLoops.empty() );
 
 		// The cleaned version should have fewer or equal self-intersections
@@ -1280,8 +1280,8 @@ TEST_CASE("offset() with removeSelfIntersections")
 
 		float smallOffset = 2.0f;
 
-		Shape2d withFlag = offset( path, smallOffset, Join::Round, 4.0f, 0.25f, true );
-		Shape2d withoutFlag = offset( path, smallOffset, Join::Round, 4.0f, 0.25f, false );
+		Shape2d withFlag = path.offset( smallOffset, Join::Round, 4.0f, 0.25f, true );
+		Shape2d withoutFlag = path.offset( smallOffset, Join::Round, 4.0f, 0.25f, false );
 
 		// Both should produce similar results since no self-intersection to remove
 		REQUIRE( withFlag.getContours().size() == withoutFlag.getContours().size() );

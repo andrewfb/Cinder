@@ -2530,9 +2530,17 @@ std::vector<Path2d::SelfIntersection> Path2d::findSelfIntersections( float toler
 
 bool Path2d::isCoincident( const Path2d &other, float tolerance ) const
 {
-	// Must have same number of points
+	// Must have same number of points and segments
 	if( mPoints.size() != other.mPoints.size() )
 		return false;
+	if( mSegments.size() != other.mSegments.size() )
+		return false;
+
+	// Check segment types match
+	for( size_t i = 0; i < mSegments.size(); ++i ) {
+		if( mSegments[i] != other.mSegments[i] )
+			return false;
+	}
 
 	// Check all control points are within tolerance
 	for( size_t i = 0; i < mPoints.size(); ++i ) {
@@ -2804,6 +2812,10 @@ std::vector<Path2d::Intersection> Path2d::findIntersections( const Shape2d &shap
 
 	for( size_t i = 0; i < shape.getNumContours(); ++i ) {
 		auto contourIsects = findIntersections( shape.getContour( i ), tolerance );
+		// Set the contour index for each intersection
+		for( auto& ix : contourIsects ) {
+			ix.contour2 = i;
+		}
 		results.insert( results.end(), contourIsects.begin(), contourIsects.end() );
 	}
 
@@ -3116,7 +3128,7 @@ void appendPath( Path2d& dest, const Path2d& src )
 
 } // anonymous namespace
 
-Shape2d Path2d::removeSelfIntersections( bool keepOutermost ) const
+Shape2d Path2d::removeSelfIntersections() const
 {
 	Shape2d result;
 

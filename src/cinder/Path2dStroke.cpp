@@ -24,6 +24,8 @@
  POSSIBILITY OF SUCH DAMAGE.
 */
 
+/* Most of this code is due to the excellent work of Raph Levien, described here, and ported from the Kurbo library: https://raphlinus.github.io/curves/2022/09/09/parallel-beziers.html */
+
 #include "cinder/Path2d.h"
 #include "cinder/Shape2d.h"
 #include "cinder/CinderMath.h"
@@ -2483,10 +2485,14 @@ void OffsetContext::finish()
 	mHaveFirst = false;
 }
 
-Shape2d offset( const Path2d& path, float distance, Join join, float miterLimit, float tolerance,
-                bool removeSelfIntersections )
+//=============================================================================
+// Path2d member functions
+//=============================================================================
+
+Shape2d Path2d::calcOffset( float distance, Join join, float miterLimit, float tolerance,
+                        bool removeSelfIntersections ) const
 {
-	BezPathD bezPath = toDoublePrecision( path );
+	BezPathD bezPath = toDoublePrecision( *this );
 
 	OffsetContext ctx( static_cast<double>( distance ), join,
 	                   static_cast<double>( miterLimit ), static_cast<double>( tolerance ) );
@@ -2499,13 +2505,10 @@ Shape2d offset( const Path2d& path, float distance, Join join, float miterLimit,
 	Shape2d result = bezPathToShape2d( ctx.output() );
 
 	if( removeSelfIntersections ) {
-		// For positive offsets (outward), keep outermost portions
-		// For negative offsets (inward), keep innermost portions
-		bool keepOutermost = ( distance >= 0.0f );
 		Shape2d cleaned;
 		for( const auto& contour : result.getContours() ) {
-			// removeSelfIntersections now returns Shape2d (may have multiple contours)
-			cleaned.append( contour.removeSelfIntersections( keepOutermost ) );
+			// removeSelfIntersections returns Shape2d (may have multiple contours)
+			cleaned.append( contour.removeSelfIntersections() );
 		}
 		return cleaned;
 	}
@@ -2513,30 +2516,9 @@ Shape2d offset( const Path2d& path, float distance, Join join, float miterLimit,
 	return result;
 }
 
-Shape2d offset( const Shape2d& shape, float distance, Join join, float miterLimit, float tolerance,
-                bool removeSelfIntersections )
+Shape2d Path2d::calcStroke( const StrokeStyle& style, float tolerance ) const
 {
-	Shape2d result;
-	for( const auto& contour : shape.getContours() ) {
-		Shape2d offsetContour = offset( contour, distance, join, miterLimit, tolerance, removeSelfIntersections );
-		result.append( offsetContour );
-	}
-	return result;
-}
-
-Shape2d offset( const Path2d& path, float distance, float tolerance, bool removeSelfIntersections )
-{
-	return offset( path, distance, Join::Round, 4.0f, tolerance, removeSelfIntersections );
-}
-
-Shape2d offset( const Shape2d& shape, float distance, float tolerance, bool removeSelfIntersections )
-{
-	return offset( shape, distance, Join::Round, 4.0f, tolerance, removeSelfIntersections );
-}
-
-Shape2d stroke( const Path2d& path, const StrokeStyle& style, float tolerance )
-{
-	BezPathD bezPath = toDoublePrecision( path );
+	BezPathD bezPath = toDoublePrecision( *this );
 	InternalStrokeStyle internalStyle = convertStrokeStyle( style );
 
 	BezPathD result = strokeInternal( bezPath, internalStyle, static_cast<double>( tolerance ) );
@@ -2544,29 +2526,9 @@ Shape2d stroke( const Path2d& path, const StrokeStyle& style, float tolerance )
 	return bezPathToShape2d( result );
 }
 
-Shape2d stroke( const Path2d& path, float width, float tolerance )
+Shape2d Path2d::calcDashed( float dashOffset, const std::vector<float>& pattern ) const
 {
-	return stroke( path, StrokeStyle( width ), tolerance );
-}
-
-Shape2d stroke( const Shape2d& shape, const StrokeStyle& style, float tolerance )
-{
-	Shape2d result;
-	for( const auto& contour : shape.getContours() ) {
-		Shape2d strokeContour = stroke( contour, style, tolerance );
-		result.append( strokeContour );
-	}
-	return result;
-}
-
-Shape2d stroke( const Shape2d& shape, float width, float tolerance )
-{
-	return stroke( shape, StrokeStyle( width ), tolerance );
-}
-
-Shape2d dash( const Path2d& path, float offset, const std::vector<float>& pattern )
-{
-	BezPathD bezPath = toDoublePrecision( path );
+	BezPathD bezPath = toDoublePrecision( *this );
 
 	std::vector<double> doublePattern;
 	doublePattern.reserve( pattern.size() );
@@ -2574,16 +2536,40 @@ Shape2d dash( const Path2d& path, float offset, const std::vector<float>& patter
 		doublePattern.push_back( static_cast<double>( d ) );
 	}
 
-	BezPathD result = dashInternal( bezPath, static_cast<double>( offset ), doublePattern );
+	BezPathD result = dashInternal( bezPath, static_cast<double>( dashOffset ), doublePattern );
 
 	return bezPathToShape2d( result );
 }
 
-Shape2d dash( const Shape2d& shape, float offset, const std::vector<float>& pattern )
+//=============================================================================
+// Shape2d member functions
+//=============================================================================
+
+Shape2d Shape2d::calcOffset( float distance, Join join, float miterLimit, float tolerance, bool removeSelfIntersections ) const
 {
 	Shape2d result;
-	for( const auto& contour : shape.getContours() ) {
-		Shape2d dashContour = dash( contour, offset, pattern );
+	for( const auto& contour : mContours ) {
+		Shape2d offsetContour = contour.calcOffset( distance, join, miterLimit, tolerance, removeSelfIntersections );
+		result.append( offsetContour );
+	}
+	return result;
+}
+
+Shape2d Shape2d::calcStroke( const StrokeStyle& style, float tolerance ) const
+{
+	Shape2d result;
+	for( const auto& contour : mContours ) {
+		Shape2d strokeContour = contour.calcStroke( style, tolerance );
+		result.append( strokeContour );
+	}
+	return result;
+}
+
+Shape2d Shape2d::calcDashed( float dashOffset, const std::vector<float>& pattern ) const
+{
+	Shape2d result;
+	for( const auto& contour : mContours ) {
+		Shape2d dashContour = contour.calcDashed( dashOffset, pattern );
 		result.append( dashContour );
 	}
 	return result;

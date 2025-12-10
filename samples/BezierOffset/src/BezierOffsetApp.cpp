@@ -483,12 +483,12 @@ void BezierOffsetApp::updateResult()
 	}
 
 	if( entry.mode == Mode::OFFSET ) {
-		entry.result = offset( shape, entry.distance, joinStyle, entry.miterLimit, entry.tolerance, entry.removeSelfIntersections );
+		entry.result = shape.calcOffset( entry.distance, joinStyle, entry.miterLimit, entry.tolerance, entry.removeSelfIntersections );
 	}
 	else if( entry.mode == Mode::DASH ) {
 		// Dash mode: just dashing, no stroke expansion
 		if( entry.enableDashing && !pattern.empty() ) {
-			entry.result = dash( shape, entry.dashOffset, pattern );
+			entry.result = shape.calcDashed( entry.dashOffset, pattern );
 		}
 		else {
 			// No dashing enabled - just copy the original shape
@@ -505,7 +505,7 @@ void BezierOffsetApp::updateResult()
 			style.dashes( entry.dashOffset, pattern );
 		}
 
-		entry.result = stroke( shape, style, entry.tolerance );
+		entry.result = shape.calcStroke( style, entry.tolerance );
 
 		if( entry.removeSelfIntersections && !entry.result.empty() ) {
 			Shape2d cleaned;
@@ -875,7 +875,7 @@ void BezierOffsetApp::drawContent()
 
 				for( int c = 1; c <= entry.numOffsetCurves; ++c ) {
 					float dist = entry.distance * (float)c / (float)entry.numOffsetCurves;
-					Shape2d curveResult = offset( entry.shape, dist, joinStyle, entry.miterLimit, entry.tolerance, entry.removeSelfIntersections );
+					Shape2d curveResult = entry.shape.calcOffset( dist, joinStyle, entry.miterLimit, entry.tolerance, entry.removeSelfIntersections );
 
 					// Blend from original shape color to result color
 					float t = (float)c / (float)entry.numOffsetCurves;
