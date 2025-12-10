@@ -74,7 +74,6 @@ class BezierOffsetApp : public App {
 		Shape2d result;  // Computed offset/stroke result
 		Color color;
 		bool visible = true;
-		bool editable = true;  // Single-contour paths are editable, glyphs are not
 
 		// Per-shape mode and parameters
 		Mode mode = Mode::STROKE;
@@ -104,11 +103,13 @@ class BezierOffsetApp : public App {
 
 	Shape2d&       getActiveShape() { return mShapes[mActiveShapeIndex].shape; }
 	const Shape2d& getActiveShape() const { return mShapes[mActiveShapeIndex].shape; }
-	bool           isActiveEditable() const { return mShapes[mActiveShapeIndex].editable; }
 
-	// For editable shapes, get the first (and only) contour
-	Path2d*        getEditablePath();
-	const Path2d*  getEditablePath() const;
+	// Find which contour contains a point index (using global point indices)
+	Path2d*        getEditablePath( int pointIndex, int* localIndex = nullptr );
+	const Path2d*  getEditablePath( int pointIndex, int* localIndex = nullptr ) const;
+
+	// Get total point count across all contours
+	size_t         getTotalPointCount() const;
 
 	int         mTrackedPoint;
 	int         mHoveredPoint = -1;
@@ -130,18 +131,55 @@ class BezierOffsetApp : public App {
 	Color       mResultColor = Color( 0.25f, 0.6f, 0.9f );
 };
 
-Path2d* BezierOffsetApp::getEditablePath()
+Path2d* BezierOffsetApp::getEditablePath( int pointIndex, int* localIndex )
 {
-	if( !isActiveEditable() || getActiveShape().empty() )
+	if( getActiveShape().empty() )
 		return nullptr;
+
+	// Find which contour contains this point index
+	int runningIndex = 0;
+	for( auto& contour : getActiveShape().getContours() ) {
+		int contourPts = (int)contour.getNumPoints();
+		if( pointIndex < runningIndex + contourPts ) {
+			if( localIndex )
+				*localIndex = pointIndex - runningIndex;
+			return &contour;
+		}
+		runningIndex += contourPts;
+	}
+	// Default to first contour for adding new points
+	if( localIndex )
+		*localIndex = pointIndex;
 	return &getActiveShape().getContours()[0];
 }
 
-const Path2d* BezierOffsetApp::getEditablePath() const
+const Path2d* BezierOffsetApp::getEditablePath( int pointIndex, int* localIndex ) const
 {
-	if( !isActiveEditable() || getActiveShape().empty() )
+	if( getActiveShape().empty() )
 		return nullptr;
+
+	int runningIndex = 0;
+	for( const auto& contour : getActiveShape().getContours() ) {
+		int contourPts = (int)contour.getNumPoints();
+		if( pointIndex < runningIndex + contourPts ) {
+			if( localIndex )
+				*localIndex = pointIndex - runningIndex;
+			return &contour;
+		}
+		runningIndex += contourPts;
+	}
+	if( localIndex )
+		*localIndex = pointIndex;
 	return &getActiveShape().getContours()[0];
+}
+
+size_t BezierOffsetApp::getTotalPointCount() const
+{
+	size_t total = 0;
+	for( const auto& contour : getActiveShape().getContours() ) {
+		total += contour.getNumPoints();
+	}
+	return total;
 }
 
 void BezierOffsetApp::setup()
@@ -158,7 +196,6 @@ void BezierOffsetApp::setup()
 	entry.shape = initialShape;
 	entry.color = Color( 1.0f, 0.5f, 0.25f );
 	entry.visible = true;
-	entry.editable = true;
 	mShapes.push_back( entry );
 	updateResult();
 }
@@ -236,7 +273,7 @@ Shape2d BezierOffsetApp::createPresetShape( PresetShape preset )
 		case PresetShape::GLYPH_A: {
 			Font arial( "Arial", 400.0f );
 			auto glyphs = arial.getGlyphs( "a" );
-			if( !glyphs.empty() ) {
+			if( ! glyphs.empty() ) {
 				result = arial.getGlyphShape( glyphs[0] );
 				Rectf bounds = result.calcBoundingBox();
 				mat3 xform = glm::translate( mat3(), center - bounds.getCenter() );
@@ -248,7 +285,7 @@ Shape2d BezierOffsetApp::createPresetShape( PresetShape preset )
 		case PresetShape::GLYPH_C: {
 			Font arial( "Arial", 400.0f );
 			auto glyphs = arial.getGlyphs( "C" );
-			if( !glyphs.empty() ) {
+			if( ! glyphs.empty() ) {
 				result = arial.getGlyphShape( glyphs[0] );
 				Rectf bounds = result.calcBoundingBox();
 				mat3 xform = glm::translate( mat3(), center - bounds.getCenter() );
@@ -263,7 +300,7 @@ Shape2d BezierOffsetApp::createPresetShape( PresetShape preset )
 
 void BezierOffsetApp::mouseDown( MouseEvent event )
 {
-	if( event.isLeftDown() && !event.isAltDown() ) {
+	if( event.isLeftDown() && ! event.isAltDown() ) {
 		vec2 pos = mCanvas.toContent( event.getPos() );
 
 		if( mHoveredPoint >= 0 ) {
@@ -285,22 +322,22 @@ void BezierOffsetApp::mouseDown( MouseEvent event )
 			return;
 		}
 
-		// Add points only for editable shapes
-		Path2d* path = getEditablePath();
-		if( path ) {
-			if( path->empty() ) {
-				path->moveTo( pos );
-				mTrackedPoint = 0;
-			}
-			else {
-				path->lineTo( pos );
-			}
-			updateResult();
-		}
-		else if( getActiveShape().empty() && isActiveEditable() ) {
-			// Empty editable shape - start a new path
+		// Add points - add to last contour
+		if( getActiveShape().empty() ) {
+			// Empty shape - start a new path
 			getActiveShape().moveTo( pos );
 			mTrackedPoint = 0;
+			updateResult();
+		}
+		else {
+			// Add to last contour
+			Path2d& lastContour = getActiveShape().getContours().back();
+			if( lastContour.empty() ) {
+				lastContour.moveTo( pos );
+			}
+			else {
+				lastContour.lineTo( pos );
+			}
 			updateResult();
 		}
 	}
@@ -315,9 +352,10 @@ void BezierOffsetApp::mouseDrag( MouseEvent event )
 	vec2 pos = mCanvas.toContent( event.getPos() );
 
 	if( mDraggingPoint && mTrackedPoint >= 0 ) {
-		Path2d* path = getEditablePath();
+		int localIndex;
+		Path2d* path = getEditablePath( mTrackedPoint, &localIndex );
 		if( path ) {
-			path->setPoint( mTrackedPoint, pos );
+			path->setPoint( localIndex, pos );
 			updateResult();
 		}
 		return;
@@ -332,43 +370,51 @@ void BezierOffsetApp::mouseDrag( MouseEvent event )
 		return;
 	}
 
-	// Curve creation while dragging
-	Path2d* path = getEditablePath();
-	if( !path )
+	// Curve creation while dragging - always works on last contour
+	if( getActiveShape().empty() )
 		return;
 
-	if( mTrackedPoint >= 0 ) {
-		path->setPoint( mTrackedPoint, pos );
-	}
-	else if( path->getNumSegments() > 0 ) {
-		vec2 endPt = path->getPoint( path->getNumPoints() - 1 );
-		path->removeSegment( path->getNumSegments() - 1 );
+	Path2d& path = getActiveShape().getContours().back();
 
-		Path2d::SegmentType prevType = ( path->getNumSegments() == 0 )
+	if( mTrackedPoint >= 0 ) {
+		// Convert global point index to local index for the last contour
+		int localIndex;
+		Path2d* trackedPath = getEditablePath( mTrackedPoint, &localIndex );
+		if( trackedPath == &path ) {
+			path.setPoint( localIndex, pos );
+		}
+	}
+	else if( path.getNumSegments() > 0 ) {
+		vec2 endPt = path.getPoint( path.getNumPoints() - 1 );
+		path.removeSegment( path.getNumSegments() - 1 );
+
+		Path2d::SegmentType prevType = ( path.getNumSegments() == 0 )
 			? Path2d::MOVETO
-			: path->getSegmentType( path->getNumSegments() - 1 );
+			: path.getSegmentType( path.getNumSegments() - 1 );
 
 		if( event.isShiftDown() || prevType == Path2d::MOVETO ) {
-			path->quadTo( pos, endPt );
+			path.quadTo( pos, endPt );
 		}
 		else {
 			vec2 tan1;
 			if( prevType == Path2d::CUBICTO ) {
-				vec2 prevDelta = path->getPoint( path->getNumPoints() - 2 ) - path->getPoint( path->getNumPoints() - 1 );
-				tan1 = path->getPoint( path->getNumPoints() - 1 ) - prevDelta;
+				vec2 prevDelta = path.getPoint( path.getNumPoints() - 2 ) - path.getPoint( path.getNumPoints() - 1 );
+				tan1 = path.getPoint( path.getNumPoints() - 1 ) - prevDelta;
 			}
 			else if( prevType == Path2d::QUADTO ) {
-				vec2 quadTangent = path->getPoint( path->getNumPoints() - 2 );
-				vec2 quadEnd = path->getPoint( path->getNumPoints() - 1 );
+				vec2 quadTangent = path.getPoint( path.getNumPoints() - 2 );
+				vec2 quadEnd = path.getPoint( path.getNumPoints() - 1 );
 				vec2 prevDelta = ( quadTangent + ( quadEnd - quadTangent ) / 3.0f ) - quadEnd;
 				tan1 = quadEnd - prevDelta;
 			}
 			else {
-				tan1 = path->getPoint( path->getNumPoints() - 1 );
+				tan1 = path.getPoint( path.getNumPoints() - 1 );
 			}
-			path->curveTo( tan1, pos, endPt );
+			path.curveTo( tan1, pos, endPt );
 		}
-		mTrackedPoint = (int)path->getNumPoints() - 2;
+		// Set tracked point as global index
+		size_t offset = getTotalPointCount() - path.getNumPoints();
+		mTrackedPoint = (int)(offset + path.getNumPoints() - 2);
 	}
 	updateResult();
 }
@@ -385,18 +431,19 @@ void BezierOffsetApp::mouseMove( MouseEvent event )
 	vec2 pos = mCanvas.toContent( event.getPos() );
 	float hoverRadius = 12.0f / mCanvas.getZoom();
 
-	// First check for control point hover on active editable shape
+	// First check for control point hover on active shape (all contours)
 	float closestDist = hoverRadius;
 	int closestPoint = -1;
-	const Path2d* editPath = getEditablePath();
-	if( editPath ) {
-		for( size_t i = 0; i < editPath->getNumPoints(); ++i ) {
-			float dist = glm::distance( pos, editPath->getPoint( i ) );
+	int globalIndex = 0;
+	for( const auto& contour : getActiveShape().getContours() ) {
+		for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
+			float dist = glm::distance( pos, contour.getPoint( i ) );
 			if( dist < closestDist ) {
 				closestDist = dist;
-				closestPoint = (int)i;
+				closestPoint = globalIndex + (int)i;
 			}
 		}
+		globalIndex += (int)contour.getNumPoints();
 	}
 	mHoveredPoint = closestPoint;
 
@@ -408,7 +455,7 @@ void BezierOffsetApp::mouseMove( MouseEvent event )
 
 		for( int si = 0; si < (int)mShapes.size(); ++si ) {
 			const ShapeEntry& entry = mShapes[si];
-			if( !entry.visible || entry.shape.empty() )
+			if( ! entry.visible || entry.shape.empty() )
 				continue;
 
 			float shapeDist = entry.shape.calcDistance( pos );
@@ -445,7 +492,7 @@ void BezierOffsetApp::updateResult()
 			break;
 		}
 	}
-	if( !hasSegments ) {
+	if( ! hasSegments ) {
 		entry.result.clear();
 		findAllIntersections();
 		return;
@@ -487,7 +534,7 @@ void BezierOffsetApp::updateResult()
 	}
 	else if( entry.mode == Mode::DASH ) {
 		// Dash mode: just dashing, no stroke expansion
-		if( entry.enableDashing && !pattern.empty() ) {
+		if( entry.enableDashing && ! pattern.empty() ) {
 			entry.result = shape.calcDashed( entry.dashOffset, pattern );
 		}
 		else {
@@ -501,13 +548,13 @@ void BezierOffsetApp::updateResult()
 		style.join( joinStyle ).miterLimit( entry.miterLimit );
 		style.startCap( startCap ).endCap( endCap );
 
-		if( entry.enableDashing && !pattern.empty() ) {
+		if( entry.enableDashing && ! pattern.empty() ) {
 			style.dashes( entry.dashOffset, pattern );
 		}
 
 		entry.result = shape.calcStroke( style, entry.tolerance );
 
-		if( entry.removeSelfIntersections && !entry.result.empty() ) {
+		if( entry.removeSelfIntersections && ! entry.result.empty() ) {
 			Shape2d cleaned;
 			for( const auto& contour : entry.result.getContours() ) {
 				Shape2d contourCleaned = contour.removeSelfIntersections();
@@ -544,9 +591,6 @@ void BezierOffsetApp::drawImGuiControls()
 		float randOffsetY = randFloat( -10.0f, 10.0f );
 		newShape.translate( vec2( randOffsetX, randOffsetY ) );
 
-		// Determine if editable (single contour, not a glyph)
-		bool editable = (preset != PresetShape::GLYPH_A && preset != PresetShape::GLYPH_C);
-
 		// Generate a distinct color
 		static Color colors[] = {
 			Color( 1.0f, 0.5f, 0.25f ),
@@ -561,7 +605,6 @@ void BezierOffsetApp::drawImGuiControls()
 		newEntry.shape = newShape;
 		newEntry.color = newColor;
 		newEntry.visible = true;
-		newEntry.editable = editable;
 		mShapes.push_back( newEntry );
 		mActiveShapeIndex = (int)mShapes.size() - 1;
 		mHoveredPoint = -1;
@@ -586,7 +629,6 @@ void BezierOffsetApp::drawImGuiControls()
 			for( const auto& c : entry.shape.getContours() ) totalSegs += c.getNumSegments();
 			label += " (" + to_string( totalSegs ) + " segs)";
 		}
-		if( !entry.editable ) label += " [glyph]";
 
 		if( ImGui::Selectable( label.c_str(), isActive, ImGuiSelectableFlags_None, ImVec2( 140, 0 ) ) ) {
 			mActiveShapeIndex = i;
@@ -629,7 +671,7 @@ void BezierOffsetApp::drawImGuiControls()
 	ImGui::Separator();
 
 	// Per-shape mode and parameters (for active shape)
-	if( !mShapes.empty() ) {
+	if( ! mShapes.empty() ) {
 		ShapeEntry& active = mShapes[mActiveShapeIndex];
 
 		ImGui::TextColored( ImVec4( 1.0f, 1.0f, 0.2f, 1.0f ), "Active Shape Settings" );
@@ -640,7 +682,7 @@ void BezierOffsetApp::drawImGuiControls()
 		if( ImGui::Combo( "Mode", &modeIdx, modes, 4 ) ) {
 			active.mode = (modeIdx == 0) ? Mode::NONE : (modeIdx == 1) ? Mode::OFFSET : (modeIdx == 2) ? Mode::STROKE : Mode::DASH;
 			// Auto-enable dashing when switching to Dash mode
-			if( active.mode == Mode::DASH && !active.enableDashing ) {
+			if( active.mode == Mode::DASH && ! active.enableDashing ) {
 				active.enableDashing = true;
 			}
 			updateResult();
@@ -724,7 +766,7 @@ void BezierOffsetApp::drawImGuiControls()
 				updateResult();
 			}
 
-			ImGui::BeginDisabled( !active.enableDashing );
+			ImGui::BeginDisabled( ! active.enableDashing );
 
 			const char* dashPresets[] = { "Dashed", "Dotted", "Dash-Dot", "Dash-Dot-Dot", "Custom" };
 			if( ImGui::Combo( "Dash Preset", &active.dashPreset, dashPresets, 5 ) ) {
@@ -777,7 +819,7 @@ void BezierOffsetApp::drawImGuiControls()
 		if( ImGui::Checkbox( "Show Shape Intersections", &mShowPathIntersections ) ) {
 			findAllIntersections();
 		}
-		if( !mPathIntersections.empty() ) {
+		if( ! mPathIntersections.empty() ) {
 			ImGui::SameLine();
 			ImGui::Text( "(%zu)", mPathIntersections.size() );
 		}
@@ -785,7 +827,7 @@ void BezierOffsetApp::drawImGuiControls()
 
 	// Shape info
 	const Shape2d& shape = getActiveShape();
-	if( !shape.empty() ) {
+	if( ! shape.empty() ) {
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::TextColored( ImVec4( 0.2f, 1.0f, 0.2f, 1.0f ), "Shape Info" );
@@ -926,7 +968,7 @@ void BezierOffsetApp::drawContent()
 	if( mShowOriginal ) {
 		for( int si = 0; si < (int)mShapes.size(); ++si ) {
 			const ShapeEntry& entry = mShapes[si];
-			if( !entry.visible || entry.shape.empty() )
+			if( ! entry.visible || entry.shape.empty() )
 				continue;
 
 			bool isActive = (si == mActiveShapeIndex);
@@ -935,7 +977,7 @@ void BezierOffsetApp::drawContent()
 
 			// Determine draw color
 			Color drawColor = entry.color;
-			if( isHovered && !isActive ) {
+			if( isHovered && ! isActive ) {
 				drawColor = Color( 1.0f, 1.0f, 0.4f );  // Yellow for hover
 				alpha = 1.0f;
 			}
@@ -954,11 +996,12 @@ void BezierOffsetApp::drawContent()
 				gl::draw( contour );
 			}
 
-			// Control points (only for active editable shape)
-			if( mShowOriginalControlPoints && isActive && entry.editable ) {
+			// Control points (only for active shape)
+			if( mShowOriginalControlPoints && isActive ) {
+				int globalIndex = 0;
 				for( const auto& contour : entry.shape.getContours() ) {
 					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
-						bool ptHovered = ((int)i == mHoveredPoint);
+						bool ptHovered = (globalIndex + (int)i == mHoveredPoint);
 
 						if( ptHovered ) {
 							gl::color( Color( 1, 1, 1 ) );
@@ -971,15 +1014,7 @@ void BezierOffsetApp::drawContent()
 							gl::drawSolidCircle( contour.getPoint( i ), 3.5f * pointScale );
 						}
 					}
-				}
-			}
-			// Show control points for non-editable shapes too (but not hoverable)
-			else if( mShowOriginalControlPoints && isActive && !entry.editable ) {
-				for( const auto& contour : entry.shape.getContours() ) {
-					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
-						gl::color( Color( 1, 1, 0 ) );
-						gl::drawSolidCircle( contour.getPoint( i ), 3.5f * pointScale );
-					}
+					globalIndex += (int)contour.getNumPoints();
 				}
 			}
 		}
@@ -999,11 +1034,11 @@ void BezierOffsetApp::findAllIntersections()
 	// Find intersections between all pairs of shapes
 	// Note: coincident path detection is now handled in Path2d::findIntersections
 	for( size_t i = 0; i < mShapes.size(); ++i ) {
-		if( mShapes[i].shape.empty() || !mShapes[i].visible )
+		if( mShapes[i].shape.empty() || ! mShapes[i].visible )
 			continue;
 
 		for( size_t j = i + 1; j < mShapes.size(); ++j ) {
-			if( mShapes[j].shape.empty() || !mShapes[j].visible )
+			if( mShapes[j].shape.empty() || ! mShapes[j].visible )
 				continue;
 
 			auto isects = mShapes[i].shape.findIntersections( mShapes[j].shape );
@@ -1017,7 +1052,7 @@ void BezierOffsetApp::findAllIntersections()
 
 void BezierOffsetApp::drawIntersections()
 {
-	if( !mShowPathIntersections || mPathIntersections.empty() )
+	if( ! mShowPathIntersections || mPathIntersections.empty() )
 		return;
 
 	float pointScale = 1.0f / mCanvas.getZoom();
