@@ -1130,10 +1130,11 @@ void roundJoin( BezPathD& out, double tolerance, const glm::dvec2& center,
 		);
 	};
 
-	// Compute max angle per segment based on tolerance
-	// Arc approximation error ≈ radius * θ²/8, so θ ≤ sqrt(8 * tolerance / radius)
-	// Clamp to reasonable range: min π/16 (many segments), max π/2 (few segments)
-	double maxAngle = std::sqrt( 8.0 * tolerance / radius );
+	// Compute max angle per segment based on tolerance.
+	// Path2d::arc uses π/2 (90°) per segment always, so tolerance=1.0 matches that.
+	// Lower tolerance → smaller segments, higher tolerance → larger (up to π/2).
+	// Formula: maxAngle = (π/2) * tolerance, clamped to [π/16, π/2]
+	double maxAngle = (PI / 2.0) * tolerance;
 	maxAngle = std::clamp( maxAngle, PI / 16.0, PI / 2.0 );
 
 	int numSegments = static_cast<int>( std::ceil( std::abs( angle ) / maxAngle ) );
@@ -1173,10 +1174,11 @@ void roundJoinRev( BezPathD& out, double tolerance, const glm::dvec2& center,
 		);
 	};
 
-	// Compute max angle per segment based on tolerance
-	// Arc approximation error ≈ radius * θ²/8, so θ ≤ sqrt(8 * tolerance / radius)
-	// Clamp to reasonable range: min π/16 (many segments), max π/2 (few segments)
-	double maxAngle = std::sqrt( 8.0 * tolerance / radius );
+	// Compute max angle per segment based on tolerance.
+	// Path2d::arc uses π/2 (90°) per segment always, so tolerance=1.0 matches that.
+	// Lower tolerance → smaller segments, higher tolerance → larger (up to π/2).
+	// Formula: maxAngle = (π/2) * tolerance, clamped to [π/16, π/2]
+	double maxAngle = (PI / 2.0) * tolerance;
 	maxAngle = std::clamp( maxAngle, PI / 16.0, PI / 2.0 );
 
 	int numSegments = static_cast<int>( std::ceil( std::abs( angle ) / maxAngle ) );
@@ -1335,17 +1337,17 @@ public:
 	void reset();
 	const BezPathD& output() const { return mOutput; }
 	void processElement( const PathEl& el, const InternalStrokeStyle& style, double tolerance );
-	void finish( const InternalStrokeStyle& style );
-	void finishClosed( const InternalStrokeStyle& style );
+	void finish( const InternalStrokeStyle& style, double tolerance );
+	void finishClosed( const InternalStrokeStyle& style, double tolerance );
 
 	double mJoinThresh = 0.0;
 
 private:
-	void doJoin( const InternalStrokeStyle& style, const glm::dvec2& tan0 );
+	void doJoin( const InternalStrokeStyle& style, const glm::dvec2& tan0, double tolerance );
 	void doLine( const InternalStrokeStyle& style, const glm::dvec2& tangent, const glm::dvec2& p1 );
 	void doCubic( const InternalStrokeStyle& style, const CubicBezD& c, double tolerance );
 	void doLinear( const InternalStrokeStyle& style, const CubicBezD& c,
-				   double p[4], const glm::dvec2& refPt, const glm::dvec2& refVec );
+				   double p[4], const glm::dvec2& refPt, const glm::dvec2& refVec, double tolerance );
 
 	BezPathD mOutput;
 	BezPathD mForwardPath;
@@ -1372,10 +1374,8 @@ void StrokeContext::reset()
 	mJoinThresh = 0.0;
 }
 
-void StrokeContext::finish( const InternalStrokeStyle& style )
+void StrokeContext::finish( const InternalStrokeStyle& style, double tolerance )
 {
-	constexpr double tolerance = 1e-3;
-
 	if( mForwardPath.empty() ) return;
 
 	for( const auto& el : mForwardPath ) {
@@ -1440,11 +1440,11 @@ void StrokeContext::finish( const InternalStrokeStyle& style )
 	mBackwardPath.clear();
 }
 
-void StrokeContext::finishClosed( const InternalStrokeStyle& style )
+void StrokeContext::finishClosed( const InternalStrokeStyle& style, double tolerance )
 {
 	if( mForwardPath.empty() ) return;
 
-	doJoin( style, mStartTan );
+	doJoin( style, mStartTan, tolerance );
 
 	for( const auto& el : mForwardPath ) {
 		switch( el.type ) {
@@ -1489,10 +1489,8 @@ void StrokeContext::finishClosed( const InternalStrokeStyle& style )
 	mBackwardPath.clear();
 }
 
-void StrokeContext::doJoin( const InternalStrokeStyle& style, const glm::dvec2& tan0 )
+void StrokeContext::doJoin( const InternalStrokeStyle& style, const glm::dvec2& tan0, double tolerance )
 {
-	constexpr double tolerance = 1e-3;
-
 	double scale = 0.5 * style.width / glm::length( tan0 );
 	glm::dvec2 norm = scale * glm::dvec2( -tan0.y, tan0.x );
 	glm::dvec2 p0 = mLastPt;
@@ -1604,7 +1602,7 @@ void StrokeContext::doCubic( const InternalStrokeStyle& style, const CubicBezD& 
 			glm::dvec2 refVec = chordRef / chordRefHypot2;
 			glm::dvec2 refPt = midpoint - 0.5 * ( p0 + p3 ) * refVec;
 			double pArr[4] = { p0, p1, p2, p3 };
-			doLinear( style, c, pArr, refPt, refVec );
+			doLinear( style, c, pArr, refPt, refVec, tolerance );
 			return;
 		}
 	}
@@ -1645,7 +1643,7 @@ void StrokeContext::doCubic( const InternalStrokeStyle& style, const CubicBezD& 
 }
 
 void StrokeContext::doLinear( const InternalStrokeStyle& style, const CubicBezD& c,
-							  double p[4], const glm::dvec2& refPt, const glm::dvec2& refVec )
+							  double p[4], const glm::dvec2& refPt, const glm::dvec2& refVec, double tolerance )
 {
 	InternalStrokeStyle roundStyle = style;
 	roundStyle.join = InternalJoin::Round;
@@ -1670,17 +1668,17 @@ void StrokeContext::doLinear( const InternalStrokeStyle& style, const CubicBezD&
 					   + t * t * t * p[3];
 			glm::dvec2 pt = refPt + z * refVec;
 			glm::dvec2 tan = pt - mLastPt;
-			doJoin( roundStyle, tan );
+			doJoin( roundStyle, tan, tolerance );
 			doLine( roundStyle, tan, pt );
 			mLastTan = tan;
 		}
 	}
 
 	glm::dvec2 tan = c.p3 - mLastPt;
-	doJoin( roundStyle, tan );
+	doJoin( roundStyle, tan, tolerance );
 	doLine( roundStyle, tan, c.p3 );
 	mLastTan = tan;
-	doJoin( roundStyle, tan1 );
+	doJoin( roundStyle, tan1, tolerance );
 }
 
 void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle& style, double tolerance )
@@ -1689,7 +1687,7 @@ void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle&
 
 	switch( el.type ) {
 		case Path2d::MOVETO:
-			finish( style );
+			finish( style, tolerance );
 			mStartPt = el.p1;
 			mLastPt = el.p1;
 			break;
@@ -1697,7 +1695,7 @@ void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle&
 		case Path2d::LINETO:
 			if( el.p1 != p0 ) {
 				glm::dvec2 tangent = el.p1 - p0;
-				doJoin( style, tangent );
+				doJoin( style, tangent, tolerance );
 				mLastTan = tangent;
 				doLine( style, tangent, el.p1 );
 			}
@@ -1712,7 +1710,7 @@ void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle&
 
 				glm::dvec2 tan0 = startTangent( c );
 				glm::dvec2 tan1 = endTangent( c );
-				doJoin( style, tan0 );
+				doJoin( style, tan0, tolerance );
 				doCubic( style, c, tolerance );
 				mLastTan = tan1;
 			}
@@ -1723,7 +1721,7 @@ void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle&
 				CubicBezD c( p0, el.p1, el.p2, el.p3 );
 				glm::dvec2 tan0 = startTangent( c );
 				glm::dvec2 tan1 = endTangent( c );
-				doJoin( style, tan0 );
+				doJoin( style, tan0, tolerance );
 				doCubic( style, c, tolerance );
 				mLastTan = tan1;
 			}
@@ -1732,11 +1730,11 @@ void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle&
 		case Path2d::CLOSE:
 			if( p0 != mStartPt ) {
 				glm::dvec2 tangent = mStartPt - p0;
-				doJoin( style, tangent );
+				doJoin( style, tangent, tolerance );
 				mLastTan = tangent;
 				doLine( style, tangent, mStartPt );
 			}
-			finishClosed( style );
+			finishClosed( style, tolerance );
 			break;
 	}
 }
@@ -2068,7 +2066,7 @@ BezPathD strokeInternal( const BezPathD& path, const InternalStrokeStyle& style,
 		for( const auto& el : path ) {
 			ctx.processElement( el, style, tolerance );
 		}
-		ctx.finish( style );
+		ctx.finish( style, tolerance );
 	} else {
 		// For dashed strokes, each dash uses startCap/endCap from the style
 		InternalStrokeStyle dashStyle = style;
@@ -2078,7 +2076,7 @@ BezPathD strokeInternal( const BezPathD& path, const InternalStrokeStyle& style,
 		for( const auto& el : dashedPath ) {
 			ctx.processElement( el, dashStyle, tolerance );
 		}
-		ctx.finish( dashStyle );
+		ctx.finish( dashStyle, tolerance );
 	}
 	return ctx.output();
 }
