@@ -128,6 +128,7 @@ class BezierOffsetApp : public App {
 	bool        mShowResult = true;
 	bool        mShowOriginalControlPoints = true;
 	bool        mShowResultControlPoints = false;
+	bool        mShowTangentHandles = true;
 	Color       mResultColor = Color( 0.25f, 0.6f, 0.9f );
 };
 
@@ -188,7 +189,7 @@ void BezierOffsetApp::setup()
 
 	// Setup canvas for pan/zoom
 	mCanvas.connect( getWindow() );
-	mCanvas.setZoomLimits( 0.1f, 10.0f );
+	mCanvas.setZoomLimits( 0.1f, 30.0f );
 
 	// Start with an S-curve
 	Shape2d initialShape = createPresetShape( PresetShape::OPEN_S_CURVE );
@@ -813,6 +814,7 @@ void BezierOffsetApp::drawImGuiControls()
 	ImGui::Checkbox( "Show Original", &mShowOriginal );
 	ImGui::Checkbox( "Show Result", &mShowResult );
 	ImGui::Checkbox( "Original Control Points", &mShowOriginalControlPoints );
+	ImGui::Checkbox( "Tangent Handles", &mShowTangentHandles );
 	ImGui::Checkbox( "Result Control Points", &mShowResultControlPoints );
 
 	if( mShapes.size() > 1 ) {
@@ -952,10 +954,49 @@ void BezierOffsetApp::drawContent()
 				}
 			}
 
-			// Result control points (only for active shape)
+			// Result tangent handles and control points (only for active shape)
 			if( mShowResultControlPoints && isActive ) {
-				gl::color( Color( 0.2f, 0.9f, 0.2f ) );
 				for( const auto& contour : entry.result.getContours() ) {
+					// Draw tangent handles on result curves
+					if( mShowTangentHandles && contour.getNumSegments() > 0 ) {
+						gl::color( ColorA( 0.8f, 0.8f, 0.8f, 0.9f ) );
+						gl::lineWidth( 1.5f * pointScale );
+						size_t ptIdx = 1; // Start after moveTo point (reset for each contour)
+						for( size_t seg = 0; seg < contour.getNumSegments(); ++seg ) {
+							Path2d::SegmentType type = contour.getSegmentType( seg );
+							if( type == Path2d::QUADTO ) {
+								vec2 p0 = contour.getSegmentPosition( seg, 0.0f );
+								vec2 p1 = contour.getPoint( ptIdx );
+								vec2 p2 = contour.getPoint( ptIdx + 1 );
+								vec2 t0 = p0 + (p1 - p0) / 2.0f;
+								vec2 t1 = p2 + (p1 - p2) / 2.0f;
+								gl::drawLine( p0, t0 );
+								gl::drawLine( p2, t1 );
+								gl::drawSolidCircle( t0, 2.0f * pointScale );
+								gl::drawSolidCircle( t1, 2.0f * pointScale );
+								ptIdx += 2;
+							}
+							else if( type == Path2d::CUBICTO ) {
+								vec2 p0 = contour.getSegmentPosition( seg, 0.0f );
+								vec2 p1 = contour.getPoint( ptIdx );
+								vec2 p2 = contour.getPoint( ptIdx + 1 );
+								vec2 p3 = contour.getPoint( ptIdx + 2 );
+								vec2 t0 = p0 + (p1 - p0) / 2.0f;
+								vec2 t1 = p3 + (p2 - p3) / 2.0f;
+								gl::drawLine( p0, t0 );
+								gl::drawLine( p3, t1 );
+								gl::drawSolidCircle( t0, 2.0f * pointScale );
+								gl::drawSolidCircle( t1, 2.0f * pointScale );
+								ptIdx += 3;
+							}
+							else if( type == Path2d::LINETO ) {
+								ptIdx += 1;
+							}
+						}
+					}
+
+					// Draw control points
+					gl::color( Color( 0.2f, 0.9f, 0.2f ) );
 					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
 						gl::drawStrokedCircle( contour.getPoint( i ), 3.0f * pointScale );
 					}
@@ -1000,6 +1041,7 @@ void BezierOffsetApp::drawContent()
 			if( mShowOriginalControlPoints && isActive ) {
 				int globalIndex = 0;
 				for( const auto& contour : entry.shape.getContours() ) {
+					// Draw control points
 					for( size_t i = 0; i < contour.getNumPoints(); ++i ) {
 						bool ptHovered = (globalIndex + (int)i == mHoveredPoint);
 
