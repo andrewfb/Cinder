@@ -56,6 +56,14 @@ constexpr double ITP_EPS = 1e-12;
 constexpr double TAN_DIST_EPSILON = 1e-12;
 constexpr double UTAN_EPSILON = 1e-12;
 constexpr double SUBDIVIDE_THRESH = 0.1;
+
+// Safe normalize that returns fallback instead of NaN for zero/tiny/non-finite vectors
+inline glm::dvec2 safeNormalize( const glm::dvec2& v, const glm::dvec2& fallback = glm::dvec2( 1.0, 0.0 ) )
+{
+	double len2 = glm::length2( v );
+	if( !std::isfinite( len2 ) || len2 < UTAN_EPSILON ) return fallback;
+	return v / std::sqrt( len2 );
+}
 constexpr double DIM_TUNE = 0.25;
 constexpr double DASH_ACCURACY = 1e-6;
 
@@ -839,7 +847,7 @@ ErrEval CubicOffset::evalErr( const OffsetRec& rec, const CubicBezD& cApprox,
 		ts[i] = t;
 
 		double cusp = ( rec.cusp0 >= 0.0 ) ? 1.0 : -1.0;
-		glm::dvec2 unorm = cusp * perp( glm::normalize( tana ) );
+		glm::dvec2 unorm = cusp * perp( safeNormalize( tana ) );
 		result.unorms[i] = unorm;
 
 		glm::dvec2 pNew = mC.eval( t ) + mD * unorm;
@@ -902,7 +910,7 @@ SubdivisionPoint CubicOffset::findSubdivisionPoint( const OffsetRec& rec ) const
 	double x1 = std::abs( cross2d( rec.utan1, qT ) );
 
 	if( x0 > SUBDIVIDE_THRESH * x1 && x1 > SUBDIVIDE_THRESH * x0 ) {
-		glm::dvec2 utan = glm::normalize( qT );
+		glm::dvec2 utan = safeNormalize( qT );
 		return SubdivisionPoint{ t, utan };
 	}
 
@@ -970,10 +978,10 @@ SubdivisionPoint CubicOffset::findSubdivisionPoint( const OffsetRec& rec ) const
 		base.x * std::sin( rotAngle ) + base.y * std::cos( rotAngle )
 	);
 
-	glm::dvec2 utan0 = ( idx == 0 ) ? rec.utan0 : glm::normalize( base );
+	glm::dvec2 utan0 = ( idx == 0 ) ? rec.utan0 : safeNormalize( base, rec.utan0 );
 	auto result = subdivideForTangent( utan0, ts[idx], ts[idx + 1], tan, true );
 
-	return result.value_or( SubdivisionPoint{ t, glm::normalize( qT ) } );
+	return result.value_or( SubdivisionPoint{ t, safeNormalize( qT, rec.utan0 ) } );
 }
 
 std::optional<SubdivisionPoint> CubicOffset::subdivideForTangent( const glm::dvec2& utan0,
@@ -1014,21 +1022,34 @@ std::optional<SubdivisionPoint> CubicOffset::subdivideForTangent( const glm::dve
 	}
 
 	glm::dvec2 q = mQ.eval( t );
-	glm::dvec2 utan;
-
-	if( nSoln == 1 && glm::length2( q ) >= UTAN_EPSILON ) {
-		utan = glm::normalize( q );
-	} else if( glm::length2( tan ) >= UTAN_EPSILON ) {
-		utan = glm::normalize( tan );
-	} else {
-		utan = perp( utan0 );
-	}
+	glm::dvec2 fallback = ( glm::length2( tan ) >= UTAN_EPSILON ) ? safeNormalize( tan ) : perp( utan0 );
+	glm::dvec2 utan = ( nSoln == 1 ) ? safeNormalize( q, fallback ) : fallback;
 
 	return SubdivisionPoint{ t, utan };
 }
 
 void CubicOffset::offsetRec( const OffsetRec& rec, BezPathD& result )
 {
+	// Guard against infinite recursion: check depth first and bail on NaN/inf values
+	if( rec.depth >= MAX_DEPTH ||
+		!std::isfinite( rec.t0 ) || !std::isfinite( rec.t1 ) ||
+		!std::isfinite( rec.cusp0 ) || !std::isfinite( rec.cusp1 ) ) {
+		// Fallback: output a simple curve from current position to endpoint
+		// Use safe t values and recompute tangents if needed (stored tangents may be NaN)
+		double t0 = std::isfinite( rec.t0 ) ? rec.t0 : 0.0;
+		double t1 = std::isfinite( rec.t1 ) ? rec.t1 : 1.0;
+		glm::dvec2 tan0 = std::isfinite( rec.t0 ) ? rec.utan0 : startTangent( mC );
+		glm::dvec2 tan1 = std::isfinite( rec.t1 ) ? rec.utan1 : endTangent( mC );
+
+		glm::dvec2 p0 = mC.eval( t0 ) + mD * perp( tan0 );
+		glm::dvec2 p3 = mC.eval( t1 ) + mD * perp( tan1 );
+		// Linear fallback control points
+		glm::dvec2 p1 = p0 + ( p3 - p0 ) / 3.0;
+		glm::dvec2 p2 = p0 + 2.0 * ( p3 - p0 ) / 3.0;
+		result.curveTo( p1, p2, p3 );
+		return;
+	}
+
 	if( rec.cusp0 * rec.cusp1 < 0.0 ) {
 		double a = rec.t0;
 		double b = rec.t1;
@@ -1038,7 +1059,7 @@ void CubicOffset::offsetRec( const OffsetRec& rec, BezPathD& result )
 		double k1 = 0.2 / ( b - a );
 		double t = solveItp( f, a, b, ITP_EPS, 1, k1, s * rec.cusp0, s * rec.cusp1 );
 
-		glm::dvec2 utanT = glm::normalize( mQ.eval( t ) );
+		glm::dvec2 utanT = safeNormalize( mQ.eval( t ), rec.utan0 );
 		double cuspTMinus = std::copysign( CUSP_EPSILON, rec.cusp0 );
 		double cuspTPlus = std::copysign( CUSP_EPSILON, rec.cusp1 );
 
@@ -1093,10 +1114,9 @@ void offsetCubic( const CubicBezD& c, double d, double tolerance, BezPathD& resu
 	CubicBezD cRegularized = regularizeCusp( c, tolerance * DIM_TUNE );
 	CubicOffset co( cRegularized, d, tolerance );
 
-	glm::dvec2 tan0 = startTangent( c );
-	glm::dvec2 tan1 = endTangent( c );
-	glm::dvec2 utan0 = glm::normalize( tan0 );
-	glm::dvec2 utan1 = glm::normalize( tan1 );
+	// startTangent/endTangent already return normalized vectors
+	glm::dvec2 utan0 = startTangent( c );
+	glm::dvec2 utan1 = endTangent( c );
 
 	double cusp0 = co.endpointCusp( co.getDeriv().p0, co.getC0() );
 	double cusp1 = co.endpointCusp( co.getDeriv().p2, co.getC0() + co.getC1() + co.getC2() );
