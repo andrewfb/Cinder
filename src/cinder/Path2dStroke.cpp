@@ -242,9 +242,10 @@ inline double quadArclenGauss( const glm::dvec2 q[3] )
 
 inline double cubicInvArclen( const glm::dvec2 p[4], double targetLen, double accuracy )
 {
-	if( targetLen <= 0.0 ) return 0.0;
+	if( targetLen <= 0.0 || !std::isfinite( targetLen ) ) return 0.0;
 
 	double totalLen = cubicArclenGauss( p );
+	if( !std::isfinite( totalLen ) || totalLen <= 0.0 ) return 0.5;  // Fallback for degenerate curves
 	if( targetLen >= totalLen ) return 1.0;
 
 	double t = targetLen / totalLen;
@@ -265,9 +266,10 @@ inline double cubicInvArclen( const glm::dvec2 p[4], double targetLen, double ac
 
 inline double quadInvArclen( const glm::dvec2 q[3], double targetLen, double accuracy )
 {
-	if( targetLen <= 0.0 ) return 0.0;
+	if( targetLen <= 0.0 || !std::isfinite( targetLen ) ) return 0.0;
 
 	double totalLen = quadArclenGauss( q );
+	if( !std::isfinite( totalLen ) || totalLen <= 0.0 ) return 0.5;  // Fallback for degenerate curves
 	if( targetLen >= totalLen ) return 1.0;
 
 	glm::dvec2 d0 = q[1] - q[0];
@@ -1901,11 +1903,24 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 		return path;
 	}
 
-	double patternLen = 0.0;
+	// Sanitize dash pattern: use absolute values and filter out non-finite/zero values
+	std::vector<double> sanitizedPattern;
+	sanitizedPattern.reserve( dashPattern.size() );
 	for( double d : dashPattern ) {
-		patternLen += std::abs( d );
+		double absD = std::abs( d );
+		if( std::isfinite( absD ) && absD > 0.0 ) {
+			sanitizedPattern.push_back( absD );
+		}
 	}
-	if( patternLen <= 0.0 ) {
+	if( sanitizedPattern.empty() ) {
+		return path;
+	}
+
+	double patternLen = 0.0;
+	for( double d : sanitizedPattern ) {
+		patternLen += d;
+	}
+	if( patternLen <= 0.0 || !std::isfinite( patternLen ) ) {
 		return path;
 	}
 
@@ -1920,14 +1935,14 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 	bool needMoveTo = true;
 
 	size_t dashIdx = 0;
-	double dashRemaining = dashPattern[0];
+	double dashRemaining = sanitizedPattern[0];
 	bool isActive = true;
 
 	double remainingOffset = offset;
 	while( remainingOffset > 0.0 && dashRemaining <= remainingOffset ) {
 		remainingOffset -= dashRemaining;
-		dashIdx = ( dashIdx + 1 ) % dashPattern.size();
-		dashRemaining = dashPattern[dashIdx];
+		dashIdx = ( dashIdx + 1 ) % sanitizedPattern.size();
+		dashRemaining = sanitizedPattern[dashIdx];
 		isActive = !isActive;
 	}
 	dashRemaining -= remainingOffset;
@@ -1935,14 +1950,14 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 	for( const auto& el : path ) {
 		if( el.type == Path2d::MOVETO ) {
 			dashIdx = 0;
-			dashRemaining = dashPattern[0];
+			dashRemaining = sanitizedPattern[0];
 			isActive = true;
 
 			remainingOffset = offset;
 			while( remainingOffset > 0.0 && dashRemaining <= remainingOffset ) {
 				remainingOffset -= dashRemaining;
-				dashIdx = ( dashIdx + 1 ) % dashPattern.size();
-				dashRemaining = dashPattern[dashIdx];
+				dashIdx = ( dashIdx + 1 ) % sanitizedPattern.size();
+				dashRemaining = sanitizedPattern[dashIdx];
 				isActive = !isActive;
 			}
 			dashRemaining -= remainingOffset;
@@ -1961,6 +1976,9 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 
 				glm::dvec2 prevPt = currentPt;
 				double segLen = lineArclen( prevPt, lineEl.p1 );
+				if( !std::isfinite( segLen ) ) {
+					continue;  // Skip segments with infinite/NaN length
+				}
 				double segRemaining = segLen;
 
 				while( segRemaining > 1e-12 ) {
@@ -1975,8 +1993,8 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 						}
 						prevPt = prevPt + t * ( lineEl.p1 - prevPt );
 						segRemaining -= dashRemaining;
-						dashIdx = ( dashIdx + 1 ) % dashPattern.size();
-						dashRemaining = dashPattern[dashIdx];
+						dashIdx = ( dashIdx + 1 ) % sanitizedPattern.size();
+						dashRemaining = sanitizedPattern[dashIdx];
 						isActive = !isActive;
 						needMoveTo = true;
 					}
@@ -2001,6 +2019,16 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 		glm::dvec2 prevPt = currentPt;
 		PathEl remainingEl = el;
 		double segLen = elementArclen( el, prevPt );
+		if( !std::isfinite( segLen ) ) {
+			// Skip segments with infinite/NaN length, but update currentPt
+			switch( el.type ) {
+				case Path2d::LINETO: currentPt = el.p1; break;
+				case Path2d::QUADTO: currentPt = el.p2; break;
+				case Path2d::CUBICTO: currentPt = el.p3; break;
+				default: break;
+			}
+			continue;
+		}
 		double segRemaining = segLen;
 
 		while( segRemaining > 1e-12 ) {
@@ -2037,8 +2065,8 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 				prevPt = splitPt;
 
 				segRemaining -= dashRemaining;
-				dashIdx = ( dashIdx + 1 ) % dashPattern.size();
-				dashRemaining = dashPattern[dashIdx];
+				dashIdx = ( dashIdx + 1 ) % sanitizedPattern.size();
+				dashRemaining = sanitizedPattern[dashIdx];
 				isActive = !isActive;
 				needMoveTo = true;
 			}
