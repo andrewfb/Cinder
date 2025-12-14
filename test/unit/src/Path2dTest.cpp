@@ -594,6 +594,33 @@ TEST_CASE("Cubic-Cubic Intersection")
 		REQUIRE( results.empty() );
 	}
 
+	SECTION("selfIntersectCubic: Loop entirely in first half (t1, t2 both < 0.5)")
+	{
+		// This curve has a self-intersection with both t values in [0, 0.5]
+		// Control points chosen to create a tight loop early in the curve
+		// Brute force verification: intersection at approximately t1=0.316, t2=0.474
+		dvec2 c[4] = {
+			{ 0.0, 0.0 },
+			{ -4.5, 1.5 },
+			{ -2.0, 0.5 },
+			{ 1.0, 0.0 }
+		};
+
+		auto results = selfIntersectCubic( c, 1e-6, 0.02 );
+
+		// Must find at least 1 self-intersection
+		REQUIRE( results.size() >= 1 );
+
+		// Verify the intersection is real: points at t1 and t2 should be very close
+		dvec2 pt1 = evalCubicBezier( c, results[0].t1 );
+		dvec2 pt2 = evalCubicBezier( c, results[0].t2 );
+		REQUIRE( glm::distance( pt1, pt2 ) < 0.001 );
+
+		// Verify both t values are in [0, 0.5] - this is the bug we're testing
+		REQUIRE( results[0].t1 < 0.5 );
+		REQUIRE( results[0].t2 < 0.5 );
+	}
+
 	SECTION("intersectCubicCubic: Touching at endpoint")
 	{
 		// Two curves that share an endpoint

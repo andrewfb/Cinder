@@ -31,6 +31,7 @@
 #include <cmath>
 #include <climits>
 #include <cfloat>
+#include <limits>
 #include <functional>
 #include <vector>
 #include <algorithm>
@@ -949,6 +950,7 @@ inline T boxDiagonal( const glm::tvec2<T>& minPt, const glm::tvec2<T>& maxPt )
 }
 
 //! Recursive helper for cubic-cubic intersection
+//! Optimized to subdivide only the larger curve when possible (reduces branching from 4 to 2)
 template<typename T>
 void intersectCubicCubicRecursive(
 	const glm::tvec2<T> c1[4], T t1Min, T t1Max,
@@ -981,23 +983,49 @@ void intersectCubicCubicRecursive(
 		return;
 	}
 
-	// Subdivide the larger curve (or both if similar size)
-	T t1Mid = ( t1Min + t1Max ) * T( 0.5 );
-	T t2Mid = ( t2Min + t2Max ) * T( 0.5 );
+	// Optimization: subdivide only the larger curve to reduce branching factor from 4 to 2
+	// This dramatically speeds up cases where curves don't actually intersect
+	constexpr T SIZE_RATIO_THRESHOLD = T( 2.0 );  // Only subdivide one if it's 2x larger
 
-	glm::tvec2<T> c1Left[4], c1Right[4];
-	glm::tvec2<T> c2Left[4], c2Right[4];
+	if( diag1 > diag2 * SIZE_RATIO_THRESHOLD ) {
+		// Curve 1 is much larger - only subdivide it
+		T t1Mid = ( t1Min + t1Max ) * T( 0.5 );
+		glm::tvec2<T> c1Left[4], c1Right[4];
+		subdivideCubicLeft( c1, T( 0.5 ), c1Left );
+		subdivideCubicRight( c1, T( 0.5 ), c1Right );
 
-	subdivideCubicLeft( c1, T( 0.5 ), c1Left );
-	subdivideCubicRight( c1, T( 0.5 ), c1Right );
-	subdivideCubicLeft( c2, T( 0.5 ), c2Left );
-	subdivideCubicRight( c2, T( 0.5 ), c2Right );
+		intersectCubicCubicRecursive( c1Left, t1Min, t1Mid, c2, t2Min, t2Max, tolerance, results, depth + 1 );
+		intersectCubicCubicRecursive( c1Right, t1Mid, t1Max, c2, t2Min, t2Max, tolerance, results, depth + 1 );
+	}
+	else if( diag2 > diag1 * SIZE_RATIO_THRESHOLD ) {
+		// Curve 2 is much larger - only subdivide it
+		T t2Mid = ( t2Min + t2Max ) * T( 0.5 );
+		glm::tvec2<T> c2Left[4], c2Right[4];
+		subdivideCubicLeft( c2, T( 0.5 ), c2Left );
+		subdivideCubicRight( c2, T( 0.5 ), c2Right );
 
-	// Recursively check all 4 combinations
-	intersectCubicCubicRecursive( c1Left, t1Min, t1Mid, c2Left, t2Min, t2Mid, tolerance, results, depth + 1 );
-	intersectCubicCubicRecursive( c1Left, t1Min, t1Mid, c2Right, t2Mid, t2Max, tolerance, results, depth + 1 );
-	intersectCubicCubicRecursive( c1Right, t1Mid, t1Max, c2Left, t2Min, t2Mid, tolerance, results, depth + 1 );
-	intersectCubicCubicRecursive( c1Right, t1Mid, t1Max, c2Right, t2Mid, t2Max, tolerance, results, depth + 1 );
+		intersectCubicCubicRecursive( c1, t1Min, t1Max, c2Left, t2Min, t2Mid, tolerance, results, depth + 1 );
+		intersectCubicCubicRecursive( c1, t1Min, t1Max, c2Right, t2Mid, t2Max, tolerance, results, depth + 1 );
+	}
+	else {
+		// Similar sizes - subdivide both (standard approach)
+		T t1Mid = ( t1Min + t1Max ) * T( 0.5 );
+		T t2Mid = ( t2Min + t2Max ) * T( 0.5 );
+
+		glm::tvec2<T> c1Left[4], c1Right[4];
+		glm::tvec2<T> c2Left[4], c2Right[4];
+
+		subdivideCubicLeft( c1, T( 0.5 ), c1Left );
+		subdivideCubicRight( c1, T( 0.5 ), c1Right );
+		subdivideCubicLeft( c2, T( 0.5 ), c2Left );
+		subdivideCubicRight( c2, T( 0.5 ), c2Right );
+
+		// Recursively check all 4 combinations
+		intersectCubicCubicRecursive( c1Left, t1Min, t1Mid, c2Left, t2Min, t2Mid, tolerance, results, depth + 1 );
+		intersectCubicCubicRecursive( c1Left, t1Min, t1Mid, c2Right, t2Mid, t2Max, tolerance, results, depth + 1 );
+		intersectCubicCubicRecursive( c1Right, t1Mid, t1Max, c2Left, t2Min, t2Mid, tolerance, results, depth + 1 );
+		intersectCubicCubicRecursive( c1Right, t1Mid, t1Max, c2Right, t2Mid, t2Max, tolerance, results, depth + 1 );
+	}
 }
 
 } // namespace detail
@@ -1036,6 +1064,111 @@ inline std::vector<CurveIntersection<T>> intersectCubicCubic(
 	return results;
 }
 
+namespace detail {
+
+//! Returns true if the cubic curve potentially needs further subdivision for self-intersection.
+//! Uses both flatness AND monotonicity tests - a curve can only be safely pruned if:
+//! 1. Control points are close to the chord (flatness), AND
+//! 2. Control points don't "fold back" along the chord direction (monotonicity)
+template<typename T>
+bool cubicNeedsSelfIntersectionCheck( const glm::tvec2<T> c[4], T tolerance )
+{
+	// Compute the chord vector and its squared length
+	glm::tvec2<T> chord = c[3] - c[0];
+	T chordLenSq = glm::dot( chord, chord );
+
+	// If chord is nearly zero length, check if curve has any extent
+	if( chordLenSq < tolerance * tolerance * T( 0.01 ) ) {
+		// Check max distance from P0 to P1 and P2
+		T d1sq = glm::dot( c[1] - c[0], c[1] - c[0] );
+		T d2sq = glm::dot( c[2] - c[0], c[2] - c[0] );
+		// If all points are within tolerance, curve is too small to self-intersect meaningfully
+		return d1sq > tolerance * tolerance || d2sq > tolerance * tolerance;
+	}
+
+	// Project P1 and P2 onto the chord direction
+	// t1 = dot(P1-P0, chord) / |chord|^2, similarly for t2
+	T t1 = glm::dot( c[1] - c[0], chord ) / chordLenSq;
+	T t2 = glm::dot( c[2] - c[0], chord ) / chordLenSq;
+
+	// Check monotonicity: for no self-intersection, projections should be strictly ordered: 0 <= t1 <= t2 <= 1
+	// Use very tight tolerance - we're only pruning if BOTH monotonic AND flat
+	// Any meaningful fold-back should fail this test
+	T eps = std::numeric_limits<T>::epsilon() * T( 100 );  // ~2e-14 for double
+	bool monotonic = ( t1 >= -eps ) && ( t1 <= T( 1 ) + eps ) &&
+	                 ( t2 >= t1 - eps ) && ( t2 <= T( 1 ) + eps );
+
+	if( !monotonic ) {
+		// Control points fold back - curve might self-intersect, need to check further
+		return true;
+	}
+
+	// Compute perpendicular distances from P1 and P2 to the chord line
+	// Using cross product: |cross| / |chord| = perpendicular distance
+	T cross1 = ( c[1].x - c[0].x ) * chord.y - ( c[1].y - c[0].y ) * chord.x;
+	T cross2 = ( c[2].x - c[0].x ) * chord.y - ( c[2].y - c[0].y ) * chord.x;
+
+	// Squared perpendicular distances (avoiding sqrt)
+	T perpDistSq1 = cross1 * cross1 / chordLenSq;
+	T perpDistSq2 = cross2 * cross2 / chordLenSq;
+
+	// If both control points are close to the chord AND monotonic, curve is flat and cannot self-intersect
+	T flatnessThresholdSq = tolerance * tolerance;
+	if( perpDistSq1 < flatnessThresholdSq && perpDistSq2 < flatnessThresholdSq ) {
+		return false;
+	}
+
+	return true;
+}
+
+//! Recursive helper for cubic self-intersection detection.
+//! \a c is the curve to check (in its own [0,1] parameter space).
+//! \a tOffset and \a tScale map local [0,1] back to original parameter space.
+//! Results are reported in original parameter space: t_original = tOffset + t_local * tScale.
+template<typename T>
+void selfIntersectCubicRecursive(
+	const glm::tvec2<T> c[4],
+	T tOffset, T tScale,
+	T tolerance, T minSeparation,
+	std::vector<CurveIntersection<T>>& results,
+	int depth )
+{
+	constexpr int MAX_DEPTH = 20;  // Limit recursion
+
+	// Stop recursion if parameter range is too small to contain distinct t values
+	if( tScale < minSeparation || depth >= MAX_DEPTH ) {
+		return;
+	}
+
+	// Subdivide at midpoint (t=0.5 in local space)
+	glm::tvec2<T> left[4], right[4];
+	subdivideCubicLeft( c, T( 0.5 ), left );
+	subdivideCubicRight( c, T( 0.5 ), right );
+
+	// Check left half vs right half for crossings
+	// Left curve's [0,1] maps to original [tOffset, tOffset + tScale/2]
+	// Right curve's [0,1] maps to original [tOffset + tScale/2, tOffset + tScale]
+	T leftOffset = tOffset;
+	T leftScale = tScale * T( 0.5 );
+	T rightOffset = tOffset + leftScale;
+	T rightScale = tScale * T( 0.5 );
+
+	intersectCubicCubicRecursive( left, leftOffset, leftOffset + leftScale,
+	                              right, rightOffset, rightOffset + rightScale,
+	                              tolerance, results, 0 );
+
+	// Recursively check each half for self-intersections within itself
+	// PRUNING: Only recurse if the sub-curve is not flat (has potential for self-intersection)
+	if( cubicNeedsSelfIntersectionCheck( left, tolerance ) ) {
+		selfIntersectCubicRecursive( left, leftOffset, leftScale, tolerance, minSeparation, results, depth + 1 );
+	}
+	if( cubicNeedsSelfIntersectionCheck( right, tolerance ) ) {
+		selfIntersectCubicRecursive( right, rightOffset, rightScale, tolerance, minSeparation, results, depth + 1 );
+	}
+}
+
+} // namespace detail
+
 //! Find self-intersections in cubic \a c. \a minSeparation filters out near-endpoint noise.
 template<typename T>
 inline std::vector<CurveIntersection<T>> selfIntersectCubic(
@@ -1045,13 +1178,14 @@ inline std::vector<CurveIntersection<T>> selfIntersectCubic(
 {
 	std::vector<CurveIntersection<T>> rawResults;
 
-	// Subdivide at midpoint and check left vs right halves for crossings.
-	// The recursive subdivision will find all intersections between [0,0.5] and [0.5,1].
-	glm::tvec2<T> left[4], right[4];
-	subdivideCubicLeft( c, T( 0.5 ), left );
-	subdivideCubicRight( c, T( 0.5 ), right );
+	// Early out: if the whole curve is flat and monotonic, it cannot self-intersect
+	if( !detail::cubicNeedsSelfIntersectionCheck( c, tolerance ) ) {
+		return rawResults;
+	}
 
-	detail::intersectCubicCubicRecursive( left, T( 0 ), T( 0.5 ), right, T( 0.5 ), T( 1 ), tolerance, rawResults, 0 );
+	// Recursively find all self-intersections
+	// Start with original curve, tOffset=0, tScale=1 (full [0,1] range)
+	detail::selfIntersectCubicRecursive( c, T( 0 ), T( 1 ), tolerance, minSeparation, rawResults, 0 );
 
 	// Deduplicate and filter
 	std::vector<CurveIntersection<T>> results;

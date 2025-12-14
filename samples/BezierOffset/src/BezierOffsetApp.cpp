@@ -12,10 +12,60 @@
 #include "cinder/CinderImGui.h"
 #include "cinder/Font.h"
 #include "cinder/Rand.h"
+#include <iomanip>
+#include <sstream>
+#include <chrono>
 
 using namespace ci;
 using namespace ci::app;
 using namespace std;
+
+// Helper to convert Path2d to SVG path data string
+string pathToSvg( const Path2d& path ) {
+	if( path.empty() ) return "";
+
+	stringstream svg;
+	svg << std::fixed << std::setprecision( 4 );
+
+	size_t ptIdx = 0;
+	for( size_t seg = 0; seg < path.getNumSegments(); ++seg ) {
+		Path2d::SegmentType type = path.getSegmentType( seg );
+
+		if( seg == 0 ) {
+			vec2 p = path.getPoint( ptIdx++ );
+			svg << "M " << p.x << " " << p.y << " ";
+		}
+
+		switch( type ) {
+			case Path2d::LINETO: {
+				vec2 p = path.getPoint( ptIdx++ );
+				svg << "L " << p.x << " " << p.y << " ";
+				break;
+			}
+			case Path2d::QUADTO: {
+				vec2 p1 = path.getPoint( ptIdx++ );
+				vec2 p2 = path.getPoint( ptIdx++ );
+				svg << "Q " << p1.x << " " << p1.y << " " << p2.x << " " << p2.y << " ";
+				break;
+			}
+			case Path2d::CUBICTO: {
+				vec2 p1 = path.getPoint( ptIdx++ );
+				vec2 p2 = path.getPoint( ptIdx++ );
+				vec2 p3 = path.getPoint( ptIdx++ );
+				svg << "C " << p1.x << " " << p1.y << " "
+				    << p2.x << " " << p2.y << " "
+				    << p3.x << " " << p3.y << " ";
+				break;
+			}
+			default:
+				break;
+		}
+	}
+	if( path.isClosed() ) {
+		svg << "Z";
+	}
+	return svg.str();
+}
 
 enum class PresetShape {
 	EMPTY,
@@ -53,6 +103,7 @@ class BezierOffsetApp : public App {
 	void mouseUp( MouseEvent event ) override;
 	void mouseDrag( MouseEvent event ) override;
 	void mouseMove( MouseEvent event ) override;
+	void keyDown( KeyEvent event ) override;
 	void draw() override;
 
   private:
@@ -78,11 +129,11 @@ class BezierOffsetApp : public App {
 		// Per-shape mode and parameters
 		Mode mode = Mode::STROKE;
 		float distance = 20.0f;          // Offset distance or stroke width
-		int joinStyle = 2;               // 0=Bevel, 1=Miter, 2=Round
+		int joinStyle = 0;               // 0=Bevel, 1=Miter, 2=Round
 		float miterLimit = 4.0f;
-		int startCapStyle = 2;           // 0=Butt, 1=Square, 2=Round
-		int endCapStyle = 2;             // 0=Butt, 1=Square, 2=Round
-		float tolerance = 0.25f;
+		int startCapStyle = 0;           // 0=Butt, 1=Square, 2=Round
+		int endCapStyle = 0;             // 0=Butt, 1=Square, 2=Round
+		float tolerance = 1.0f;
 		bool removeSelfIntersections = false;
 
 		// Multiple offset curves (evenly spaced up to distance)
@@ -531,7 +582,57 @@ void BezierOffsetApp::updateResult()
 	}
 
 	if( entry.mode == Mode::OFFSET ) {
-		entry.result = shape.calcOffset( entry.distance, joinStyle, entry.miterLimit, entry.tolerance, entry.removeSelfIntersections );
+		// First compute offset without self-intersection removal to get the raw curve
+		auto t0 = chrono::high_resolution_clock::now();
+		Shape2d rawOffset = shape.calcOffset( entry.distance, joinStyle, entry.miterLimit, entry.tolerance, false );
+		auto t1 = chrono::high_resolution_clock::now();
+		auto offset_ms = chrono::duration_cast<chrono::milliseconds>(t1 - t0).count();
+
+		if( entry.removeSelfIntersections && ! rawOffset.empty() ) {
+			// Time each contour's findSelfIntersections separately
+			Shape2d cleaned;
+			for( size_t ci = 0; ci < rawOffset.getNumContours(); ++ci ) {
+				const Path2d& contour = rawOffset.getContour( ci );
+
+				auto t2 = chrono::high_resolution_clock::now();
+				auto selfIsects = contour.findSelfIntersections();
+				auto t3 = chrono::high_resolution_clock::now();
+				auto find_ms = chrono::duration_cast<chrono::milliseconds>(t3 - t2).count();
+
+				// Auto-dump if findSelfIntersections took > 100ms
+				if( find_ms > 10 ) {
+					cout << "\n=== SLOW findSelfIntersections (" << find_ms << " ms) ===\n";
+					cout << "Contour " << ci << ": " << contour.getNumSegments() << " segments, "
+					     << (contour.isClosed() ? "closed" : "open") << "\n";
+					cout << "Found " << selfIsects.size() << " self-intersections\n";
+					cout << "d=\"" << pathToSvg( contour ) << "\"\n";
+					cout << "=== END DUMP ===\n" << endl;
+				}
+                else cout << "TOok " << find_ms << std::endl;
+
+				auto t4 = chrono::high_resolution_clock::now();
+				Shape2d contourCleaned = contour.removeSelfIntersections();
+				auto t5 = chrono::high_resolution_clock::now();
+				auto remove_ms = chrono::duration_cast<chrono::milliseconds>(t5 - t4).count();
+
+				if( remove_ms > 100 ) {
+					cout << "\n=== SLOW removeSelfIntersections (" << remove_ms << " ms) ===\n";
+					cout << "Contour " << ci << ": " << contour.getNumSegments() << " segments\n";
+					cout << "d=\"" << pathToSvg( contour ) << "\"\n";
+					cout << "=== END DUMP ===\n" << endl;
+				}
+
+				cleaned.append( contourCleaned );
+			}
+			entry.result = cleaned;
+		}
+		else {
+			entry.result = rawOffset;
+		}
+
+		if( offset_ms > 100 ) {
+			cout << "calcOffset took " << offset_ms << " ms\n";
+		}
 	}
 	else if( entry.mode == Mode::DASH ) {
 		// Dash mode: just dashing, no stroke expansion
@@ -557,11 +658,24 @@ void BezierOffsetApp::updateResult()
 
 		if( entry.removeSelfIntersections && ! entry.result.empty() ) {
 			Shape2d cleaned;
-			for( const auto& contour : entry.result.getContours() ) {
-				Shape2d contourCleaned = contour.removeSelfIntersections();
-				for( const auto& c : contourCleaned.getContours() ) {
-					cleaned.appendContour( c );
+			for( size_t ci = 0; ci < entry.result.getNumContours(); ++ci ) {
+				const Path2d& contour = entry.result.getContour( ci );
+
+				auto t2 = chrono::high_resolution_clock::now();
+				auto selfIsects = contour.findSelfIntersections();
+				auto t3 = chrono::high_resolution_clock::now();
+				auto find_ms = chrono::duration_cast<chrono::milliseconds>(t3 - t2).count();
+
+				if( find_ms > 100 ) {
+					cout << "\n=== SLOW findSelfIntersections (stroke) (" << find_ms << " ms) ===\n";
+					cout << "Contour " << ci << ": " << contour.getNumSegments() << " segments\n";
+					cout << "Found " << selfIsects.size() << " self-intersections\n";
+					cout << "d=\"" << pathToSvg( contour ) << "\"\n";
+					cout << "=== END DUMP ===\n" << endl;
 				}
+
+				Shape2d contourCleaned = contour.removeSelfIntersections();
+				cleaned.append( contourCleaned );
 			}
 			entry.result = cleaned;
 		}
@@ -1105,6 +1219,78 @@ void BezierOffsetApp::drawIntersections()
 
 		gl::color( Color( 1, 0, 1 ) );
 		gl::drawSolidCircle( isect.point, 5.0f * pointScale );
+	}
+}
+
+void BezierOffsetApp::keyDown( KeyEvent event )
+{
+	if( event.getChar() == 'd' || event.getChar() == 'D' ) {
+		// Dump all shapes as SVG path data
+		cout << "\n=== SVG Path Data Dump ===\n";
+		for( int si = 0; si < (int)mShapes.size(); ++si ) {
+			const ShapeEntry& entry = mShapes[si];
+			if( entry.shape.empty() )
+				continue;
+
+			cout << "\n// Shape " << (si + 1);
+			if( si == mActiveShapeIndex ) cout << " (active)";
+			cout << ":\n";
+
+			for( size_t ci = 0; ci < entry.shape.getNumContours(); ++ci ) {
+				const Path2d& path = entry.shape.getContour( ci );
+				if( path.empty() )
+					continue;
+
+				cout << "// Contour " << (ci + 1) << " (" << path.getNumSegments() << " segments, "
+				     << (path.isClosed() ? "closed" : "open") << "):\n";
+
+				// Generate SVG path data
+				stringstream svg;
+				svg << std::fixed << std::setprecision( 4 );
+
+				size_t ptIdx = 0;
+				for( size_t seg = 0; seg < path.getNumSegments(); ++seg ) {
+					Path2d::SegmentType type = path.getSegmentType( seg );
+
+					if( seg == 0 ) {
+						// MoveTo for first segment
+						vec2 p = path.getPoint( ptIdx++ );
+						svg << "M " << p.x << " " << p.y << " ";
+					}
+
+					switch( type ) {
+						case Path2d::LINETO: {
+							vec2 p = path.getPoint( ptIdx++ );
+							svg << "L " << p.x << " " << p.y << " ";
+							break;
+						}
+						case Path2d::QUADTO: {
+							vec2 p1 = path.getPoint( ptIdx++ );
+							vec2 p2 = path.getPoint( ptIdx++ );
+							svg << "Q " << p1.x << " " << p1.y << " " << p2.x << " " << p2.y << " ";
+							break;
+						}
+						case Path2d::CUBICTO: {
+							vec2 p1 = path.getPoint( ptIdx++ );
+							vec2 p2 = path.getPoint( ptIdx++ );
+							vec2 p3 = path.getPoint( ptIdx++ );
+							svg << "C " << p1.x << " " << p1.y << " "
+							    << p2.x << " " << p2.y << " "
+							    << p3.x << " " << p3.y << " ";
+							break;
+						}
+						default:
+							break;
+					}
+				}
+				if( path.isClosed() ) {
+					svg << "Z";
+				}
+
+				cout << "d=\"" << svg.str() << "\"\n";
+			}
+		}
+		cout << "\n=== End Dump ===\n" << endl;
 	}
 }
 
