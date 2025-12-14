@@ -1175,10 +1175,9 @@ TEST_CASE("Path2d::removeSelfIntersections")
 		path.lineTo( 100, 0 );
 		path.lineTo( 100, 100 );
 
-		Shape2d result = path.removeSelfIntersections();
+		Path2d result = path.removeSelfIntersections();
 
-		REQUIRE( result.getNumContours() == 1 );
-		REQUIRE( result.getContour( 0 ).getNumSegments() == path.getNumSegments() );
+		REQUIRE( result.getNumSegments() == path.getNumSegments() );
 	}
 
 	SECTION("Figure-8 with crossing lines")
@@ -1193,10 +1192,10 @@ TEST_CASE("Path2d::removeSelfIntersections")
 		auto intersections = path.findSelfIntersections();
 		REQUIRE( intersections.size() == 1 );
 
-		Shape2d result = path.removeSelfIntersections();
+		Path2d result = path.removeSelfIntersections();
 
-		// Should produce at least one contour
-		REQUIRE( result.getNumContours() >= 1 );
+		// Should produce a non-empty result
+		REQUIRE( !result.empty() );
 	}
 
 	SECTION("Self-intersecting cubic")
@@ -1209,14 +1208,13 @@ TEST_CASE("Path2d::removeSelfIntersections")
 		auto intersections = path.findSelfIntersections();
 		REQUIRE( intersections.size() == 1 );
 
-		Shape2d result = path.removeSelfIntersections();
+		Path2d result = path.removeSelfIntersections();
 
-		// Should produce at least one non-empty contour
-		REQUIRE( result.getNumContours() >= 1 );
-		REQUIRE( !result.getContour( 0 ).empty() );
+		// Should produce a non-empty result
+		REQUIRE( !result.empty() );
 
 		// The result should have no self-intersections
-		auto newIntersections = result.getContour( 0 ).findSelfIntersections();
+		auto newIntersections = result.findSelfIntersections();
 		REQUIRE( newIntersections.empty() );
 	}
 
@@ -1235,23 +1233,19 @@ TEST_CASE("Path2d::removeSelfIntersections")
 
 		// Offset inward will create self-intersections at the peaks
 		float offsetDist = -25.0f;  // Negative for inward
-		Shape2d rawOffset = zzPath.calcOffset( offsetDist, Join::Miter, 10.0f, 0.25f, false );
+		Path2d offsetPath = zzPath.calcOffset( offsetDist, Join::Miter, 10.0f, 0.25f, false );
 
-		REQUIRE( !rawOffset.empty() );
-		const Path2d& offsetPath = rawOffset.getContour( 0 );
+		REQUIRE( !offsetPath.empty() );
 
 		auto selfIntersects = offsetPath.findSelfIntersections();
 
 		if( selfIntersects.size() > 0 ) {
-			Shape2d cleaned = offsetPath.removeSelfIntersections();
-			if( !cleaned.empty() ) {
-				const auto& cleanedPath = cleaned.getContour( 0 );
-				// Note: In complex cases like zigzags with multi-way intersections, the algorithm
-				// may not eliminate ALL intersections because the kept curve portions can still
-				// geometrically intersect each other. A proper solution would require planar
-				// subdivision / boolean operations.
-				REQUIRE( !cleanedPath.empty() );
-			}
+			Path2d cleaned = offsetPath.removeSelfIntersections();
+			// Note: In complex cases like zigzags with multi-way intersections, the algorithm
+			// may not eliminate ALL intersections because the kept curve portions can still
+			// geometrically intersect each other. A proper solution would require planar
+			// subdivision / boolean operations.
+			REQUIRE( !cleaned.empty() );
 		}
 	}
 
@@ -1267,15 +1261,15 @@ TEST_CASE("Path2d::removeSelfIntersections")
 		REQUIRE( intersections.size() >= 1 );
 
 		// Just verify the function runs without crashing
-		Shape2d result = path.removeSelfIntersections();
-		REQUIRE( result.getNumContours() >= 1 );
+		Path2d result = path.removeSelfIntersections();
+		REQUIRE( !result.empty() );
 	}
 
 	SECTION("Empty path returns empty")
 	{
 		Path2d path;
-		Shape2d result = path.removeSelfIntersections();
-		REQUIRE( result.getNumContours() == 0 );
+		Path2d result = path.removeSelfIntersections();
+		REQUIRE( result.empty() );
 	}
 }
 
@@ -1293,24 +1287,17 @@ TEST_CASE("offset() with removeSelfIntersections")
 		float largeOffset = 30.0f;
 
 		// Without removal - should have self-intersecting loop
-		Shape2d withLoops = path.calcOffset( largeOffset, Join::Miter, 10.0f, 0.25f, false );
+		Path2d withLoops = path.calcOffset( largeOffset, Join::Miter, 10.0f, 0.25f, false );
 		REQUIRE( !withLoops.empty() );
 
 		// With removal - loops should be removed
-		Shape2d noLoops = path.calcOffset( largeOffset, Join::Miter, 10.0f, 0.25f, true );
+		Path2d noLoops = path.calcOffset( largeOffset, Join::Miter, 10.0f, 0.25f, true );
 		REQUIRE( !noLoops.empty() );
 
 		// The cleaned version should have fewer or equal self-intersections
 		// (we can't guarantee zero due to algorithm limitations, but it should help)
-		size_t loopIntersections = 0;
-		for( const auto& contour : withLoops.getContours() ) {
-			loopIntersections += contour.findSelfIntersections().size();
-		}
-
-		size_t cleanedIntersections = 0;
-		for( const auto& contour : noLoops.getContours() ) {
-			cleanedIntersections += contour.findSelfIntersections().size();
-		}
+		size_t loopIntersections = withLoops.findSelfIntersections().size();
+		size_t cleanedIntersections = noLoops.findSelfIntersections().size();
 
 		REQUIRE( cleanedIntersections <= loopIntersections );
 	}
@@ -1325,11 +1312,11 @@ TEST_CASE("offset() with removeSelfIntersections")
 
 		float smallOffset = 2.0f;
 
-		Shape2d withFlag = path.calcOffset( smallOffset, Join::Round, 4.0f, 0.25f, true );
-		Shape2d withoutFlag = path.calcOffset( smallOffset, Join::Round, 4.0f, 0.25f, false );
+		Path2d withFlag = path.calcOffset( smallOffset, Join::Round, 4.0f, 0.25f, true );
+		Path2d withoutFlag = path.calcOffset( smallOffset, Join::Round, 4.0f, 0.25f, false );
 
 		// Both should produce similar results since no self-intersection to remove
-		REQUIRE( withFlag.getContours().size() == withoutFlag.getContours().size() );
+		REQUIRE( !withFlag.empty() == !withoutFlag.empty() );
 	}
 }
 
@@ -1722,18 +1709,18 @@ TEST_CASE("calcStroke robustness")
 
 TEST_CASE("calcOffset edge cases")
 {
-	SECTION("Empty path returns empty shape")
+	SECTION("Empty path returns empty path")
 	{
 		Path2d p;
-		Shape2d result = p.calcOffset( 10.0f, Join::Miter, 4.0f );
+		Path2d result = p.calcOffset( 10.0f, Join::Miter, 4.0f );
 		REQUIRE( result.empty() );
 	}
 
-	SECTION("Single moveTo returns empty shape")
+	SECTION("Single moveTo returns empty path")
 	{
 		Path2d p;
 		p.moveTo( 10, 20 );
-		Shape2d result = p.calcOffset( 10.0f, Join::Miter, 4.0f );
+		Path2d result = p.calcOffset( 10.0f, Join::Miter, 4.0f );
 		REQUIRE( result.empty() );
 	}
 
@@ -1745,8 +1732,8 @@ TEST_CASE("calcOffset edge cases")
 		p.lineTo( 100, 100 );
 		p.lineTo( 0, 100 );
 		p.close();
-		Shape2d result = p.calcOffset( 0.0f, Join::Miter, 4.0f );
-		// Zero offset on closed path should return a valid shape
+		Path2d result = p.calcOffset( 0.0f, Join::Miter, 4.0f );
+		// Zero offset on closed path should return a valid path
 		// that approximates the original
 		REQUIRE( !result.empty() );
 		Rectf bounds = result.calcBoundingBox();
@@ -1754,7 +1741,7 @@ TEST_CASE("calcOffset edge cases")
 		REQUIRE( bounds.x2 <= 101.0f );
 	}
 
-	SECTION("Offset produces valid shape")
+	SECTION("Offset produces valid path")
 	{
 		// 100x100 rectangle
 		Path2d p;
@@ -1765,7 +1752,7 @@ TEST_CASE("calcOffset edge cases")
 		p.close();
 
 		// Test that calcOffset produces a non-empty result
-		Shape2d result = p.calcOffset( 10.0f, Join::Miter, 4.0f );
+		Path2d result = p.calcOffset( 10.0f, Join::Miter, 4.0f );
 		REQUIRE( !result.empty() );
 		// All points should be finite
 		REQUIRE( allPointsFinite( result ) );
@@ -2367,20 +2354,18 @@ TEST_CASE("removeSelfIntersections invariants")
 		p.lineTo( 100, 0 );
 		p.close();
 
-		Shape2d result = p.removeSelfIntersections();
+		Path2d result = p.removeSelfIntersections();
 		REQUIRE( !result.empty() );
 
-		// Each resulting contour should have no self-intersections
-		for( size_t i = 0; i < result.getNumContours(); ++i ) {
-			auto selfIsects = result.getContour(i).findSelfIntersections();
-			REQUIRE( selfIsects.empty() );
-		}
+		// The result should have no self-intersections
+		auto selfIsects = result.findSelfIntersections();
+		REQUIRE( selfIsects.empty() );
 	}
 
 	SECTION("Empty path returns empty result")
 	{
 		Path2d p;
-		Shape2d result = p.removeSelfIntersections();
+		Path2d result = p.removeSelfIntersections();
 		REQUIRE( result.empty() );
 	}
 
@@ -2393,8 +2378,8 @@ TEST_CASE("removeSelfIntersections invariants")
 		p.lineTo( 0, 100 );
 		p.close();
 
-		Shape2d result = p.removeSelfIntersections();
-		REQUIRE( result.getNumContours() == 1 );
+		Path2d result = p.removeSelfIntersections();
+		REQUIRE( result.getNumSegments() == p.getNumSegments() );
 	}
 }
 
@@ -2428,7 +2413,7 @@ TEST_CASE("Output validity - no NaN/Infinity in results")
 		p.lineTo( 0, 100 );
 		p.close();
 
-		Shape2d result = p.calcOffset( 10.0f, Join::Miter, 4.0f );
+		Path2d result = p.calcOffset( 10.0f, Join::Miter, 4.0f );
 
 		if( !result.empty() ) {
 			REQUIRE( allPointsFinite( result ) );

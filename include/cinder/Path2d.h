@@ -319,17 +319,17 @@ class CI_API Path2d {
 	//! Returns a vector of Path2d segments between split points.
 	std::vector<Path2d>	splitAtMultiple( const std::vector<float>& tValues ) const;
 
-	//! Remove self-intersecting loops from the path using planar graph decomposition.
+	//! Remove self-intersecting loops from the path. Walks from t=0 and skips any
+	//! loop where the path crosses itself, continuing from the exit point.
 	//! For offset curves, this removes the "inner" loops that occur at sharp corners.
-	//! Returns a Shape2d with self-intersections removed (may have multiple contours).
-	Shape2d	removeSelfIntersections() const;
+	Path2d	removeSelfIntersections() const;
 
 	//! Offset the path by a signed \a distance. Positive values offset outward (to the left
 	//! when traversing the path), negative values offset inward. \a join specifies the corner
 	//! style, \a miterLimit is the ratio of miter length to offset distance. \a tolerance
 	//! controls approximation accuracy. If \a removeSelfIntersections is true, self-intersecting
-	//! loops at sharp corners are removed. Returns a Shape2d (may contain multiple contours).
-	Shape2d	calcOffset( float distance, Join join, float miterLimit, float tolerance = 0.25f, bool removeSelfIntersections = false ) const;
+	//! loops at sharp corners are removed.
+	Path2d	calcOffset( float distance, Join join, float miterLimit, float tolerance = 0.25f, bool removeSelfIntersections = false ) const;
 
 	//! Expand the path into a stroked Shape2d using \a style parameters. \a tolerance controls curve approximation accuracy.
 	Shape2d	calcStroke( const StrokeStyle& style, float tolerance = 0.25f ) const;

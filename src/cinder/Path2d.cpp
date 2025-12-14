@@ -3177,22 +3177,19 @@ void appendPath( Path2d& dest, const Path2d& src )
 
 } // anonymous namespace
 
-Shape2d Path2d::removeSelfIntersections() const
+Path2d Path2d::removeSelfIntersections() const
 {
-	Shape2d result;
-
 	// Empty path returns empty result
 	if( empty() ) {
-		return result;
+		return Path2d();
 	}
 
 	// Find all self-intersections
 	auto intersections = findSelfIntersections();
 
 	if( intersections.empty() ) {
-		// No intersections, return original as single contour
-		result.appendContour( *this );
-		return result;
+		// No intersections, return original
+		return *this;
 	}
 
 	// =========================================================================
@@ -3221,8 +3218,7 @@ Shape2d Path2d::removeSelfIntersections() const
 
 	// If no valid t-values to split at, return original
 	if( tValues.empty() ) {
-		result.appendContour( *this );
-		return result;
+		return *this;
 	}
 
 	// =========================================================================
@@ -3291,8 +3287,7 @@ Shape2d Path2d::removeSelfIntersections() const
 
 	// If no keep ranges, something went wrong - return original
 	if( keepRanges.empty() ) {
-		result.appendContour( *this );
-		return result;
+		return *this;
 	}
 
 	// Build output path by extracting and stitching keep ranges
@@ -3322,17 +3317,11 @@ Shape2d Path2d::removeSelfIntersections() const
 	}
 
 	// For closed paths, close the output path
-	if( pathIsClosed && !outputPath.empty() ) {
+	if( pathIsClosed && ! outputPath.empty() ) {
 		outputPath.close();
 	}
 
-	if( !outputPath.empty() ) {
-		result.appendContour( std::move( outputPath ) );
-	} else {
-		result.appendContour( *this );
-	}
-
-	return result;
+	return outputPath.empty() ? *this : outputPath;
 }
 
 } // namespace cinder

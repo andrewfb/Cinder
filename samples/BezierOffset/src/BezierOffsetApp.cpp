@@ -611,7 +611,7 @@ void BezierOffsetApp::updateResult()
                 else cout << "TOok " << find_ms << std::endl;
 
 				auto t4 = chrono::high_resolution_clock::now();
-				Shape2d contourCleaned = contour.removeSelfIntersections();
+				Path2d contourCleaned = contour.removeSelfIntersections();
 				auto t5 = chrono::high_resolution_clock::now();
 				auto remove_ms = chrono::duration_cast<chrono::milliseconds>(t5 - t4).count();
 
@@ -622,7 +622,7 @@ void BezierOffsetApp::updateResult()
 					cout << "=== END DUMP ===\n" << endl;
 				}
 
-				cleaned.append( contourCleaned );
+				cleaned.appendContour( contourCleaned );
 			}
 			entry.result = cleaned;
 		}
@@ -674,8 +674,8 @@ void BezierOffsetApp::updateResult()
 					cout << "=== END DUMP ===\n" << endl;
 				}
 
-				Shape2d contourCleaned = contour.removeSelfIntersections();
-				cleaned.append( contourCleaned );
+				Path2d contourCleaned = contour.removeSelfIntersections();
+				cleaned.appendContour( contourCleaned );
 			}
 			entry.result = cleaned;
 		}

@@ -493,6 +493,37 @@ inline BezPathD toDoublePrecision( const Path2d& path )
 	return result;
 }
 
+inline Path2d bezPathToPath2d( const BezPathD& bezPath )
+{
+	Path2d result;
+
+	for( const auto& el : bezPath ) {
+		switch( el.type ) {
+			case Path2d::MOVETO:
+				result.moveTo( glm::vec2( el.p1 ) );
+				break;
+
+			case Path2d::LINETO:
+				result.lineTo( glm::vec2( el.p1 ) );
+				break;
+
+			case Path2d::QUADTO:
+				result.quadTo( glm::vec2( el.p1 ), glm::vec2( el.p2 ) );
+				break;
+
+			case Path2d::CUBICTO:
+				result.curveTo( glm::vec2( el.p1 ), glm::vec2( el.p2 ), glm::vec2( el.p3 ) );
+				break;
+
+			case Path2d::CLOSE:
+				result.close();
+				break;
+		}
+	}
+
+	return result;
+}
+
 inline Shape2d bezPathToShape2d( const BezPathD& bezPath )
 {
 	Shape2d result;
@@ -2416,12 +2447,13 @@ void OffsetContext::processElement( const PathEl& el )
 			glm::dvec2 tangent = el.p1 - mCurrentPt;
 			if( glm::length( tangent ) < 1e-9 ) break;
 
-			if( !mHaveFirst ) {
+			if( ! mHaveFirst ) {
 				// First segment - emit moveTo at natural offset start
 				mOutput.moveTo( offsetPoint( mCurrentPt, tangent ) );
 				mFirstTan = tangent;
 				mHaveFirst = true;
-			} else {
+			}
+			else {
 				// Flush previous segment with this tangent
 				flushPending( tangent );
 			}
@@ -2445,27 +2477,25 @@ void OffsetContext::processElement( const PathEl& el )
 			glm::dvec2 tan0 = c[1] - c[0];
 			if( glm::length( tan0 ) < 1e-9 ) {
 				tan0 = c[2] - c[0];
-				if( glm::length( tan0 ) < 1e-9 ) {
+				if( glm::length( tan0 ) < 1e-9 )
 					tan0 = c[3] - c[0];
-				}
 			}
 
 			// End tangent
 			glm::dvec2 endTan = c[3] - c[2];
 			if( glm::length( endTan ) < 1e-9 ) {
 				endTan = c[3] - c[1];
-				if( glm::length( endTan ) < 1e-9 ) {
+				if( glm::length( endTan ) < 1e-9 )
 					endTan = c[3] - c[0];
-				}
 			}
 
-			if( !mHaveFirst ) {
+			if( ! mHaveFirst ) {
 				mOutput.moveTo( offsetPoint( mCurrentPt, tan0 ) );
 				mFirstTan = tan0;
 				mHaveFirst = true;
-			} else {
-				flushPending( tan0 );
 			}
+			else
+				flushPending( tan0 );
 
 			// Compute and store cubic offset
 			mPendingCubicOffset.clear();
@@ -2499,13 +2529,13 @@ void OffsetContext::processElement( const PathEl& el )
 				}
 			}
 
-			if( !mHaveFirst ) {
+			if( ! mHaveFirst ) {
 				mOutput.moveTo( offsetPoint( mCurrentPt, tan0 ) );
 				mFirstTan = tan0;
 				mHaveFirst = true;
-			} else {
-				flushPending( tan0 );
 			}
+			else
+				flushPending( tan0 );
 
 			// Compute and store cubic offset
 			mPendingCubicOffset.clear();
@@ -2552,29 +2582,19 @@ void OffsetContext::finish()
 // Path2d member functions
 //=============================================================================
 
-Shape2d Path2d::calcOffset( float distance, Join join, float miterLimit, float tolerance,
-                        bool removeSelfIntersections ) const
+Path2d Path2d::calcOffset( float distance, Join join, float miterLimit, float tolerance, bool removeSelfIntersections ) const
 {
 	BezPathD bezPath = toDoublePrecision( *this );
 
-	OffsetContext ctx( static_cast<double>( distance ), join,
-	                   static_cast<double>( miterLimit ), static_cast<double>( tolerance ) );
-
-	for( const auto& el : bezPath ) {
+	OffsetContext ctx( static_cast<double>( distance ), join, static_cast<double>( miterLimit ), static_cast<double>( tolerance ) );
+	for( const auto& el : bezPath )
 		ctx.processElement( el );
-	}
 	ctx.finish();
 
-	Shape2d result = bezPathToShape2d( ctx.output() );
+	Path2d result = bezPathToPath2d( ctx.output() );
 
-	if( removeSelfIntersections ) {
-		Shape2d cleaned;
-		for( const auto& contour : result.getContours() ) {
-			// removeSelfIntersections returns Shape2d (may have multiple contours)
-			cleaned.append( contour.removeSelfIntersections() );
-		}
-		return cleaned;
-	}
+	if( removeSelfIntersections )
+		return result.removeSelfIntersections();
 
 	return result;
 }
@@ -2595,9 +2615,8 @@ Shape2d Path2d::calcDashed( float dashOffset, const std::vector<float>& pattern 
 
 	std::vector<double> doublePattern;
 	doublePattern.reserve( pattern.size() );
-	for( float d : pattern ) {
+	for( float d : pattern )
 		doublePattern.push_back( static_cast<double>( d ) );
-	}
 
 	BezPathD result = dashInternal( bezPath, static_cast<double>( dashOffset ), doublePattern );
 
@@ -2611,10 +2630,9 @@ Shape2d Path2d::calcDashed( float dashOffset, const std::vector<float>& pattern 
 Shape2d Shape2d::calcOffset( float distance, Join join, float miterLimit, float tolerance, bool removeSelfIntersections ) const
 {
 	Shape2d result;
-	for( const auto& contour : mContours ) {
-		Shape2d offsetContour = contour.calcOffset( distance, join, miterLimit, tolerance, removeSelfIntersections );
-		result.append( offsetContour );
-	}
+	for( const auto& contour : mContours )
+		result.appendContour( contour.calcOffset( distance, join, miterLimit, tolerance, removeSelfIntersections ) );
+	
 	return result;
 }
 
