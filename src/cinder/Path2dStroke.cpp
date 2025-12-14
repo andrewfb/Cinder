@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2024, The Cinder Project, All rights reserved.
+ Copyright (c) 2025, The Cinder Project, All rights reserved.
 
  This code includes algorithms ported from the Kurbo library
  (https://github.com/linebender/kurbo) by Raph Levien, which is licensed
@@ -533,7 +533,7 @@ inline Shape2d bezPathToShape2d( const BezPathD& bezPath )
 	for( const auto& el : bezPath ) {
 		switch( el.type ) {
 			case Path2d::MOVETO:
-				if( hasMoveTo && !currentContour.empty() ) {
+				if( hasMoveTo && ! currentContour.empty() ) {
 					result.appendContour( currentContour );
 					currentContour.clear();
 				}
@@ -1017,10 +1017,7 @@ SubdivisionPoint CubicOffset::findSubdivisionPoint( const OffsetRec& rec ) const
 	return result.value_or( SubdivisionPoint{ t, safeNormalize( qT, rec.utan0 ) } );
 }
 
-std::optional<SubdivisionPoint> CubicOffset::subdivideForTangent( const glm::dvec2& utan0,
-																   double t0, double t1,
-																   const glm::dvec2& tan,
-																   bool force ) const
+std::optional<SubdivisionPoint> CubicOffset::subdivideForTangent( const glm::dvec2& utan0, double t0, double t1, const glm::dvec2& tan, bool force ) const
 {
 	double t = 0.0;
 	int nSoln = 0;
@@ -1317,67 +1314,6 @@ void extendReversed( BezPathD& out, const BezPathD& elements )
 	}
 }
 
-//=============================================================================
-// Internal Stroke Style
-//=============================================================================
-
-enum class InternalJoin {
-	Bevel,
-	Miter,
-	Round
-};
-
-enum class InternalCap {
-	Butt,
-	Square,
-	Round
-};
-
-struct InternalStrokeStyle {
-	double width = 1.0;
-	InternalJoin join = InternalJoin::Round;
-	double miterLimit = 4.0;
-	InternalCap startCap = InternalCap::Round;
-	InternalCap endCap = InternalCap::Round;
-	std::vector<double> dashPattern;
-	double dashOffset = 0.0;
-
-	InternalStrokeStyle() = default;
-	explicit InternalStrokeStyle( double w ) : width( w ) {}
-};
-
-InternalStrokeStyle convertStrokeStyle( const StrokeStyle& style )
-{
-	InternalStrokeStyle result;
-	result.width = static_cast<double>( style.getWidth() );
-	result.miterLimit = static_cast<double>( style.getMiterLimit() );
-	result.dashOffset = static_cast<double>( style.getDashOffset() );
-
-	switch( style.getJoin() ) {
-		case StrokeJoin::Bevel: result.join = InternalJoin::Bevel; break;
-		case StrokeJoin::Miter: result.join = InternalJoin::Miter; break;
-		case StrokeJoin::Round: result.join = InternalJoin::Round; break;
-	}
-
-	switch( style.getStartCap() ) {
-		case StrokeCap::Butt: result.startCap = InternalCap::Butt; break;
-		case StrokeCap::Square: result.startCap = InternalCap::Square; break;
-		case StrokeCap::Round: result.startCap = InternalCap::Round; break;
-	}
-
-	switch( style.getEndCap() ) {
-		case StrokeCap::Butt: result.endCap = InternalCap::Butt; break;
-		case StrokeCap::Square: result.endCap = InternalCap::Square; break;
-		case StrokeCap::Round: result.endCap = InternalCap::Round; break;
-	}
-
-	result.dashPattern.reserve( style.getDashPattern().size() );
-	for( float d : style.getDashPattern() ) {
-		result.dashPattern.push_back( static_cast<double>( d ) );
-	}
-
-	return result;
-}
 
 //=============================================================================
 // StrokeContext Class
@@ -1389,17 +1325,17 @@ public:
 
 	void reset();
 	const BezPathD& output() const { return mOutput; }
-	void processElement( const PathEl& el, const InternalStrokeStyle& style, double tolerance );
-	void finish( const InternalStrokeStyle& style, double tolerance );
-	void finishClosed( const InternalStrokeStyle& style, double tolerance );
+	void processElement( const PathEl& el, const StrokeStyle& style, double tolerance );
+	void finish( const StrokeStyle& style, double tolerance );
+	void finishClosed( const StrokeStyle& style, double tolerance );
 
 	double mJoinThresh = 0.0;
 
 private:
-	void doJoin( const InternalStrokeStyle& style, const glm::dvec2& tan0, double tolerance );
-	void doLine( const InternalStrokeStyle& style, const glm::dvec2& tangent, const glm::dvec2& p1 );
-	void doCubic( const InternalStrokeStyle& style, const CubicBezD& c, double tolerance );
-	void doLinear( const InternalStrokeStyle& style, const CubicBezD& c,
+	void doJoin( const StrokeStyle& style, const glm::dvec2& tan0, double tolerance );
+	void doLine( const StrokeStyle& style, const glm::dvec2& tangent, const glm::dvec2& p1 );
+	void doCubic( const StrokeStyle& style, const CubicBezD& c, double tolerance );
+	void doLinear( const StrokeStyle& style, const CubicBezD& c,
 				   double p[4], const glm::dvec2& refPt, const glm::dvec2& refVec, double tolerance );
 
 	BezPathD mOutput;
@@ -1427,7 +1363,7 @@ void StrokeContext::reset()
 	mJoinThresh = 0.0;
 }
 
-void StrokeContext::finish( const InternalStrokeStyle& style, double tolerance )
+void StrokeContext::finish( const StrokeStyle& style, double tolerance )
 {
 	if( mForwardPath.empty() ) return;
 
@@ -1463,28 +1399,28 @@ void StrokeContext::finish( const InternalStrokeStyle& style, double tolerance )
 
 	glm::dvec2 d = mLastPt - returnP;
 
-	switch( style.endCap ) {
-		case InternalCap::Butt:
+	switch( style.getEndCap() ) {
+		case Cap::Butt:
 			mOutput.lineTo( returnP );
 			break;
-		case InternalCap::Round:
+		case Cap::Round:
 			roundCap( mOutput, tolerance, mLastPt, d );
 			break;
-		case InternalCap::Square:
+		case Cap::Square:
 			squareCap( mOutput, false, mLastPt, d );
 			break;
 	}
 
 	extendReversed( mOutput, mBackwardPath );
 
-	switch( style.startCap ) {
-		case InternalCap::Butt:
+	switch( style.getStartCap() ) {
+		case Cap::Butt:
 			mOutput.closePath();
 			break;
-		case InternalCap::Round:
+		case Cap::Round:
 			roundCap( mOutput, tolerance, mStartPt, mStartNorm );
 			break;
-		case InternalCap::Square:
+		case Cap::Square:
 			squareCap( mOutput, true, mStartPt, mStartNorm );
 			break;
 	}
@@ -1493,7 +1429,7 @@ void StrokeContext::finish( const InternalStrokeStyle& style, double tolerance )
 	mBackwardPath.clear();
 }
 
-void StrokeContext::finishClosed( const InternalStrokeStyle& style, double tolerance )
+void StrokeContext::finishClosed( const StrokeStyle& style, double tolerance )
 {
 	if( mForwardPath.empty() ) return;
 
@@ -1542,9 +1478,9 @@ void StrokeContext::finishClosed( const InternalStrokeStyle& style, double toler
 	mBackwardPath.clear();
 }
 
-void StrokeContext::doJoin( const InternalStrokeStyle& style, const glm::dvec2& tan0, double tolerance )
+void StrokeContext::doJoin( const StrokeStyle& style, const glm::dvec2& tan0, double tolerance )
 {
-	double scale = 0.5 * style.width / glm::length( tan0 );
+	double scale = 0.5 * style.getWidth() / glm::length( tan0 );
 	glm::dvec2 norm = scale * glm::dvec2( -tan0.y, tan0.x );
 	glm::dvec2 p0 = mLastPt;
 
@@ -1561,15 +1497,15 @@ void StrokeContext::doJoin( const InternalStrokeStyle& style, const glm::dvec2& 
 		double hypot = std::sqrt( crossVal * crossVal + dotVal * dotVal );
 
 		if( dotVal <= 0.0 || std::abs( crossVal ) >= hypot * mJoinThresh ) {
-			switch( style.join ) {
-				case InternalJoin::Bevel:
+			switch( style.getJoin() ) {
+				case Join::Bevel:
 					mForwardPath.lineTo( p0 - norm );
 					mBackwardPath.lineTo( p0 + norm );
 					break;
 
-				case InternalJoin::Miter: {
-					if( 2.0 * hypot < ( hypot + dotVal ) * style.miterLimit * style.miterLimit ) {
-						double lastScale = 0.5 * style.width / glm::length( ab );
+				case Join::Miter: {
+					if( 2.0 * hypot < ( hypot + dotVal ) * style.getMiterLimit() * style.getMiterLimit() ) {
+						double lastScale = 0.5 * style.getWidth() / glm::length( ab );
 						glm::dvec2 lastNorm = lastScale * glm::dvec2( -ab.y, ab.x );
 
 						if( crossVal > 0.0 ) {
@@ -1593,7 +1529,7 @@ void StrokeContext::doJoin( const InternalStrokeStyle& style, const glm::dvec2& 
 					break;
 				}
 
-				case InternalJoin::Round: {
+				case Join::Round: {
 					double angle = std::atan2( crossVal, dotVal );
 					if( angle > 0.0 ) {
 						mBackwardPath.lineTo( p0 + norm );
@@ -1609,16 +1545,16 @@ void StrokeContext::doJoin( const InternalStrokeStyle& style, const glm::dvec2& 
 	}
 }
 
-void StrokeContext::doLine( const InternalStrokeStyle& style, const glm::dvec2& tangent, const glm::dvec2& p1 )
+void StrokeContext::doLine( const StrokeStyle& style, const glm::dvec2& tangent, const glm::dvec2& p1 )
 {
-	double scale = 0.5 * style.width / glm::length( tangent );
+	double scale = 0.5 * style.getWidth() / glm::length( tangent );
 	glm::dvec2 norm = scale * glm::dvec2( -tangent.y, tangent.x );
 	mForwardPath.lineTo( p1 - norm );
 	mBackwardPath.lineTo( p1 + norm );
 	mLastPt = p1;
 }
 
-void StrokeContext::doCubic( const InternalStrokeStyle& style, const CubicBezD& c, double tolerance )
+void StrokeContext::doCubic( const StrokeStyle& style, const CubicBezD& c, double tolerance )
 {
 	glm::dvec2 chord = c.p3 - c.p0;
 	glm::dvec2 chordRef = chord;
@@ -1661,7 +1597,7 @@ void StrokeContext::doCubic( const InternalStrokeStyle& style, const CubicBezD& 
 	}
 
 	mResultPath.clear();
-	offsetCubic( c, -0.5 * style.width, tolerance, mResultPath );
+	offsetCubic( c, -0.5 * style.getWidth(), tolerance, mResultPath );
 
 	bool first = true;
 	for( const auto& el : mResultPath ) {
@@ -1677,7 +1613,7 @@ void StrokeContext::doCubic( const InternalStrokeStyle& style, const CubicBezD& 
 	}
 
 	mResultPath.clear();
-	offsetCubic( c, 0.5 * style.width, tolerance, mResultPath );
+	offsetCubic( c, 0.5 * style.getWidth(), tolerance, mResultPath );
 
 	first = true;
 	for( const auto& el : mResultPath ) {
@@ -1695,11 +1631,11 @@ void StrokeContext::doCubic( const InternalStrokeStyle& style, const CubicBezD& 
 	mLastPt = c.p3;
 }
 
-void StrokeContext::doLinear( const InternalStrokeStyle& style, const CubicBezD& c,
+void StrokeContext::doLinear( const StrokeStyle& style, const CubicBezD& c,
 							  double p[4], const glm::dvec2& refPt, const glm::dvec2& refVec, double tolerance )
 {
-	InternalStrokeStyle roundStyle = style;
-	roundStyle.join = InternalJoin::Round;
+	StrokeStyle roundStyle = style;
+	roundStyle.setJoin( Join::Round );
 
 	glm::dvec2 tan0 = startTangent( c );
 	glm::dvec2 tan1 = endTangent( c );
@@ -1734,7 +1670,7 @@ void StrokeContext::doLinear( const InternalStrokeStyle& style, const CubicBezD&
 	doJoin( roundStyle, tan1, tolerance );
 }
 
-void StrokeContext::processElement( const PathEl& el, const InternalStrokeStyle& style, double tolerance )
+void StrokeContext::processElement( const PathEl& el, const StrokeStyle& style, double tolerance )
 {
 	glm::dvec2 p0 = mLastPt;
 
@@ -1928,7 +1864,7 @@ double elementInvArclen( const PathEl& el, const glm::dvec2& prevPt, double targ
 	}
 }
 
-BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vector<double>& dashPattern )
+BezPathD dashInternal( const BezPathD& path, float dashOffset, const std::vector<float>& dashPattern )
 {
 	if( dashPattern.empty() ) {
 		return path;
@@ -2136,22 +2072,22 @@ BezPathD dashInternal( const BezPathD& path, double dashOffset, const std::vecto
 // Internal Stroke Functions
 //=============================================================================
 
-BezPathD strokeInternal( const BezPathD& path, const InternalStrokeStyle& style, double tolerance )
+BezPathD strokeInternal( const BezPathD& path, const StrokeStyle& style, double tolerance )
 {
 	StrokeContext ctx;
-	ctx.mJoinThresh = 2.0 * tolerance / style.width;
+	ctx.mJoinThresh = 2.0 * tolerance / style.getWidth();
 
-	if( style.dashPattern.empty() ) {
+	if( style.getDashPattern().empty() ) {
 		for( const auto& el : path ) {
 			ctx.processElement( el, style, tolerance );
 		}
 		ctx.finish( style, tolerance );
 	} else {
 		// For dashed strokes, each dash uses startCap/endCap from the style
-		InternalStrokeStyle dashStyle = style;
-		dashStyle.dashPattern.clear();  // Don't re-apply dashing
+		StrokeStyle dashStyle = style;
+		dashStyle.setDashes( 0, {} );  // Don't re-apply dashing
 
-		BezPathD dashedPath = dashInternal( path, style.dashOffset, style.dashPattern );
+		BezPathD dashedPath = dashInternal( path, style.getDashOffset(), style.getDashPattern() );
 		for( const auto& el : dashedPath ) {
 			ctx.processElement( el, dashStyle, tolerance );
 		}
@@ -2163,14 +2099,54 @@ BezPathD strokeInternal( const BezPathD& path, const InternalStrokeStyle& style,
 } // anonymous namespace
 
 //=============================================================================
-// Public API Implementation
+// OffsetContext - Path Offset Algorithm
+//=============================================================================
+//
+// This class implements curve offsetting (parallel curves) for Path2d.
+// Given a path and a signed distance, it produces a new path offset perpendicular
+// to the original by that distance. Positive distances offset to the left
+// (outward for counter-clockwise paths), negative to the right.
+//
+// ALGORITHM OVERVIEW:
+//
+// The key challenge is handling corners (joins between segments). At each corner
+// we must decide whether it's convex or concave relative to the offset direction:
+//
+//   - CONVEX corners: The offset curves diverge, creating a gap that must be
+//     filled with join geometry (round arc, bevel line, or miter point).
+//
+//   - CONCAVE corners: The offset curves converge and would overlap/cross.
+//     We compute the intersection point and use it as the shared endpoint,
+//     effectively trimming both curves to meet cleanly.
+//
+// DEFERRED EMISSION:
+//
+// We use a "deferred emission" strategy: each segment is stored as "pending"
+// rather than emitted immediately. When we encounter the next segment, we know
+// the incoming tangent (from pending) and outgoing tangent (from next segment),
+// allowing us to:
+//   1. Determine if the corner is convex or concave
+//   2. Compute the correct endpoint (natural offset point or intersection)
+//   3. Emit appropriate join geometry for convex corners
+//
+// This avoids the need to backpatch previously emitted geometry.
+//
+// SEGMENT TYPES:
+//
+//   - Lines: Offset is trivial - move perpendicular by distance
+//   - Cubics: Use Tiller-Hanson approximation (subdivide and offset control points)
+//   - Quads: Elevated to cubics for uniform handling
+//
+// CLOSED PATHS:
+//
+// For closed paths, the closing segment (back to start) and the first segment
+// form a corner that must also be handled. We store the first segment's tangent
+// and use it when closing to ensure the join is computed correctly.
+//
 //=============================================================================
 
-// Context for path offsetting using deferred emission
-// Instead of emitting geometry and backpatching for concave corners,
-// we defer emission until we know the join type, then emit correctly.
 class OffsetContext {
-public:
+  public:
 	OffsetContext( double dist, Join join, double miterLimit, double tol )
 		: mDistance( dist ), mJoin( join ), mMiterLimit( miterLimit ), mTolerance( tol ) {}
 
@@ -2178,22 +2154,19 @@ public:
 	void finish();
 	BezPathD& output() { return mOutput; }
 
-private:
+  private:
 	// Compute offset point given original point and tangent direction
 	glm::dvec2 offsetPoint( const glm::dvec2& pt, const glm::dvec2& tan ) const;
 
 	// Compute intersection of two offset lines at a corner
-	glm::dvec2 computeIntersection( const glm::dvec2& corner,
-	                                 const glm::dvec2& prevTan,
-	                                 const glm::dvec2& nextTan ) const;
+	glm::dvec2 computeIntersection( const glm::dvec2& corner, const glm::dvec2& prevTan, const glm::dvec2& nextTan ) const;
 
 	// Flush pending segment, computing join with nextTan
 	// For closed paths, pass the first segment's tangent to handle closing join
 	void flushPending( const glm::dvec2& nextTan );
 
 	// Emit join geometry for convex corner based on join style
-	void emitJoin( const glm::dvec2& corner, const glm::dvec2& prevTan,
-	               const glm::dvec2& nextTan, double angle );
+	void emitJoin( const glm::dvec2& corner, const glm::dvec2& prevTan, const glm::dvec2& nextTan, double angle );
 
 	// Close the current subpath, handling the closing join
 	void closeSubpath();
@@ -2261,8 +2234,7 @@ glm::dvec2 OffsetContext::computeIntersection( const glm::dvec2& corner,
 	return offset1 + t * prevTanNorm;
 }
 
-void OffsetContext::emitJoin( const glm::dvec2& corner, const glm::dvec2& prevTan,
-                               const glm::dvec2& nextTan, double angle )
+void OffsetContext::emitJoin( const glm::dvec2& corner, const glm::dvec2& prevTan, const glm::dvec2& nextTan, double angle )
 {
 	double prevLen = glm::length( prevTan );
 	double nextLen = glm::length( nextTan );
@@ -2602,9 +2574,8 @@ Path2d Path2d::calcOffset( float distance, Join join, float miterLimit, float to
 Shape2d Path2d::calcStroke( const StrokeStyle& style, float tolerance ) const
 {
 	BezPathD bezPath = toDoublePrecision( *this );
-	InternalStrokeStyle internalStyle = convertStrokeStyle( style );
 
-	BezPathD result = strokeInternal( bezPath, internalStyle, static_cast<double>( tolerance ) );
+	BezPathD result = strokeInternal( bezPath, style, static_cast<double>( tolerance ) );
 
 	return bezPathToShape2d( result );
 }
@@ -2613,12 +2584,7 @@ Shape2d Path2d::calcDashed( float dashOffset, const std::vector<float>& pattern 
 {
 	BezPathD bezPath = toDoublePrecision( *this );
 
-	std::vector<double> doublePattern;
-	doublePattern.reserve( pattern.size() );
-	for( float d : pattern )
-		doublePattern.push_back( static_cast<double>( d ) );
-
-	BezPathD result = dashInternal( bezPath, static_cast<double>( dashOffset ), doublePattern );
+	BezPathD result = dashInternal( bezPath, dashOffset, pattern );
 
 	return bezPathToShape2d( result );
 }
