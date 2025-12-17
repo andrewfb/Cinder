@@ -375,10 +375,73 @@ template<typename T>
 CI_API glm::tvec2<T, glm::defaultp> getClosestPointQuadratic( const glm::tvec2<T, glm::defaultp> *controlPoints, const glm::tvec2<T, glm::defaultp> &testPoint );
 //! Returns the closest point to \a testPoint on the quadratic curve defined by the control points \a p0, \a p1 and \a p2. Algorithm due to Olivier Besson, http://blog.gludion.com/2009/08/distance-to-quadratic-bezier-curve.html
 template<typename T>
-glm::tvec2<T, glm::defaultp>		getClosestPointQuadratic( const glm::tvec2<T, glm::defaultp> &p0, const glm::tvec2<T, glm::defaultp> &p1, const glm::tvec2<T, glm::defaultp> &p2, const glm::tvec2<T, glm::defaultp> &testPoint )
+	glm::tvec2<T, glm::defaultp>		getClosestPointQuadratic( const glm::tvec2<T, glm::defaultp> &p0, const glm::tvec2<T, glm::defaultp> &p1, const glm::tvec2<T, glm::defaultp> &p2, const glm::tvec2<T, glm::defaultp> &testPoint )
+	{
+		glm::tvec2<T, glm::defaultp> controlPoints[] = { p0, p1, p2 };
+		return getClosestPointQuadratic<T>( controlPoints, testPoint );
+	}
+
+	// Forward declaration used by getClosestPointQuadraticT().
+	template<typename T>
+	inline int solveCubicStable( T c0, T c1, T c2, T c3, T result[3] );
+	
+	//! Returns the parameter t in [0,1] of the closest point on the quadratic curve defined by \a q to \a testPoint.
+	//! Also returns the squared distance via \a outDistanceSq if non-null.
+	template<typename T>
+	inline T getClosestPointQuadraticT( const glm::tvec2<T> q[3], const glm::tvec2<T>& testPoint, T* outDistanceSq = nullptr )
 {
-	glm::tvec2<T, glm::defaultp> controlPoints[] = { p0, p1, p2 };
-	return getClosestPointQuadratic<T>( controlPoints, testPoint );
+	// Solve for critical points where dot(curve(t) - testPoint, curve'(t)) = 0
+	// This is a cubic equation in t
+	glm::tvec2<T> d0 = q[1] - q[0];
+	glm::tvec2<T> d1 = q[0] + q[2] - T( 2 ) * q[1];
+	glm::tvec2<T> d = q[0] - testPoint;
+
+	T c0 = glm::dot( d, d0 );
+	T c1 = T( 2 ) * glm::dot( d0, d0 ) + glm::dot( d, d1 );
+	T c2 = T( 3 ) * glm::dot( d1, d0 );
+	T c3 = glm::dot( d1, d1 );
+
+	T roots[3];
+	int nRoots = solveCubicStable( c0, c1, c2, c3, roots );
+
+	T bestT = T( 0 );
+	T bestDistSq = glm::dot( q[0] - testPoint, q[0] - testPoint );
+	bool needEnds = ( nRoots == 0 );
+
+	for( int i = 0; i < nRoots; ++i ) {
+		T t = roots[i];
+		if( t >= T( 0 ) && t <= T( 1 ) ) {
+			T mt = T( 1 ) - t;
+			glm::tvec2<T> pt = mt * mt * q[0] + T( 2 ) * mt * t * q[1] + t * t * q[2];
+			T distSq = glm::dot( pt - testPoint, pt - testPoint );
+			if( distSq < bestDistSq ) {
+				bestDistSq = distSq;
+				bestT = t;
+			}
+		}
+		else {
+			needEnds = true;
+		}
+	}
+
+	if( needEnds ) {
+		T distSq0 = glm::dot( q[0] - testPoint, q[0] - testPoint );
+		if( distSq0 < bestDistSq ) {
+			bestDistSq = distSq0;
+			bestT = T( 0 );
+		}
+
+		T distSq1 = glm::dot( q[2] - testPoint, q[2] - testPoint );
+		if( distSq1 < bestDistSq ) {
+			bestDistSq = distSq1;
+			bestT = T( 1 );
+		}
+	}
+
+	if( outDistanceSq ) {
+		*outDistanceSq = bestDistSq;
+	}
+	return bestT;
 }
 
 //! Returns the closest point to \a testPoint on the cubic curve defined by the 4 \a controlPoints. Algorithm due to Philip J. Schneider, https://github.com/erich666/GraphicsGems/blob/master/gems/NearestPoint.c
@@ -582,6 +645,15 @@ inline glm::tvec2<T> evalQuadraticBezier( const glm::tvec2<T> p[3], T t )
 	return mt * mt * p[0] + T( 2 ) * mt * t * p[1] + t * t * p[2];
 }
 
+//! Evaluate quadratic Bezier derivative at parameter t
+//! Returns the tangent vector (not normalized). The derivative of a quadratic is linear.
+template<typename T>
+inline glm::tvec2<T> evalQuadraticBezierDeriv( const glm::tvec2<T> p[3], T t )
+{
+	T mt = T( 1 ) - t;
+	return T( 2 ) * ( mt * ( p[1] - p[0] ) + t * ( p[2] - p[1] ) );
+}
+
 //! Evaluate cubic Bezier at parameter t using Bernstein basis
 template<typename T>
 inline glm::tvec2<T> evalCubicBezier( const glm::tvec2<T> p[4], T t )
@@ -730,6 +802,120 @@ constexpr double GAUSS_LEGENDRE_5_NODES[] = {
 	-0.9061798459386640,
 	0.9061798459386640
 };
+
+//=============================================================================
+// Bezier Arc Length (using Gauss-Legendre quadrature)
+//=============================================================================
+
+//! Calculate arc length of cubic Bezier using 5-point Gauss-Legendre quadrature.
+//! More accurate than Romberg integration for polynomial curves.
+template<typename T>
+inline T calcCubicBezierArcLength( const glm::tvec2<T> p[4] )
+{
+	T sum = T( 0 );
+	for( int i = 0; i < 5; i++ ) {
+		T t = T( 0.5 ) * ( T( GAUSS_LEGENDRE_5_NODES[i] ) + T( 1 ) );
+		sum += T( GAUSS_LEGENDRE_5_WEIGHTS[i] ) * glm::length( evalCubicBezierDeriv( p, t ) );
+	}
+	return sum * T( 0.5 );
+}
+
+//! Calculate arc length of cubic Bezier from t=0 to parameter \a t using Gauss-Legendre quadrature.
+template<typename T>
+inline T calcCubicBezierArcLengthToT( const glm::tvec2<T> p[4], T t )
+{
+	if( t <= T( 0 ) ) return T( 0 );
+	if( t >= T( 1 ) ) return calcCubicBezierArcLength( p );
+
+	T sum = T( 0 );
+	for( int i = 0; i < 5; i++ ) {
+		T u = T( 0.5 ) * t * ( T( GAUSS_LEGENDRE_5_NODES[i] ) + T( 1 ) );
+		sum += T( GAUSS_LEGENDRE_5_WEIGHTS[i] ) * glm::length( evalCubicBezierDeriv( p, u ) );
+	}
+	return sum * T( 0.5 ) * t;
+}
+
+//! Calculate arc length of quadratic Bezier using 5-point Gauss-Legendre quadrature.
+template<typename T>
+inline T calcQuadraticBezierArcLength( const glm::tvec2<T> q[3] )
+{
+	glm::tvec2<T> d0 = q[1] - q[0];
+	glm::tvec2<T> d1 = q[2] - q[1];
+
+	T sum = T( 0 );
+	for( int i = 0; i < 5; i++ ) {
+		T t = T( 0.5 ) * ( T( GAUSS_LEGENDRE_5_NODES[i] ) + T( 1 ) );
+		T mt = T( 1 ) - t;
+		glm::tvec2<T> deriv = T( 2 ) * ( mt * d0 + t * d1 );
+		sum += T( GAUSS_LEGENDRE_5_WEIGHTS[i] ) * glm::length( deriv );
+	}
+	return sum * T( 0.5 );
+}
+
+//! Find parameter t where arc length from start equals \a targetLen. Uses Newton-Raphson.
+//! \a accuracy specifies the error tolerance for arc length.
+template<typename T>
+inline T calcCubicBezierTimeForDistance( const glm::tvec2<T> p[4], T targetLen, T accuracy = T( 1e-6 ) )
+{
+	if( targetLen <= T( 0 ) || !std::isfinite( targetLen ) ) return T( 0 );
+
+	T totalLen = calcCubicBezierArcLength( p );
+	if( !std::isfinite( totalLen ) || totalLen <= T( 0 ) ) return T( 0.5 );  // Fallback for degenerate curves
+	if( targetLen >= totalLen ) return T( 1 );
+
+	T t = targetLen / totalLen;
+
+	for( int i = 0; i < 20; ++i ) {
+		T currentLen = calcCubicBezierArcLengthToT( p, t );
+		T error = currentLen - targetLen;
+		if( std::abs( error ) < accuracy ) break;
+
+		T speed = glm::length( evalCubicBezierDeriv( p, t ) );
+		if( speed < T( 1e-12 ) ) break;
+
+		T dt = -error / speed;
+		t = std::clamp( t + dt, T( 0 ), T( 1 ) );
+	}
+	return t;
+}
+
+//! Find parameter t on quadratic Bezier where arc length from start equals \a targetLen.
+template<typename T>
+inline T calcQuadraticBezierTimeForDistance( const glm::tvec2<T> q[3], T targetLen, T accuracy = T( 1e-6 ) )
+{
+	if( targetLen <= T( 0 ) || !std::isfinite( targetLen ) ) return T( 0 );
+
+	T totalLen = calcQuadraticBezierArcLength( q );
+	if( !std::isfinite( totalLen ) || totalLen <= T( 0 ) ) return T( 0.5 );  // Fallback for degenerate curves
+	if( targetLen >= totalLen ) return T( 1 );
+
+	glm::tvec2<T> d0 = q[1] - q[0];
+	glm::tvec2<T> d1 = q[2] - q[1];
+
+	T t = targetLen / totalLen;
+
+	for( int i = 0; i < 20; ++i ) {
+		// Calculate arc length to current t
+		T sum = T( 0 );
+		for( int j = 0; j < 5; j++ ) {
+			T u = T( 0.5 ) * t * ( T( GAUSS_LEGENDRE_5_NODES[j] ) + T( 1 ) );
+			T mu = T( 1 ) - u;
+			glm::tvec2<T> deriv = T( 2 ) * ( mu * d0 + u * d1 );
+			sum += T( GAUSS_LEGENDRE_5_WEIGHTS[j] ) * glm::length( deriv );
+		}
+		T currentLen = sum * T( 0.5 ) * t;
+		T error = currentLen - targetLen;
+		if( std::abs( error ) < accuracy ) break;
+
+		T mt = T( 1 ) - t;
+		T speed = glm::length( T( 2 ) * ( mt * d0 + t * d1 ) );
+		if( speed < T( 1e-12 ) ) break;
+
+		T dt = -error / speed;
+		t = std::clamp( t + dt, T( 0 ), T( 1 ) );
+	}
+	return t;
+}
 
 //=============================================================================
 // Line-Segment Intersection

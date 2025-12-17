@@ -352,4 +352,194 @@ TEST_CASE( "CinderMath" )
 	// Note: solveItp requires ya < 0 and yb > 0 as a precondition.
 	// Passing ya = 0 or yb = 0 is undefined behavior per the API contract.
 	// Callers should check endpoints before calling solveItp.
+
+	SECTION( "evalQuadraticBezier: Endpoints" )
+	{
+		vec2 p[3] = { vec2( 0, 0 ), vec2( 1, 2 ), vec2( 2, 0 ) };
+		vec2 p0 = evalQuadraticBezier( p, 0.0f );
+		vec2 p1 = evalQuadraticBezier( p, 1.0f );
+		REQUIRE( glm::length( p0 - p[0] ) < 1e-6f );
+		REQUIRE( glm::length( p1 - p[2] ) < 1e-6f );
+	}
+
+	SECTION( "evalQuadraticBezier: Midpoint" )
+	{
+		// Symmetric quadratic: midpoint is at (1, 1) since control point is at (1, 2)
+		vec2 p[3] = { vec2( 0, 0 ), vec2( 1, 2 ), vec2( 2, 0 ) };
+		vec2 mid = evalQuadraticBezier( p, 0.5f );
+		// At t=0.5: 0.25*(0,0) + 0.5*(1,2) + 0.25*(2,0) = (0, 0) + (0.5, 1) + (0.5, 0) = (1, 1)
+		REQUIRE( std::abs( mid.x - 1.0f ) < 1e-6f );
+		REQUIRE( std::abs( mid.y - 1.0f ) < 1e-6f );
+	}
+
+	SECTION( "evalQuadraticBezier: Double precision" )
+	{
+		dvec2 p[3] = { dvec2( 0, 0 ), dvec2( 1, 2 ), dvec2( 2, 0 ) };
+		dvec2 mid = evalQuadraticBezier( p, 0.5 );
+		REQUIRE( std::abs( mid.x - 1.0 ) < 1e-12 );
+		REQUIRE( std::abs( mid.y - 1.0 ) < 1e-12 );
+	}
+
+	SECTION( "evalQuadraticBezierDeriv: Endpoints" )
+	{
+		vec2 p[3] = { vec2( 0, 0 ), vec2( 1, 2 ), vec2( 2, 0 ) };
+		// Derivative at t=0: 2*(p1-p0) = 2*(1,2) = (2, 4)
+		vec2 d0 = evalQuadraticBezierDeriv( p, 0.0f );
+		REQUIRE( std::abs( d0.x - 2.0f ) < 1e-6f );
+		REQUIRE( std::abs( d0.y - 4.0f ) < 1e-6f );
+		// Derivative at t=1: 2*(p2-p1) = 2*(1,-2) = (2, -4)
+		vec2 d1 = evalQuadraticBezierDeriv( p, 1.0f );
+		REQUIRE( std::abs( d1.x - 2.0f ) < 1e-6f );
+		REQUIRE( std::abs( d1.y - (-4.0f) ) < 1e-6f );
+	}
+
+	SECTION( "evalQuadraticBezierDeriv: Midpoint" )
+	{
+		vec2 p[3] = { vec2( 0, 0 ), vec2( 1, 2 ), vec2( 2, 0 ) };
+		// At t=0.5: 2*(0.5*(p1-p0) + 0.5*(p2-p1)) = 2*0.5*((1,2)+(1,-2)) = (2, 0)
+		vec2 dmid = evalQuadraticBezierDeriv( p, 0.5f );
+		REQUIRE( std::abs( dmid.x - 2.0f ) < 1e-6f );
+		REQUIRE( std::abs( dmid.y ) < 1e-6f );
+	}
+
+	SECTION( "evalCubicBezier: Endpoints" )
+	{
+		vec2 p[4] = { vec2( 0, 0 ), vec2( 1, 2 ), vec2( 3, 2 ), vec2( 4, 0 ) };
+		vec2 p0 = evalCubicBezier( p, 0.0f );
+		vec2 p1 = evalCubicBezier( p, 1.0f );
+		REQUIRE( glm::length( p0 - p[0] ) < 1e-6f );
+		REQUIRE( glm::length( p1 - p[3] ) < 1e-6f );
+	}
+
+	SECTION( "evalCubicBezier: Midpoint" )
+	{
+		// Symmetric S-curve
+		vec2 p[4] = { vec2( 0, 0 ), vec2( 0, 1 ), vec2( 1, 1 ), vec2( 1, 0 ) };
+		vec2 mid = evalCubicBezier( p, 0.5f );
+		// At t=0.5 for this symmetric curve, mid.x = 0.5, mid.y = 0.75
+		// B(0.5) = 0.125*(0,0) + 0.375*(0,1) + 0.375*(1,1) + 0.125*(1,0)
+		//        = (0,0) + (0, 0.375) + (0.375, 0.375) + (0.125, 0) = (0.5, 0.75)
+		REQUIRE( std::abs( mid.x - 0.5f ) < 1e-6f );
+		REQUIRE( std::abs( mid.y - 0.75f ) < 1e-6f );
+	}
+
+	SECTION( "evalCubicBezier: Double precision" )
+	{
+		dvec2 p[4] = { dvec2( 0, 0 ), dvec2( 0, 1 ), dvec2( 1, 1 ), dvec2( 1, 0 ) };
+		dvec2 mid = evalCubicBezier( p, 0.5 );
+		REQUIRE( std::abs( mid.x - 0.5 ) < 1e-12 );
+		REQUIRE( std::abs( mid.y - 0.75 ) < 1e-12 );
+	}
+
+	SECTION( "evalCubicBezierDeriv: Endpoints" )
+	{
+		vec2 p[4] = { vec2( 0, 0 ), vec2( 1, 2 ), vec2( 3, 2 ), vec2( 4, 0 ) };
+		// Derivative at t=0: 3*(p1-p0) = 3*(1,2) = (3, 6)
+		vec2 d0 = evalCubicBezierDeriv( p, 0.0f );
+		REQUIRE( std::abs( d0.x - 3.0f ) < 1e-6f );
+		REQUIRE( std::abs( d0.y - 6.0f ) < 1e-6f );
+		// Derivative at t=1: 3*(p3-p2) = 3*(1,-2) = (3, -6)
+		vec2 d1 = evalCubicBezierDeriv( p, 1.0f );
+		REQUIRE( std::abs( d1.x - 3.0f ) < 1e-6f );
+		REQUIRE( std::abs( d1.y - (-6.0f) ) < 1e-6f );
+	}
+
+	SECTION( "evalCubicBezierDeriv: Line segment" )
+	{
+		// Cubic representing a straight line: constant derivative
+		vec2 p[4] = { vec2( 0, 0 ), vec2( 1, 1 ), vec2( 2, 2 ), vec2( 3, 3 ) };
+		vec2 d0 = evalCubicBezierDeriv( p, 0.0f );
+		vec2 d5 = evalCubicBezierDeriv( p, 0.5f );
+		vec2 d1 = evalCubicBezierDeriv( p, 1.0f );
+		// For a line, derivative is constant: 3*(1,1) = (3, 3)
+		REQUIRE( glm::length( d0 - vec2( 3, 3 ) ) < 1e-6f );
+		REQUIRE( glm::length( d5 - vec2( 3, 3 ) ) < 1e-6f );
+		REQUIRE( glm::length( d1 - vec2( 3, 3 ) ) < 1e-6f );
+	}
+
+	SECTION( "evalCubicBezierDeriv: Double precision" )
+	{
+		dvec2 p[4] = { dvec2( 0, 0 ), dvec2( 1, 2 ), dvec2( 3, 2 ), dvec2( 4, 0 ) };
+		dvec2 d0 = evalCubicBezierDeriv( p, 0.0 );
+		REQUIRE( std::abs( d0.x - 3.0 ) < 1e-12 );
+		REQUIRE( std::abs( d0.y - 6.0 ) < 1e-12 );
+	}
+
+	SECTION( "calcCubicBezierArcLength: Straight line" )
+	{
+		// A cubic that is actually a straight line from (0,0) to (3,4)
+		// Arc length should be exactly 5 (3-4-5 triangle)
+		vec2 p[4] = { vec2( 0, 0 ), vec2( 1, 4.0f / 3.0f ), vec2( 2, 8.0f / 3.0f ), vec2( 3, 4 ) };
+		float len = calcCubicBezierArcLength( p );
+		REQUIRE( std::abs( len - 5.0f ) < 0.001f );
+	}
+
+	SECTION( "calcQuadraticBezierArcLength: Straight line" )
+	{
+		// A quadratic that is actually a straight line from (0,0) to (3,4)
+		vec2 q[3] = { vec2( 0, 0 ), vec2( 1.5f, 2 ), vec2( 3, 4 ) };
+		float len = calcQuadraticBezierArcLength( q );
+		REQUIRE( std::abs( len - 5.0f ) < 0.001f );
+	}
+
+	SECTION( "calcCubicBezierTimeForDistance: Straight line" )
+	{
+		// For a straight line, t should be linear with arc length
+		vec2 p[4] = { vec2( 0, 0 ), vec2( 1, 4.0f / 3.0f ), vec2( 2, 8.0f / 3.0f ), vec2( 3, 4 ) };
+		float t_half = calcCubicBezierTimeForDistance( p, 2.5f );
+		REQUIRE( std::abs( t_half - 0.5f ) < 0.001f );
+	}
+
+	SECTION( "calcQuadraticBezierTimeForDistance: Straight line" )
+	{
+		vec2 q[3] = { vec2( 0, 0 ), vec2( 1.5f, 2 ), vec2( 3, 4 ) };
+		float t_half = calcQuadraticBezierTimeForDistance( q, 2.5f );
+		REQUIRE( std::abs( t_half - 0.5f ) < 0.001f );
+	}
+
+	SECTION( "getClosestPointQuadraticT: Point on curve" )
+	{
+		vec2 q[3] = { vec2( 0, 0 ), vec2( 1, 2 ), vec2( 2, 0 ) };
+		float distSq = -1.0f;
+		float t = getClosestPointQuadraticT( q, vec2( 1, 1 ), &distSq );
+		REQUIRE( std::abs( t - 0.5f ) < 1e-4f );
+		REQUIRE( distSq < 1e-6f );
+	}
+
+	SECTION( "getClosestPointQuadraticT: Double precision" )
+	{
+		dvec2 q[3] = { dvec2( 0, 0 ), dvec2( 1, 2 ), dvec2( 2, 0 ) };
+		double distSq = -1.0;
+		double t = getClosestPointQuadraticT( q, dvec2( 1, 1 ), &distSq );
+		REQUIRE( std::abs( t - 0.5 ) < 1e-10 );
+		REQUIRE( distSq < 1e-12 );
+	}
+
+	SECTION( "calcCubicBezierArcLength: Double precision" )
+	{
+		dvec2 p[4] = { dvec2( 0, 0 ), dvec2( 1, 4.0 / 3.0 ), dvec2( 2, 8.0 / 3.0 ), dvec2( 3, 4 ) };
+		double len = calcCubicBezierArcLength( p );
+		REQUIRE( std::abs( len - 5.0 ) < 0.001 );
+	}
+
+	SECTION( "calcQuadraticBezierArcLength: Double precision" )
+	{
+		dvec2 q[3] = { dvec2( 0, 0 ), dvec2( 1.5, 2 ), dvec2( 3, 4 ) };
+		double len = calcQuadraticBezierArcLength( q );
+		REQUIRE( std::abs( len - 5.0 ) < 0.001 );
+	}
+
+	SECTION( "calcCubicBezierTimeForDistance: Double precision" )
+	{
+		dvec2 p[4] = { dvec2( 0, 0 ), dvec2( 1, 4.0 / 3.0 ), dvec2( 2, 8.0 / 3.0 ), dvec2( 3, 4 ) };
+		double t_half = calcCubicBezierTimeForDistance( p, 2.5 );
+		REQUIRE( std::abs( t_half - 0.5 ) < 0.001 );
+	}
+
+	SECTION( "calcQuadraticBezierTimeForDistance: Double precision" )
+	{
+		dvec2 q[3] = { dvec2( 0, 0 ), dvec2( 1.5, 2 ), dvec2( 3, 4 ) };
+		double t_half = calcQuadraticBezierTimeForDistance( q, 2.5 );
+		REQUIRE( std::abs( t_half - 0.5 ) < 0.001 );
+	}
 }

@@ -85,219 +85,8 @@ constexpr std::array<double, N_LSE> LSE_B_WEIGHTS = {
 	LSE_A_WEIGHTS[3], LSE_A_WEIGHTS[2], LSE_A_WEIGHTS[1], LSE_A_WEIGHTS[0],
 };
 
-//=============================================================================
-// Bezier Evaluation Wrappers (using CinderMath templates)
-//=============================================================================
 
-inline glm::dvec2 evalCubic( const glm::dvec2 p[4], double t )
-{
-	return evalCubicBezier( p, t );
-}
 
-inline glm::dvec2 evalCubicDeriv( const glm::dvec2 p[4], double t )
-{
-	return evalCubicBezierDeriv( p, t );
-}
-
-inline glm::dvec2 evalQuad( const glm::dvec2 p[3], double t )
-{
-	return evalQuadraticBezier( p, t );
-}
-
-inline void raiseQuadToCubic( const glm::dvec2 q[3], glm::dvec2 c[4] )
-{
-	raiseQuadraticToCubic( q, c );
-}
-
-inline void cubicSubsegment( const glm::dvec2 p[4], double t0, double t1, glm::dvec2 result[4] )
-{
-	subdivideCubicRange( p, t0, t1, result );
-}
-
-inline void cubicSubsegmentLeft( const glm::dvec2 p[4], double t, glm::dvec2 result[4] )
-{
-	subdivideCubicLeft( p, t, result );
-}
-
-inline void cubicSubsegmentRight( const glm::dvec2 p[4], double t, glm::dvec2 result[4] )
-{
-	subdivideCubicRight( p, t, result );
-}
-
-inline void quadSubsegmentLeft( const glm::dvec2 q[3], double t, glm::dvec2 result[3] )
-{
-	subdivideQuadraticLeft( q, t, result );
-}
-
-inline void quadSubsegmentRight( const glm::dvec2 q[3], double t, glm::dvec2 result[3] )
-{
-	subdivideQuadraticRight( q, t, result );
-}
-
-//=============================================================================
-// Nearest Point on Quadratic (Analytical)
-//=============================================================================
-
-struct NearestResult {
-	double t;
-	double distanceSq;
-};
-
-inline NearestResult quadNearest( const glm::dvec2 q[3], const glm::dvec2& p )
-{
-	glm::dvec2 d0 = q[1] - q[0];
-	glm::dvec2 d1 = q[0] + q[2] - 2.0 * q[1];
-	glm::dvec2 d = q[0] - p;
-
-	double c0 = glm::dot( d, d0 );
-	double c1 = 2.0 * glm::dot( d0, d0 ) + glm::dot( d, d1 );
-	double c2 = 3.0 * glm::dot( d1, d0 );
-	double c3 = glm::dot( d1, d1 );
-
-	double roots[3];
-	int nRoots = solveCubicStable( c0, c1, c2, c3, roots );
-
-	double bestT = 0.0;
-	double bestDistSq = glm::length2( q[0] - p );
-	bool needEnds = ( nRoots == 0 );
-
-	for( int i = 0; i < nRoots; ++i ) {
-		double t = roots[i];
-		if( t >= 0.0 && t <= 1.0 ) {
-			double mt = 1.0 - t;
-			glm::dvec2 pt = mt * mt * q[0] + 2.0 * mt * t * q[1] + t * t * q[2];
-			double distSq = glm::length2( pt - p );
-			if( distSq < bestDistSq ) {
-				bestDistSq = distSq;
-				bestT = t;
-			}
-		} else {
-			needEnds = true;
-		}
-	}
-
-	if( needEnds ) {
-		double distSq0 = glm::length2( q[0] - p );
-		if( distSq0 < bestDistSq ) {
-			bestDistSq = distSq0;
-			bestT = 0.0;
-		}
-
-		double distSq1 = glm::length2( q[2] - p );
-		if( distSq1 < bestDistSq ) {
-			bestDistSq = distSq1;
-			bestT = 1.0;
-		}
-	}
-
-	return NearestResult{ bestT, bestDistSq };
-}
-
-//=============================================================================
-// Arc Length Utilities
-//=============================================================================
-
-inline double cubicArclenGauss( const glm::dvec2 p[4] )
-{
-	double sum = 0.0;
-	for( int i = 0; i < 5; i++ ) {
-		double t = 0.5 * ( GAUSS_LEGENDRE_5_NODES[i] + 1.0 );
-		sum += GAUSS_LEGENDRE_5_WEIGHTS[i] * glm::length( evalCubicDeriv( p, t ) );
-	}
-	return sum * 0.5;
-}
-
-inline double cubicArclenToT( const glm::dvec2 p[4], double t )
-{
-	if( t <= 0.0 ) return 0.0;
-	if( t >= 1.0 ) return cubicArclenGauss( p );
-
-	double sum = 0.0;
-	for( int i = 0; i < 5; i++ ) {
-		double u = 0.5 * t * ( GAUSS_LEGENDRE_5_NODES[i] + 1.0 );
-		sum += GAUSS_LEGENDRE_5_WEIGHTS[i] * glm::length( evalCubicDeriv( p, u ) );
-	}
-	return sum * 0.5 * t;
-}
-
-inline double lineArclen( const glm::dvec2& p0, const glm::dvec2& p1 )
-{
-	return glm::length( p1 - p0 );
-}
-
-inline double quadArclenGauss( const glm::dvec2 q[3] )
-{
-	glm::dvec2 d0 = q[1] - q[0];
-	glm::dvec2 d1 = q[2] - q[1];
-
-	double sum = 0.0;
-	for( int i = 0; i < 5; i++ ) {
-		double t = 0.5 * ( GAUSS_LEGENDRE_5_NODES[i] + 1.0 );
-		double mt = 1.0 - t;
-		glm::dvec2 deriv = 2.0 * ( mt * d0 + t * d1 );
-		sum += GAUSS_LEGENDRE_5_WEIGHTS[i] * glm::length( deriv );
-	}
-	return sum * 0.5;
-}
-
-inline double cubicInvArclen( const glm::dvec2 p[4], double targetLen, double accuracy )
-{
-	if( targetLen <= 0.0 || !std::isfinite( targetLen ) ) return 0.0;
-
-	double totalLen = cubicArclenGauss( p );
-	if( !std::isfinite( totalLen ) || totalLen <= 0.0 ) return 0.5;  // Fallback for degenerate curves
-	if( targetLen >= totalLen ) return 1.0;
-
-	double t = targetLen / totalLen;
-
-	for( int i = 0; i < 20; ++i ) {
-		double currentLen = cubicArclenToT( p, t );
-		double error = currentLen - targetLen;
-		if( std::abs( error ) < accuracy ) break;
-
-		double speed = glm::length( evalCubicDeriv( p, t ) );
-		if( speed < 1e-12 ) break;
-
-		double dt = -error / speed;
-		t = std::clamp( t + dt, 0.0, 1.0 );
-	}
-	return t;
-}
-
-inline double quadInvArclen( const glm::dvec2 q[3], double targetLen, double accuracy )
-{
-	if( targetLen <= 0.0 || !std::isfinite( targetLen ) ) return 0.0;
-
-	double totalLen = quadArclenGauss( q );
-	if( !std::isfinite( totalLen ) || totalLen <= 0.0 ) return 0.5;  // Fallback for degenerate curves
-	if( targetLen >= totalLen ) return 1.0;
-
-	glm::dvec2 d0 = q[1] - q[0];
-	glm::dvec2 d1 = q[2] - q[1];
-
-	double t = targetLen / totalLen;
-
-	for( int i = 0; i < 20; ++i ) {
-		double sum = 0.0;
-		for( int j = 0; j < 5; j++ ) {
-			double u = 0.5 * t * ( GAUSS_LEGENDRE_5_NODES[j] + 1.0 );
-			double mu = 1.0 - u;
-			glm::dvec2 deriv = 2.0 * ( mu * d0 + u * d1 );
-			sum += GAUSS_LEGENDRE_5_WEIGHTS[j] * glm::length( deriv );
-		}
-		double currentLen = sum * 0.5 * t;
-		double error = currentLen - targetLen;
-		if( std::abs( error ) < accuracy ) break;
-
-		double mt = 1.0 - t;
-		double speed = glm::length( 2.0 * ( mt * d0 + t * d1 ) );
-		if( speed < 1e-12 ) break;
-
-		double dt = -error / speed;
-		t = std::clamp( t + dt, 0.0, 1.0 );
-	}
-	return t;
-}
 
 //=============================================================================
 // Internal Path Element (double precision, uses Path2d::SegmentType)
@@ -400,24 +189,24 @@ struct CubicBezD {
 
 	glm::dvec2 eval( double t ) const {
 		glm::dvec2 p[4] = { p0, p1, p2, p3 };
-		return evalCubic( p, t );
+		return evalCubicBezier( p, t );
 	}
 
 	glm::dvec2 evalDeriv( double t ) const {
 		glm::dvec2 p[4] = { p0, p1, p2, p3 };
-		return evalCubicDeriv( p, t );
+		return evalCubicBezierDeriv( p, t );
 	}
 
 	CubicBezD subsegment( double t0, double t1 ) const {
 		glm::dvec2 p[4] = { this->p0, this->p1, this->p2, this->p3 };
 		glm::dvec2 result[4];
-		cubicSubsegment( p, t0, t1, result );
+		subdivideCubicRange( p, t0, t1, result );
 		return CubicBezD( result[0], result[1], result[2], result[3] );
 	}
 
 	double arclen( double accuracy = 1e-6 ) const {
 		glm::dvec2 p[4] = { p0, p1, p2, p3 };
-		return cubicArclenGauss( p );
+		return calcCubicBezierArcLength( p );
 	}
 };
 
@@ -433,7 +222,7 @@ struct QuadBezD {
 
 	glm::dvec2 eval( double t ) const {
 		glm::dvec2 p[3] = { p0, p1, p2 };
-		return evalQuad( p, t );
+		return evalQuadraticBezier( p, t );
 	}
 
 	glm::dvec2 evalDeriv( double t ) const {
@@ -623,11 +412,12 @@ std::optional<CuspType> detectCusp( const CubicBezD& c, double dimension )
 	double det_013 = cross2d( d01, d03 );
 	double det_023 = cross2d( d02, d03 );
 
-	if( det_012 * det_123 > 0.0 && det_012 * det_013 < 0.0 && det_012 * det_023 < 0.0 ) {
-		QuadBezD q = derivAsCurve( c );
+		if( det_012 * det_123 > 0.0 && det_012 * det_013 < 0.0 && det_012 * det_023 < 0.0 ) {
+			QuadBezD q = derivAsCurve( c );
 
-		glm::dvec2 qpts[3] = { q.p0, q.p1, q.p2 };
-		auto [nearestT, nearestDistSq] = quadNearest( qpts, glm::dvec2( 0.0, 0.0 ) );
+			glm::dvec2 qpts[3] = { q.p0, q.p1, q.p2 };
+			double nearestDistSq = 0.0;
+			double nearestT = getClosestPointQuadraticT( qpts, glm::dvec2( 0.0, 0.0 ), &nearestDistSq );
 
 		glm::dvec2 d = q.eval( nearestT );
 		glm::dvec2 d2 = q.evalDeriv( nearestT );
@@ -1694,7 +1484,7 @@ void StrokeContext::processElement( const PathEl& el, const StrokeStyle& style, 
 			if( el.p1 != p0 || el.p2 != p0 ) {
 				glm::dvec2 q[3] = { p0, el.p1, el.p2 };
 				glm::dvec2 cubic[4];
-				raiseQuadToCubic( q, cubic );
+				raiseQuadraticToCubic( q, cubic );
 				CubicBezD c( cubic[0], cubic[1], cubic[2], cubic[3] );
 
 				glm::dvec2 tan0 = startTangent( c );
@@ -1738,14 +1528,14 @@ double elementArclen( const PathEl& el, const glm::dvec2& prevPt )
 		case Path2d::MOVETO:
 			return 0.0;
 		case Path2d::LINETO:
-			return lineArclen( prevPt, el.p1 );
+			return glm::length( el.p1 - prevPt );
 		case Path2d::QUADTO: {
 			glm::dvec2 q[3] = { prevPt, el.p1, el.p2 };
-			return quadArclenGauss( q );
+			return calcQuadraticBezierArcLength( q );
 		}
 		case Path2d::CUBICTO: {
 			glm::dvec2 p[4] = { prevPt, el.p1, el.p2, el.p3 };
-			return cubicArclenGauss( p );
+			return calcCubicBezierArcLength( p );
 		}
 		case Path2d::CLOSE:
 			return 0.0;
@@ -1775,14 +1565,14 @@ void splitElementLeft( const PathEl& el, const glm::dvec2& prevPt, double t, Bez
 		case Path2d::QUADTO: {
 			glm::dvec2 q[3] = { prevPt, el.p1, el.p2 };
 			glm::dvec2 result[3];
-			quadSubsegmentLeft( q, t, result );
+			subdivideQuadraticLeft( q, t, result );
 			out.quadTo( result[1], result[2] );
 			break;
 		}
 		case Path2d::CUBICTO: {
 			glm::dvec2 p[4] = { prevPt, el.p1, el.p2, el.p3 };
 			glm::dvec2 result[4];
-			cubicSubsegmentLeft( p, t, result );
+			subdivideCubicLeft( p, t, result );
 			out.curveTo( result[1], result[2], result[3] );
 			break;
 		}
@@ -1809,7 +1599,7 @@ PathEl splitElementRight( const PathEl& el, const glm::dvec2& prevPt, double t )
 		case Path2d::QUADTO: {
 			glm::dvec2 q[3] = { prevPt, el.p1, el.p2 };
 			glm::dvec2 rightQ[3];
-			quadSubsegmentRight( q, t, rightQ );
+			subdivideQuadraticRight( q, t, rightQ );
 			result.p1 = rightQ[1];
 			result.p2 = rightQ[2];
 			break;
@@ -1817,7 +1607,7 @@ PathEl splitElementRight( const PathEl& el, const glm::dvec2& prevPt, double t )
 		case Path2d::CUBICTO: {
 			glm::dvec2 p[4] = { prevPt, el.p1, el.p2, el.p3 };
 			glm::dvec2 rightP[4];
-			cubicSubsegmentRight( p, t, rightP );
+			subdivideCubicRight( p, t, rightP );
 			result.p1 = rightP[1];
 			result.p2 = rightP[2];
 			result.p3 = rightP[3];
@@ -1848,16 +1638,16 @@ double elementInvArclen( const PathEl& el, const glm::dvec2& prevPt, double targ
 {
 	switch( el.type ) {
 		case Path2d::LINETO: {
-			double totalLen = lineArclen( prevPt, el.p1 );
+			double totalLen = glm::length( el.p1 - prevPt );
 			return ( totalLen > 0.0 ) ? std::clamp( targetLen / totalLen, 0.0, 1.0 ) : 0.0;
 		}
 		case Path2d::QUADTO: {
 			glm::dvec2 q[3] = { prevPt, el.p1, el.p2 };
-			return quadInvArclen( q, targetLen, DASH_ACCURACY );
+			return calcQuadraticBezierTimeForDistance( q, targetLen, DASH_ACCURACY );
 		}
 		case Path2d::CUBICTO: {
 			glm::dvec2 p[4] = { prevPt, el.p1, el.p2, el.p3 };
-			return cubicInvArclen( p, targetLen, DASH_ACCURACY );
+			return calcCubicBezierTimeForDistance( p, targetLen, DASH_ACCURACY );
 		}
 		default:
 			return 0.0;
@@ -1942,7 +1732,7 @@ BezPathD dashInternal( const BezPathD& path, float dashOffset, const std::vector
 				lineEl.p1 = startPt;
 
 				glm::dvec2 prevPt = currentPt;
-				double segLen = lineArclen( prevPt, lineEl.p1 );
+				double segLen = glm::length( lineEl.p1 - prevPt );
 				if( !std::isfinite( segLen ) ) {
 					continue;  // Skip segments with infinite/NaN length
 				}
@@ -2016,12 +1806,12 @@ BezPathD dashInternal( const BezPathD& path, float dashOffset, const std::vector
 						break;
 					case Path2d::QUADTO: {
 						glm::dvec2 q[3] = { prevPt, remainingEl.p1, remainingEl.p2 };
-						splitPt = evalQuad( q, t );
+						splitPt = evalQuadraticBezier( q, t );
 						break;
 					}
 					case Path2d::CUBICTO: {
 						glm::dvec2 p[4] = { prevPt, remainingEl.p1, remainingEl.p2, remainingEl.p3 };
-						splitPt = evalCubic( p, t );
+						splitPt = evalCubicBezier( p, t );
 						break;
 					}
 					default:
@@ -2442,7 +2232,7 @@ void OffsetContext::processElement( const PathEl& el )
 		case Path2d::QUADTO: {
 			glm::dvec2 q[3] = { mCurrentPt, el.p1, el.p2 };
 			glm::dvec2 c[4];
-			raiseQuadToCubic( q, c );
+			raiseQuadraticToCubic( q, c );
 			CubicBezD cubic( c[0], c[1], c[2], c[3] );
 
 			// Start tangent

@@ -1268,15 +1268,12 @@ int	Path2d::calcQuadraticBezierMonotoneRegions( const vec2 p[3], float resultT[2
 
 vec2 Path2d::calcQuadraticBezierPos( const vec2 p[3], float t )
 {
-	float nt = 1 - t;
-	return vec2( nt * nt * p[0].x + 2 * nt * t * p[1].x +  t * t * p[2].x, nt * nt * p[0].y + 2 * nt * t * p[1].y +  t * t * p[2].y );
+	return evalQuadraticBezier( p, t );
 }
 
 vec2 Path2d::calcQuadraticBezierDerivative( const vec2 p[3], float t )
 {
-	float nt = 1 - t;
-	//return vec2( (nt * p[1].x + t * p[2].x) - (nt * p[0].x + t * p[1].x), (nt * p[1].y + t * p[2].y) - (nt * p[0].y + t * p[1].y) );
-	return vec2( -2 * ( nt * p[0].x - (1 - 2 * t) * p[1].x - t * p[2].x ), -2 * ( nt * p[0].y - (1 - 2 * t) * p[1].y - t * p[2].y ) );
+	return evalQuadraticBezierDeriv( p, t );
 }
 
 int	Path2d::calcCubicBezierMonotoneRegions( const vec2 p[4], float resultT[4] )
@@ -1311,23 +1308,12 @@ int	Path2d::calcCubicBezierMonotoneRegions( const vec2 p[4], float resultT[4] )
 
 vec2 Path2d::calcCubicBezierPos( const vec2 p[4], float t )
 {
-	float nt = 1 - t;
-	float w0 = nt * nt * nt;
-	float w1 = 3 * nt * nt * t;
-	float w2 = 3 * nt * t * t;
-	float w3 = t * t * t;
-	return vec2( w0 * p[0].x + w1 * p[1].x + w2 * p[2].x + w3 * p[3].x, w0 * p[0].y + w1 * p[1].y + w2 * p[2].y + w3 * p[3].y );
+	return evalCubicBezier( p, t );
 }
 
 vec2 Path2d::calcCubicBezierDerivative( const vec2 p[4], float t )
 {
-	float nt = 1 - t;
-	float w0 = -3 * nt * nt;
-	float w1 = 3 * nt * nt - 6 * t * nt;
-	float w2 = -3 * t * t + 6 * t * nt;
-	float w3 = 3 * t * t;
-
-	return vec2( w0 * p[0].x + w1 * p[1].x + w2 * p[2].x + w3 * p[3].x, w0 * p[0].y + w1 * p[1].y + w2 * p[2].y + w3 * p[3].y );
+	return evalCubicBezierDeriv( p, t );
 }
 
 Rectf Path2d::calcPreciseBoundingBox() const
@@ -1395,14 +1381,14 @@ bool Path2d::calcClockwise() const
 }
 
 namespace {
-float calcCubicBezierSpeed( const vec2 p[3], float t )
+float calcCubicBezierSpeed( const vec2 p[4], float t )
 {
-	return length( Path2d::calcCubicBezierDerivative( p, t ) );
+	return glm::length( evalCubicBezierDeriv( p, t ) );
 }
 
 float calcQuadraticBezierSpeed( const vec2 p[3], float t )
 {
-	return length( Path2d::calcQuadraticBezierDerivative( p, t ) );
+	return glm::length( evalQuadraticBezierDeriv( p, t ) );
 }
 } // anonymous namespace
 
