@@ -296,9 +296,9 @@ void CanvasGl::saveHostState()
     ctx->pushBoolState( GL_SCISSOR_TEST );
     ctx->pushBoolState( GL_CULL_FACE );
 
-    // Blend function and equation
+    // Blend function
     ctx->pushBlendFuncSeparate();
-    ctx->pushBlendEquationSeparate();
+    // Note: Cinder doesn't track blend equation state; Rive uses GL_FUNC_ADD which is default
 
     // Masks
     ctx->pushColorMask( ctx->getColorMask().r, ctx->getColorMask().g, ctx->getColorMask().b, ctx->getColorMask().a );
@@ -364,9 +364,10 @@ void CanvasGl::restoreHostState( const ivec2 &size )
     ctx->popDepthMask( true );
     ctx->popColorMask( true );
 
-    // Blend equation and function
-    ctx->popBlendEquationSeparate( true );
+    // Blend function
     ctx->popBlendFuncSeparate( true );
+    // Restore blend equation to default (GL_FUNC_ADD) in case Rive changed it
+    glBlendEquation( GL_FUNC_ADD );
 
     // Bool states
     ctx->popBoolState( GL_CULL_FACE, true );

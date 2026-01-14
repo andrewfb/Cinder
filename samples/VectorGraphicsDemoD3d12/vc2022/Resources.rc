@@ -1,0 +1,2 @@
+#include "../include/Resources.h"
+#include "../../../include/cinder/CinderResources.h"
