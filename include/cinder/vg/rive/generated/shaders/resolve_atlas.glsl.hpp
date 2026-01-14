@@ -6,19 +6,19 @@ namespace rive {
 namespace gpu {
 namespace glsl {
 const char resolve_atlas[] = R"===(#ifdef BB
-y1(HF,c0,F,B,O){g P=g(mix(c(-1,1),c(1,-1),equal(B&S(1,2),S(0))),.0,1.);z1(P);}
+p1(GF,c0,D,p,O){g J=g(mix(c(-1,1),c(1,-1),equal(p&Y(1,2),Y(0))),.0,1.);l1(J);}
 #endif
 #ifdef GB
 #ifdef MD
-__pixel_local_outEXT g1{layout(r32f)highp float M2;};
+__pixel_local_outEXT m1{layout(r32f)highp float Q2;};
 #else
-__pixel_local_inEXT g1{layout(r32f)highp float M2;};layout(location=0)out highp uvec4 W5;
+__pixel_local_inEXT m1{layout(r32f)highp float Q2;};layout(location=0)out highp uvec4 Z5;
 #endif
 void main(){
 #ifdef MD
-M2=.0;
+Q2=.0;
 #else
-W5.x=floatBitsToUint(M2);
+Z5.x=floatBitsToUint(Q2);
 #endif
 }
 #endif

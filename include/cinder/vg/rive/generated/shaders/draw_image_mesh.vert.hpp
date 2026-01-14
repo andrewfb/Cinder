@@ -6,52 +6,52 @@ namespace rive {
 namespace gpu {
 namespace glsl {
 const char draw_image_mesh_vert[] = R"===(#ifdef BB
-w1(O2)l0(0,c,FC);x1 w1(V2)l0(1,c,GC);x1
+g1(q2)i0(0,c,XB);h1 g1(J2)i0(1,c,YB);h1
 #endif
-V1 B0 X(0,c,I0);
-#ifdef L
-OB X(1,e,h3);
+D1 q0 N(0,c,r0);
+#ifdef Q
+RB N(1,d,r3);
 #endif
-#if defined(Z)&&!defined(AB)
-B0 X(2,g,J0);
+#if defined(DB)&&!defined(CB)
+q0 N(2,g,S0);
 #endif
-N1
+z1
 #ifdef BB
-n3 o3 g6(DC,O2,P2,V2,W2,B){n0(B,P2,FC,c);n0(B,W2,GC,c);T(I0,c);
-#ifdef L
-T(h3,e);
+j3 k3 w5(TB,q2,r2,J2,K2,p){j0(p,r2,XB,c);j0(p,K2,YB,c);L(r0,c);
+#ifdef Q
+L(r3,d);
 #endif
-#if defined(Z)&&!defined(AB)
-T(J0,g);
+#if defined(DB)&&!defined(CB)
+L(S0,g);
 #endif
-c f0=P0(X1(p0.M8),FC)+p0.O1;I0=GC;
-#ifdef L
-if(L){h3=O7(p0.L0,A.J5);}
+c R=H0(N1(l0.v7),XB)+l0.j1;r0=YB;
+#ifdef Q
+if(Q){r3=S7(l0.N0,q.L5);}
 #endif
-#ifdef Z
-if(Z){
-#ifndef AB
-J0=p7(X1(p0.Y1),p0.m2,f0 a5);
+#ifdef DB
+if(DB){
+#ifndef CB
+S0=w7(N1(l0.c2),l0.p2,R f5);
 #else
-xb(X1(p0.Y1),p0.m2,f0 a5);
+yb(N1(l0.c2),l0.p2,R f5);
 #endif
 }
 #endif
-g P=H3(f0);
-#ifdef IC
-P.y=-P.y;
+g J=R2(R);
+#ifdef JC
+J.y=-J.y;
 #endif
-#ifdef AB
-P.z=z9(p0.E6);
+#ifdef CB
+J.z=H9(l0.H6);
 #endif
-g0(I0);
-#ifdef L
-g0(h3);
+W(r0);
+#ifdef Q
+W(r3);
 #endif
-#if defined(Z)&&!defined(AB)
-g0(J0);
+#if defined(DB)&&!defined(CB)
+W(S0);
 #endif
-z1(P);}
+l1(J);}
 #endif
 )===";
 } // namespace glsl

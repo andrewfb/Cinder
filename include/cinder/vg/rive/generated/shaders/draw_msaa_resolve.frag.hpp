@@ -6,7 +6,7 @@ namespace rive {
 namespace gpu {
 namespace glsl {
 const char draw_msaa_resolve_frag[] = R"===(#ifdef GB
-layout(input_attachment_index=0,binding=J3,set=f4)uniform lowp subpassInputMS E8;layout(location=0)out i sa;void main(){sa=(subpassLoad(E8,0)+subpassLoad(E8,1)+subpassLoad(E8,2)+subpassLoad(E8,3))*.25;}
+layout(input_attachment_index=0,binding=T3,set=q4)uniform lowp subpassInputMS L8;layout(location=0)out i ya;void main(){ya=(subpassLoad(L8,0)+subpassLoad(L8,1)+subpassLoad(L8,2)+subpassLoad(L8,3))*.25;}
 #endif
 )===";
 } // namespace glsl

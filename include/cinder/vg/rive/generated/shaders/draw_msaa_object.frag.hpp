@@ -6,52 +6,52 @@ namespace rive {
 namespace gpu {
 namespace glsl {
 const char draw_msaa_object_frag[] = R"===(#ifdef GB
-#ifdef KB
-c3 K2(W3,I7,EC);
-#ifdef FB
-M6(ID);
+#ifdef MB
+W2 z2(l3,w6,UB);
+#ifdef HB
+Q6(ID);
 #endif
-d3 N4 X3(W3,J7,B5)O4
+X2 i4 A3(l3,x6,z3)j4
 #endif
-d2(i,IB){
-#ifdef KB
-H(I0,c);
+U1(i,JB){
+#ifdef MB
+I(r0,c);
 #else
-H(Z0,g);
-#ifdef CB
-H(l2,c);
+I(o1,g);
+#ifdef AB
+I(i1,c);
 #endif
-#ifdef FB
-H(T1,e);
+#ifdef HB
+I(m2,d);
 #endif
 #endif
-#ifdef KB
-i j=X6(EC,B5,I0,A.ub)*p0.R3;
+#ifdef MB
+i j=c7(UB,z3,r0,q.vb)*l0.V2;
 #else
-e l=
-#ifdef CB
-c9(l2,A.M4 f1);
+d m=
+#ifdef AB
+I7(i1,q.d4 P0);
 #else
 1.;
 #endif
-i j=m7(Z0,l H2);
+i j=J8(o1,m U2);
 #endif
-#ifdef FB
-if(FB){
-#ifndef EB
-#ifdef KB
-j.xyz=d6(j);Y Z1=W1(p0.Z1);
+#ifdef HB
+if(HB){
+#ifndef FB
+#ifdef MB
+j.xyz=H4(j);V e2=R1(l0.e2);
 #else
-Y Z1=z6(T1);
+V e2=C6(m2);
 #endif
-i B1=o8(ID);j.xyz=p5(j.xyz,B1,Z1);
+i E1=x8(ID);j.xyz=v5(j.xyz,E1,e2);
 #endif
 j.xyz*=j.w;}
 #endif
-#ifdef YB
-if(YB){j=Z2(j);}
+#ifdef CC
+if(CC){j=h3(j);}
 #endif
-e2(j);}
+V1(j);}
 #endif
 )===";
 } // namespace glsl

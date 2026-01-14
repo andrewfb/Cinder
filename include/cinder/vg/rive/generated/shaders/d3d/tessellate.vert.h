@@ -5,30 +5,30 @@
 //
 // Buffer Definitions: 
 //
-// cbuffer NB
+// cbuffer SB
 // {
 //
 //   struct <unnamed>
 //   {
 //       
-//       float fb;                      // Offset:    0
-//       float sb;                      // Offset:    4
+//       float gb;                      // Offset:    0
+//       float tb;                      // Offset:    4
 //       float Vd;                      // Offset:    8
 //       float Wd;                      // Offset:   12
-//       uint C6;                       // Offset:   16
+//       uint F6;                       // Offset:   16
 //       uint ee;                       // Offset:   20
 //       uint Id;                       // Offset:   24
 //       uint Jd;                       // Offset:   28
-//       int4 q7;                       // Offset:   32
-//       float2 M4;                     // Offset:   48
-//       float2 tb;                     // Offset:   56
-//       uint p3;                       // Offset:   64
-//       uint J5;                       // Offset:   68
-//       float D2;                      // Offset:   72
-//       float ub;                      // Offset:   76
+//       int4 x7;                       // Offset:   32
+//       float2 d4;                     // Offset:   48
+//       float2 ub;                     // Offset:   56
+//       uint B3;                       // Offset:   64
+//       uint L5;                       // Offset:   68
+//       float M1;                      // Offset:   72
+//       float vb;                      // Offset:   76
 //       uint fe;                       // Offset:   80
 //
-//   } A;                               // Offset:    0 Size:    84
+//   } q;                               // Offset:    0 Size:    84
 //
 // }
 //
@@ -39,7 +39,7 @@
 //
 // }
 //
-// Resource bind info for VC
+// Resource bind info for XC
 // {
 //
 //   uint4 $Element;                    // Offset:    0 Size:    16
@@ -51,11 +51,11 @@
 //
 // Name                                 Type  Format         Dim      HLSL Bind  Count
 // ------------------------------ ---------- ------- ----------- -------------- ------
-// o9                                sampler      NA          NA            s10      1 
+// z9                                sampler      NA          NA            s10      1 
 // LB                                texture  struct         r/o             t3      1 
-// VC                                texture  struct         r/o             t6      1 
+// XC                                texture  struct         r/o             t6      1 
 // RC                                texture   float     1darray            t10      1 
-// NB                                cbuffer      NA          NA            cb0      1 
+// SB                                cbuffer      NA          NA            cb0      1 
 //
 //
 //
@@ -63,10 +63,10 @@
 //
 // Name                 Index   Mask Register SysValue  Format   Used
 // -------------------- ----- ------ -------- -------- ------- ------
-// XC                       0   xyzw        0     NONE   float   xyzw
-// YC                       0   xyzw        1     NONE   float   xyzw
-// OC                       0   xyzw        2     NONE   float   xyzw
-// QB                       0   xyzw        3     NONE    uint   xyzw
+// ZC                       0   xyzw        0     NONE   float   xyzw
+// AD                       0   xyzw        1     NONE   float   xyzw
+// PC                       0   xyzw        2     NONE   float   xyzw
+// VB                       0   xyzw        3     NONE    uint   xyzw
 // SV_VertexID              0   x           4   VERTID    uint   x   
 // SV_InstanceID            0   x           5   INSTID    uint       
 //
@@ -440,10 +440,10 @@ ret
 
 const BYTE g_main[] =
 {
-     68,  88,  66,  67,  45,  14, 
-    162,  45, 208,  79, 225, 168, 
-     90, 111,  75,  15,  12,  63, 
-    177,   2,   1,   0,   0,   0, 
+     68,  88,  66,  67,  79,  92, 
+    200,  75,  50, 227, 118, 237, 
+    240, 190, 200, 220,  17,   0, 
+    141, 171,   1,   0,   0,   0, 
     116,  45,   0,   0,   5,   0, 
       0,   0,  52,   0,   0,   0, 
      24,   4,   0,   0, 224,   4, 
@@ -486,9 +486,9 @@ const BYTE g_main[] =
       0,   0,   0,   0,   0,   0, 
       0,   0,   0,   0,   0,   0, 
       0,   0,   1,   0,   0,   0, 
-      1,   0,   0,   0, 111,  57, 
-      0,  76,  66,   0,  86,  67, 
-      0,  82,  67,   0,  78,  66, 
+      1,   0,   0,   0, 122,  57, 
+      0,  76,  66,   0,  88,  67, 
+      0,  82,  67,   0,  83,  66, 
       0, 171, 232,   0,   0,   0, 
       1,   0,   0,   0,  52,   1, 
       0,   0,  96,   0,   0,   0, 
@@ -508,9 +508,9 @@ const BYTE g_main[] =
       0,   0, 255, 255, 255, 255, 
       0,   0,   0,   0, 255, 255, 
     255, 255,   0,   0,   0,   0, 
-     65,   0,  60, 117, 110, 110, 
+    113,   0,  60, 117, 110, 110, 
      97, 109, 101, 100,  62,   0, 
-    102,  98,   0, 102, 108, 111, 
+    103,  98,   0, 102, 108, 111, 
      97, 116,   0, 171, 171, 171, 
       0,   0,   3,   0,   1,   0, 
       1,   0,   0,   0,   0,   0, 
@@ -518,8 +518,8 @@ const BYTE g_main[] =
       0,   0,   0,   0,   0,   0, 
       0,   0,   0,   0,   0,   0, 
       0,   0, 107,   1,   0,   0, 
-    115,  98,   0,  86, 100,   0, 
-     87, 100,   0,  67,  54,   0, 
+    116,  98,   0,  86, 100,   0, 
+     87, 100,   0,  70,  54,   0, 
     100, 119, 111, 114, 100,   0, 
     171, 171,   0,   0,  19,   0, 
       1,   0,   1,   0,   0,   0, 
@@ -528,7 +528,7 @@ const BYTE g_main[] =
       0,   0,   0,   0,   0,   0, 
       0,   0,   0,   0, 164,   1, 
       0,   0, 101, 101,   0,  73, 
-    100,   0,  74, 100,   0, 113, 
+    100,   0,  74, 100,   0, 120, 
      55,   0, 105, 110, 116,  52, 
       0, 171, 171, 171,   1,   0, 
       2,   0,   1,   0,   4,   0, 
@@ -536,7 +536,7 @@ const BYTE g_main[] =
       0,   0,   0,   0,   0,   0, 
       0,   0,   0,   0,   0,   0, 
       0,   0,   0,   0,   0,   0, 
-    220,   1,   0,   0,  77,  52, 
+    220,   1,   0,   0, 100,  52, 
       0, 102, 108, 111,  97, 116, 
      50,   0, 171, 171,   1,   0, 
       3,   0,   1,   0,   2,   0, 
@@ -544,9 +544,9 @@ const BYTE g_main[] =
       0,   0,   0,   0,   0,   0, 
       0,   0,   0,   0,   0,   0, 
       0,   0,   0,   0,   0,   0, 
-     11,   2,   0,   0, 116,  98, 
-      0, 112,  51,   0,  74,  53, 
-      0,  68,  50,   0, 117,  98, 
+     11,   2,   0,   0, 117,  98, 
+      0,  66,  51,   0,  76,  53, 
+      0,  77,  49,   0, 118,  98, 
       0, 102, 101,   0, 171, 171, 
     104,   1,   0,   0, 116,   1, 
       0,   0,   0,   0,   0,   0, 
@@ -641,8 +641,8 @@ const BYTE g_main[] =
       0,   0,   0,   0,   8,   0, 
       0,   0,   1,   0,   0,   0, 
       5,   0,   0,   0,   1,   0, 
-      0,   0,  88,  67,   0,  89, 
-     67,   0,  79,  67,   0,  81, 
+      0,   0,  90,  67,   0,  65, 
+     68,   0,  80,  67,   0,  86, 
      66,   0,  83,  86,  95,  86, 
     101, 114, 116, 101, 120,  73, 
      68,   0,  83,  86,  95,  73, 

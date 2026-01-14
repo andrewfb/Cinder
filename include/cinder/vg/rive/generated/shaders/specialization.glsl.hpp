@@ -6,27 +6,27 @@ namespace rive {
 namespace gpu {
 namespace glsl {
 const char specialization[] = R"===(#ifndef SD
-layout(constant_id=we)const bool xf=true;layout(constant_id=xe)const bool yf=true;layout(constant_id=ye)const bool zf=true;layout(constant_id=ze)const bool Af=true;layout(constant_id=Ae)const bool Bf=true;layout(constant_id=Be)const bool Cf=true;layout(constant_id=Ce)const bool Df=true;layout(constant_id=De)const bool Ef=true;layout(constant_id=Ee)const bool Ff=true;layout(constant_id=Fe)const uint Gf=0;
-#define L xf
-#define Z yf
-#define FB zf
-#define HB Af
-#define HC Bf
-#define NC Cf
-#define RB Df
-#define WC Ef
-#define JB Ff
-#define SC Gf
+layout(constant_id=ye)const bool Gf=true;layout(constant_id=ze)const bool Hf=true;layout(constant_id=Ae)const bool If=true;layout(constant_id=Be)const bool Jf=true;layout(constant_id=Ce)const bool Kf=true;layout(constant_id=De)const bool Lf=true;layout(constant_id=Ee)const bool Mf=true;layout(constant_id=Fe)const bool Nf=true;layout(constant_id=Ge)const bool Of=true;layout(constant_id=He)const uint Pf=0;
+#define Q Gf
+#define DB Hf
+#define HB If
+#define IB Jf
+#define IC Kf
+#define OC Lf
+#define WB Mf
+#define YC Nf
+#define OB Of
+#define SC Pf
 #else
-#define L true
-#define Z true
-#define FB true
+#define Q true
+#define DB true
 #define HB true
-#define HC true
-#define NC true
-#define RB true
-#define WC true
-#define JB true
+#define IB true
+#define IC true
+#define OC true
+#define WB true
+#define YC true
+#define OB true
 #define SC 0
 #endif
 )===";

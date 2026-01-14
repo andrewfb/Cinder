@@ -5,30 +5,30 @@
 namespace rive {
 namespace gpu {
 namespace glsl {
-const char blit_texture_as_draw[] = R"===(V1
-#ifdef UC
-B0 X(0,c,I0);
+const char blit_texture_as_draw[] = R"===(D1
+#ifdef WC
+q0 N(0,c,r0);
 #endif
-N1
+z1
 #ifdef BB
-n3 o3 U3 V3 w1(c0)x1 y1(RE,c0,F,B,O){c J1;J1.x=(B&1)==0?-1.:1.;J1.y=(B&2)==0?-1.:1.;
-#ifdef UC
-T(I0,c);I0.x=J1.x*.5+.5;I0.y=J1.y*-.5+.5;g0(I0);
+j3 k3 g4 h4 g1(c0)h1 p1(QE,c0,D,p,O){c O1;O1.x=(p&1)==0?-1.:1.;O1.y=(p&2)==0?-1.:1.;
+#ifdef WC
+L(r0,c);r0.x=O1.x*.5+.5;r0.y=O1.y*-.5+.5;W(r0);
 #endif
-g P=g(J1,0,1);z1(P);}
+g J=g(O1,0,1);l1(J);}
 #endif
 #ifdef GB
-c3 K2(W3,I7,DD);d3
-#ifdef UC
-N4 X3(W3,J7,Sd)O4
+W2 z2(l3,w6,DD);X2
+#ifdef WC
+i4 A3(l3,x6,Sd)j4
 #endif
-d2(i,UD){i i9;
-#ifdef UC
-H(I0,c);i9=F2(DD,Sd,I0,.0);
+U1(i,UD){i q9;
+#ifdef WC
+I(r0,c);q9=d2(DD,Sd,r0,.0);
 #else
-i9=D1(DD,S(floor(q0.xy)));
+q9=G1(DD,Y(floor(v0.xy)));
 #endif
-e2(i9);}
+V1(q9);}
 #endif
 )===";
 } // namespace glsl
