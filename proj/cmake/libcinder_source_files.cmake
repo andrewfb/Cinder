@@ -513,3 +513,91 @@ list( APPEND SRC_SET_APP_GLFW
 )
 
 # Note: These source sets are used by platform_macosx.cmake and platform_linux.cmake
+
+# ----------------------------------------------------------------------------------------------------------------------
+# cinder::vg (Vector Graphics via Rive renderer)
+# ----------------------------------------------------------------------------------------------------------------------
+
+list( APPEND SRC_SET_CINDER_VG
+	${CINDER_SRC_DIR}/cinder/vg/Canvas.cpp
+	${CINDER_SRC_DIR}/cinder/vg/CanvasGl.cpp
+	${CINDER_SRC_DIR}/cinder/vg/Paint.cpp
+)
+
+list( APPEND SRC_SET_RIVE_CORE
+	${CINDER_SRC_DIR}/cinder/vg/rive/core/color.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/core/renderer.cpp
+)
+
+list( APPEND SRC_SET_RIVE_MATH
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/aabb.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/bezier_utils.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/bit_field_loc.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/contour_measure.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/hit_test.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/mat2d.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/mat2d_find_max_scale.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/n_slicer_helpers.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/path_measure.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/random.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/raw_path.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/raw_path_utils.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/rectangles_to_contour.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/math/vec2d.cpp
+)
+
+list( APPEND SRC_SET_RIVE_RENDERER
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/draw.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gpu.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gpu_resource.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gr_triangulator.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gradient.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/intersection_board.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/render_context.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/render_context_helper_impl.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/rive_render_factory.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/rive_render_image.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/rive_render_paint.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/rive_render_path.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/rive_renderer.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/sk_rectanizer_skyline.cpp
+)
+
+list( APPEND SRC_SET_RIVE_RENDERER_GL
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gl/gl_state.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gl/gl_utils.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gl/load_store_actions_ext.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gl/pls_impl_rw_texture.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gl/render_buffer_gl_impl.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gl/render_context_gl_impl.cpp
+	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/gl/render_target_gl.cpp
+)
+
+# GLES-only files (Android/EGL), excluded from desktop builds
+# - load_gles_extensions.cpp
+# - pls_impl_ext_native.cpp
+
+list( APPEND SRC_SET_RIVE_GLAD
+	${CINDER_SRC_DIR}/cinder/vg/rive/glad/glad_custom.c
+)
+
+list( APPEND CINDER_SRC_FILES
+	${SRC_SET_CINDER_VG}
+	${SRC_SET_RIVE_CORE}
+	${SRC_SET_RIVE_MATH}
+	${SRC_SET_RIVE_RENDERER}
+	${SRC_SET_RIVE_RENDERER_GL}
+	${SRC_SET_RIVE_GLAD}
+)
+
+source_group( "cinder\\vg"						FILES ${SRC_SET_CINDER_VG} )
+source_group( "thirdparty\\rive\\core"			FILES ${SRC_SET_RIVE_CORE} )
+source_group( "thirdparty\\rive\\math"			FILES ${SRC_SET_RIVE_MATH} )
+source_group( "thirdparty\\rive\\renderer"		FILES ${SRC_SET_RIVE_RENDERER} )
+source_group( "thirdparty\\rive\\renderer\\gl"	FILES ${SRC_SET_RIVE_RENDERER_GL} )
+source_group( "thirdparty\\rive\\glad"			FILES ${SRC_SET_RIVE_GLAD} )
+
+# Rive renderer needs RIVE_DESKTOP_GL defined for desktop OpenGL platforms
+if( NOT CINDER_GL_ES )
+	list( APPEND CINDER_DEFINES "RIVE_DESKTOP_GL" )
+endif()
