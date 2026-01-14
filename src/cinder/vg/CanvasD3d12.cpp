@@ -36,6 +36,11 @@ struct ImageD3d12Impl {
     rcp<RiveRenderImage> riveImage;
 };
 
+struct FrozenPathD3d12Impl {
+    CachedPathRef cachedPath;  // Just store a reference to the cached path
+    bool isStroke = false;     // Was this frozen for fill or stroke?
+};
+
 // ------------------------------------------------------------------------------------------------
 // Helper functions (D3D12-specific)
 // ------------------------------------------------------------------------------------------------
@@ -74,6 +79,20 @@ ImageD3d12::ImageD3d12() : mImpl( std::make_unique<ImageD3d12Impl>() ) {}
 ImageD3d12::~ImageD3d12() = default;
 
 // ------------------------------------------------------------------------------------------------
+// FrozenPathD3d12 implementation
+// ------------------------------------------------------------------------------------------------
+
+FrozenPathD3d12::FrozenPathD3d12() : mImpl( std::make_unique<FrozenPathD3d12Impl>() ) {}
+
+FrozenPathD3d12::~FrozenPathD3d12() = default;
+
+bool FrozenPathD3d12::isValid() const
+{
+    // Stub implementation - valid if we have a cached path
+    return mImpl && mImpl->cachedPath;
+}
+
+// ------------------------------------------------------------------------------------------------
 // DisplayListD3d12 implementation
 // ------------------------------------------------------------------------------------------------
 
@@ -95,11 +114,6 @@ void DisplayListD3d12::beginRecording( Canvas* canvas )
     mValid = false;
     mCommands.clear();
     mBounds = Rectf();
-
-    // Set recording pointer on the canvas
-    if( auto* d3d12Canvas = dynamic_cast<CanvasD3d12*>( canvas ) ) {
-        d3d12Canvas->mRecordingDisplayList = this;
-    }
 }
 
 void DisplayListD3d12::endRecording()
@@ -108,12 +122,6 @@ void DisplayListD3d12::endRecording()
         CI_LOG_W( "DisplayListD3d12::endRecording called without beginRecording" );
         return;
     }
-
-    // Clear recording pointer on the canvas
-    if( auto* d3d12Canvas = dynamic_cast<CanvasD3d12*>( mRecordingCanvas ) ) {
-        d3d12Canvas->mRecordingDisplayList = nullptr;
-    }
-
     mRecording = false;
     mRecordingCanvas = nullptr;
     mValid = !mCommands.empty();
@@ -121,66 +129,12 @@ void DisplayListD3d12::endRecording()
 
 void DisplayListD3d12::replay( Canvas* canvas )
 {
-    if( ! mValid || mCommands.empty() )
-        return;
-
-    auto* d3d12Canvas = dynamic_cast<CanvasD3d12*>( canvas );
-    if( ! d3d12Canvas ) {
-        CI_LOG_W( "DisplayListD3d12::replay requires a CanvasD3d12" );
+    if( ! mValid || mCommands.empty() ) {
         return;
     }
 
-    // Get the current view transform (e.g., from CanvasUi) to compose with recorded transforms
-    mat3 viewTransform = d3d12Canvas->getTransform();
-
-    for( const auto& cmd : mCommands ) {
-        switch( cmd.type ) {
-            case CommandType::FillPath:
-                if( cmd.cachedPath ) {
-                    d3d12Canvas->save();
-                    d3d12Canvas->setTransform( viewTransform * cmd.transform );
-                    d3d12Canvas->fillPath( cmd.cachedPath, cmd.paint, cmd.fillRule );
-                    d3d12Canvas->restore();
-                }
-                break;
-            case CommandType::StrokePath:
-                if( cmd.cachedPath ) {
-                    d3d12Canvas->save();
-                    d3d12Canvas->setTransform( viewTransform * cmd.transform );
-                    d3d12Canvas->strokePath( cmd.cachedPath, cmd.paint );
-                    d3d12Canvas->restore();
-                }
-                break;
-            case CommandType::DrawImage:
-                if( cmd.image ) {
-                    d3d12Canvas->save();
-                    d3d12Canvas->setTransform( viewTransform * cmd.transform );
-                    if( cmd.srcRect.getWidth() > 0 )
-                        d3d12Canvas->drawImage( cmd.image, cmd.srcRect, cmd.destRect );
-                    else
-                        d3d12Canvas->drawImage( cmd.image, cmd.destRect );
-                    d3d12Canvas->restore();
-                }
-                break;
-            case CommandType::Save:
-                d3d12Canvas->save();
-                break;
-            case CommandType::Restore:
-                d3d12Canvas->restore();
-                break;
-            case CommandType::SetTransform:
-                d3d12Canvas->setTransform( viewTransform * cmd.transform );
-                break;
-            case CommandType::Clip:
-                if( cmd.cachedPath ) {
-                    d3d12Canvas->save();
-                    d3d12Canvas->setTransform( viewTransform * cmd.transform );
-                    d3d12Canvas->clipPath( cmd.cachedPath, cmd.fillRule );
-                    d3d12Canvas->restore();
-                }
-                break;
-        }
-    }
+    // TODO: Implement replay with frozen paths
+    CI_LOG_W( "DisplayListD3d12::replay not yet implemented" );
 }
 
 void DisplayListD3d12::clear()
@@ -188,114 +142,6 @@ void DisplayListD3d12::clear()
     mCommands.clear();
     mValid = false;
     mBounds = Rectf();
-}
-
-void DisplayListD3d12::recordFillPath( const CachedPathRef& path, const Paint& paint, FillRule rule )
-{
-    if( ! mRecording || ! path )
-        return;
-
-    Command cmd;
-    cmd.type = CommandType::FillPath;
-    cmd.cachedPath = path;
-    cmd.paint = paint;
-    cmd.fillRule = rule;
-    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
-    mCommands.push_back( cmd );
-
-    if( path->getBounds().getWidth() > 0 )
-        mBounds.include( path->getBounds() );
-}
-
-void DisplayListD3d12::recordStrokePath( const CachedPathRef& path, const Paint& paint )
-{
-    if( ! mRecording || ! path )
-        return;
-
-    Command cmd;
-    cmd.type = CommandType::StrokePath;
-    cmd.cachedPath = path;
-    cmd.paint = paint;
-    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
-    mCommands.push_back( cmd );
-
-    if( path->getBounds().getWidth() > 0 )
-        mBounds.include( path->getBounds() );
-}
-
-void DisplayListD3d12::recordDrawImage( const ImageRef& image, const Rectf& destRect )
-{
-    if( ! mRecording || ! image )
-        return;
-
-    Command cmd;
-    cmd.type = CommandType::DrawImage;
-    cmd.image = image;
-    cmd.destRect = destRect;
-    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
-    mCommands.push_back( cmd );
-
-    mBounds.include( destRect );
-}
-
-void DisplayListD3d12::recordDrawImage( const ImageRef& image, const Rectf& srcRect, const Rectf& destRect )
-{
-    if( ! mRecording || ! image )
-        return;
-
-    Command cmd;
-    cmd.type = CommandType::DrawImage;
-    cmd.image = image;
-    cmd.srcRect = srcRect;
-    cmd.destRect = destRect;
-    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
-    mCommands.push_back( cmd );
-
-    mBounds.include( destRect );
-}
-
-void DisplayListD3d12::recordSave()
-{
-    if( ! mRecording )
-        return;
-
-    Command cmd;
-    cmd.type = CommandType::Save;
-    mCommands.push_back( cmd );
-}
-
-void DisplayListD3d12::recordRestore()
-{
-    if( ! mRecording )
-        return;
-
-    Command cmd;
-    cmd.type = CommandType::Restore;
-    mCommands.push_back( cmd );
-}
-
-void DisplayListD3d12::recordSetTransform( const mat3& transform )
-{
-    if( ! mRecording )
-        return;
-
-    Command cmd;
-    cmd.type = CommandType::SetTransform;
-    cmd.transform = transform;
-    mCommands.push_back( cmd );
-}
-
-void DisplayListD3d12::recordClip( const CachedPathRef& path, FillRule rule )
-{
-    if( ! mRecording || ! path )
-        return;
-
-    Command cmd;
-    cmd.type = CommandType::Clip;
-    cmd.cachedPath = path;
-    cmd.fillRule = rule;
-    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
-    mCommands.push_back( cmd );
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -333,99 +179,60 @@ CanvasD3d12::~CanvasD3d12()
     mRiveContext.reset();
 }
 
-void CanvasD3d12::releaseRenderTargets()
-{
-    // Track if we were in a Rive frame - affects what cleanup we can do
-    bool wasInRiveFrame = mInFrame;
-
-    // If we're in a frame, abort it (don't close command list - caller owns it)
-    if( mInFrame ) {
-        mRiveRenderer = nullptr;
-        mOwnedRiveRenderer.reset();
-        mCommandList = nullptr;
-        mInFrame = false;
-    }
-
-    // Wait for GPU to finish using render targets
-    if( mRenderer )
-        mRenderer->waitForGpu();
-
-    // Release all cached render targets (releases ComPtr refs to back buffers)
-    UINT bufferCount = mRenderer ? mRenderer->getBufferCount() : 0;
-    for( UINT i = 0; i < mRenderTargets.size(); i++ ) {
-        if( mRenderTargets[i] )
-            mRenderTargets[i]->releaseTexturesImmediately();
-        mRenderTargets[i] = nullptr;
-    }
-    mRenderTargets.clear();
-    mRenderTargets.resize( bufferCount );
-
-    // Release Rive resources (only if we weren't mid-frame)
-    if( mRiveContext && !wasInRiveFrame )
-        mRiveContext->releaseResources();
-
-    // Force-purge Rive's resource purgatory to release deferred D3D12Texture deletions
-    if( mRiveContextD3d12 ) {
-        auto manager = mRiveContextD3d12->manager();
-        if( manager ) {
-            uint64_t currentFrame = manager->currentFrameNumber();
-            uint64_t bc = mRenderer ? mRenderer->getBufferCount() : 3;
-            uint64_t newFrame = currentFrame + bc + 2;
-            uint64_t newSafeFrame = currentFrame;
-            manager->advanceFrameNumber( newFrame, newSafeFrame );
-            mFrameNumber = newSafeFrame + bc + 2;
-        }
-    }
-
-    mLastFrameSize = ivec2( -1, -1 );
-}
-
 void CanvasD3d12::initializeD3d12()
 {
+    CI_LOG_I( "Creating Rive D3D12 context" );
+
     auto device = mRenderer->getDevice();
     CI_ASSERT_MSG( device, "RendererD3d12 device is null" );
 
     UINT bufferCount = mRenderer->getBufferCount();
 
-    // Create temporary command allocator and list for Rive initialization
-    ComPtr<ID3D12CommandAllocator> initAllocator;
-    ComPtr<ID3D12GraphicsCommandList> initCommandList;
+    // Create per-frame command allocators
+    for( UINT i = 0; i < bufferCount; i++ ) {
+        HRESULT hr = device->CreateCommandAllocator(
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            IID_PPV_ARGS( &mCommandAllocators[i] ) );
+        if( FAILED( hr ) ) {
+            throw vg::Exc( "Failed to create D3D12 command allocator" );
+        }
+    }
 
-    HRESULT hr = device->CreateCommandAllocator(
-        D3D12_COMMAND_LIST_TYPE_DIRECT,
-        IID_PPV_ARGS( &initAllocator ) );
-    if( FAILED( hr ) )
-        throw vg::Exc( "Failed to create D3D12 command allocator for initialization" );
-
-    hr = device->CreateCommandList(
+    // Create command list (starts in recording state with first allocator)
+    HRESULT hr = device->CreateCommandList(
         0,
         D3D12_COMMAND_LIST_TYPE_DIRECT,
-        initAllocator.Get(),
-        nullptr,
-        IID_PPV_ARGS( &initCommandList ) );
-    if( FAILED( hr ) )
-        throw vg::Exc( "Failed to create D3D12 command list for initialization" );
+        mCommandAllocators[0].Get(),
+        nullptr,  // No initial pipeline state
+        IID_PPV_ARGS( &mCommandList ) );
+    if( FAILED( hr ) ) {
+        throw vg::Exc( "Failed to create D3D12 command list" );
+    }
 
-    // Create Rive context - this records initialization commands
+    // Create Rive context - this records initialization commands to mCommandList
     D3DContextOptions riveOptions;
+    // Use default options for now
 
     mRiveContext = RenderContextD3D12Impl::MakeContext(
         ComPtr<ID3D12Device>( device ),
-        initCommandList.Get(),
+        mCommandList.Get(),
         riveOptions );
 
-    if( ! mRiveContext )
+    if( ! mRiveContext ) {
         throw vg::Exc( "Failed to create Rive D3D12 RenderContext" );
+    }
 
     // Store the D3D12-specific pointer for D3D12-specific calls
     mRiveContextD3d12 = mRiveContext->static_impl_cast<RenderContextD3D12Impl>();
 
-    // Execute initialization commands
-    initCommandList->Close();
-    ID3D12CommandList* lists[] = { initCommandList.Get() };
+    // CRITICAL: Execute initialization commands
+    // Rive records static buffer uploads during MakeContext - we must execute them
+    mCommandList->Close();
+    ID3D12CommandList* lists[] = { mCommandList.Get() };
     mRenderer->getCommandQueue()->ExecuteCommandLists( 1, lists );
 
-    // Wait for initialization to complete
+    // Wait for initialization to complete using a dedicated fence
+    // We can't use waitForGpu() here because it returns early if mFenceCounter == 0
     {
         ComPtr<ID3D12Fence> initFence;
         HANDLE initEvent = CreateEvent( nullptr, FALSE, FALSE, nullptr );
@@ -440,61 +247,66 @@ void CanvasD3d12::initializeD3d12()
 
     // Pre-allocate render target vector (will lazily create targets)
     mRenderTargets.resize( bufferCount );
+
+    CI_LOG_I( "CanvasD3d12 created successfully with " << bufferCount << " back buffers" );
 }
 
 void CanvasD3d12::begin( const ivec2 &size )
 {
-    CI_ASSERT_MSG( false, "begin(size) is deprecated. Use begin(size, commandList) instead." );
-}
-
-void CanvasD3d12::begin( const ivec2 &size, ID3D12GraphicsCommandList* commandList )
-{
     CI_ASSERT_MSG( ! mInFrame, "begin() called while already in frame - did you forget to call end()?" );
-    CI_ASSERT_MSG( commandList, "begin() requires a valid command list" );
-
-    // During resize/minimize, size can be 0 - skip frame gracefully
-    if( size.x <= 0 || size.y <= 0 ) {
-        mFrameSize = ivec2( 0 );
-        mInFrame = false;
-        return;
-    }
+    CI_ASSERT_MSG( size.x > 0 && size.y > 0, "begin() size must be positive" );
 
     mFrameSize = size;
     mInFrame = true;
-    mCommandList = commandList;
 
     UINT frameIndex = mRenderer->getCurrentBackBufferIndex();
 
-    // Wait for this frame's GPU work to complete before caller reuses their allocator
+    // Wait for this frame's GPU work to complete before reusing its allocator
+    // Note: After resize, fence values are preserved (set to mFenceCounter), so this still works
     mRenderer->waitForFrame( frameIndex );
 
     // Get back buffer first - it should always be valid after proper initialization
+    // If this fails, the renderer is in a bad state (resize failed or not initialized)
     auto backBuffer = mRenderer->getCurrentBackBuffer();
     if( ! backBuffer ) {
+        // Can happen briefly during ResizeBuffers when the app's draw() is invoked while
+        // swapchain buffers are being torn down/recreated. Skip the frame gracefully.
         CI_LOG_W( "CanvasD3d12::begin() skipping frame: back buffer is null (resize in progress)" );
         mInFrame = false;
-        mCommandList = nullptr;
         return;
     }
+
+    // Reset command allocator and command list for this frame
+    mCommandAllocators[frameIndex]->Reset();
+    mCommandList->Reset( mCommandAllocators[frameIndex].Get(), nullptr );
 
     // Use actual back buffer size as the authoritative render size
     D3D12_RESOURCE_DESC backDesc = backBuffer->GetDesc();
     ivec2 backBufferSize( static_cast<int>( backDesc.Width ), static_cast<int>( backDesc.Height ) );
 
-    // Detect resize: either explicit (mLastFrameSize set to -1 by releaseRenderTargets)
-    // or implicit (back buffer size changed from previous frame)
-    bool resizeFromRelease = ( mLastFrameSize.x == -1 );
-    bool resizeFromSizeChange = ( mLastFrameSize != backBufferSize && mLastFrameSize.x > 0 );
-    if( resizeFromRelease || resizeFromSizeChange ) {
+    // Detect resize by comparing to last known back buffer size
+    bool resizeDetected = ( mLastFrameSize != backBufferSize && mLastFrameSize.x > 0 && mLastFrameSize.y > 0 );
+    if( resizeDetected ) {
         // Invalidate ALL render targets (all back buffers are recreated)
         UINT bufferCount = mRenderer->getBufferCount();
         for( UINT i = 0; i < bufferCount; i++ ) {
             mRenderTargets[i] = nullptr;
+            mBackBufferInCommonState[i] = true;  // All new buffers are in COMMON state
         }
     }
 
-    // Note: Don't manually transition buffer states here - Rive handles all
-    // state transitions internally via setTargetTexture() and flush()
+    // Handle new buffers from ResizeBuffers - they start in COMMON state
+    // Rive's setTargetTexture() assumes PRESENT state, so transition COMMON→PRESENT
+    // DON'T transition to RENDER_TARGET here - Rive will do that internally
+    if( mBackBufferInCommonState[frameIndex] ) {
+        CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            backBuffer,
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_PRESENT );
+        mCommandList->ResourceBarrier( 1, &barrier );
+        mBackBufferInCommonState[frameIndex] = false;
+    }
+    // Note: Do NOT transition PRESENT→RENDER_TARGET here - Rive handles this internally
 
     // Get or create cached render target for this frame
     if( ! mRenderTargets[frameIndex] ||
@@ -531,10 +343,7 @@ void CanvasD3d12::begin( const ivec2 &size, ID3D12GraphicsCommandList* commandLi
 
 void CanvasD3d12::end()
 {
-    // If begin() skipped the frame (resize/minimize), just return
-    if( ! mInFrame ) {
-        return;
-    }
+    CI_ASSERT_MSG( mInFrame, "end() called without begin()" );
 
     // Clear base class pointer and destroy the renderer before flush
     mRiveRenderer = nullptr;
@@ -543,11 +352,17 @@ void CanvasD3d12::end()
     UINT frameIndex = mRenderer->getCurrentBackBufferIndex();
 
     // Set up command lists for Rive flush
+    // Rive's D3D12 implementation expects a CommandLists struct via externalCommandBuffer
     RenderContextD3D12Impl::CommandLists cmdLists;
-    cmdLists.copyComandList = nullptr;
-    cmdLists.directComandList = mCommandList;
+    cmdLists.copyComandList = nullptr;  // Use directComandList for copies too
+    cmdLists.directComandList = mCommandList.Get();
 
     // Flush Rive rendering to cached render target
+    // Use proper frame numbers for resource lifecycle management
+    // safeFrameNumber = frame that's definitely completed on GPU
+    // With triple buffering: frame N is being recorded, frame N-1 may be executing,
+    // frame N-2 may still be in flight, frame N-3 is definitely done.
+    // Use bufferCount as the lag to ensure safety across different buffer configurations.
     UINT bufferCount = mRenderer->getBufferCount();
     uint64_t safeFrame = (mFrameNumber > bufferCount) ? (mFrameNumber - bufferCount - 1) : 0;
 
@@ -558,36 +373,55 @@ void CanvasD3d12::end()
     flushRes.safeFrameNumber = safeFrame;
     mRiveContext->flush( flushRes );
 
+    // Increment frame counter for next frame
     ++mFrameNumber;
 
-    // After Rive flush, render target is in COMMON state.
-    // Transition to RENDER_TARGET so caller can do additional rendering (e.g., ImGui).
-    auto backBuffer = mRenderer->getCurrentBackBuffer();
-    if( backBuffer && mCommandList ) {
-        CD3DX12_RESOURCE_BARRIER toRenderTarget = CD3DX12_RESOURCE_BARRIER::Transition(
-            backBuffer,
-            D3D12_RESOURCE_STATE_COMMON,
-            D3D12_RESOURCE_STATE_RENDER_TARGET );
-        mCommandList->ResourceBarrier( 1, &toRenderTarget );
+    // Invoke post-flush callback for additional D3D12 rendering (e.g., ImGui)
+    // After Rive flush, render target is in COMMON state
+    if( mPostFlushCallback ) {
+        // Get current back buffer
+        auto backBuffer = mRenderer->getCurrentBackBuffer();
+        if( backBuffer ) {
+            // Transition COMMON → RENDER_TARGET for ImGui rendering
+            CD3DX12_RESOURCE_BARRIER toRenderTarget = CD3DX12_RESOURCE_BARRIER::Transition(
+                backBuffer,
+                D3D12_RESOURCE_STATE_COMMON,
+                D3D12_RESOURCE_STATE_RENDER_TARGET );
+            mCommandList->ResourceBarrier( 1, &toRenderTarget );
 
-        // Set render target and viewport/scissor for caller's convenience
-        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mRenderer->getRtvHandle( frameIndex );
-        mCommandList->OMSetRenderTargets( 1, &rtvHandle, FALSE, nullptr );
+            // Set render target for ImGui
+            D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mRenderer->getRtvHandle( frameIndex );
+            mCommandList->OMSetRenderTargets( 1, &rtvHandle, FALSE, nullptr );
 
-        D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)mFrameSize.x, (float)mFrameSize.y, 0.0f, 1.0f };
-        D3D12_RECT scissor = { 0, 0, (LONG)mFrameSize.x, (LONG)mFrameSize.y };
-        mCommandList->RSSetViewports( 1, &viewport );
-        mCommandList->RSSetScissorRects( 1, &scissor );
+            // Set viewport and scissor
+            D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)mFrameSize.x, (float)mFrameSize.y, 0.0f, 1.0f };
+            D3D12_RECT scissor = { 0, 0, (LONG)mFrameSize.x, (LONG)mFrameSize.y };
+            mCommandList->RSSetViewports( 1, &viewport );
+            mCommandList->RSSetScissorRects( 1, &scissor );
+
+            // Invoke callback (e.g., ImGui rendering)
+            mPostFlushCallback( mCommandList.Get() );
+
+            // Transition RENDER_TARGET → PRESENT for swap chain
+            CD3DX12_RESOURCE_BARRIER toPresent = CD3DX12_RESOURCE_BARRIER::Transition(
+                backBuffer,
+                D3D12_RESOURCE_STATE_RENDER_TARGET,
+                D3D12_RESOURCE_STATE_PRESENT );
+            mCommandList->ResourceBarrier( 1, &toPresent );
+        }
     }
+    // Note: If no callback, Rive's flush() transitions the render target to COMMON state.
+    // D3D12_RESOURCE_STATE_COMMON is implicitly promotable to PRESENT for swap chain buffers.
 
-    // Command list remains open - caller is responsible for:
-    // 1. Additional rendering (e.g., ImGui)
-    // 2. Transitioning render target to PRESENT state
-    // 3. Closing and executing the command list
-    // 4. Signaling the frame fence via mRenderer->signalFrameFence()
+    // Close and execute command list
+    mCommandList->Close();
+    ID3D12CommandList* lists[] = { mCommandList.Get() };
+    mRenderer->getCommandQueue()->ExecuteCommandLists( 1, lists );
+
+    // Signal frame fence for synchronization
+    mRenderer->signalFrameFence();
 
     mInFrame = false;
-    mCommandList = nullptr;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -609,18 +443,11 @@ CachedPathRef CanvasD3d12::createPath( const Shape2d &shape )
 
 void CanvasD3d12::fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule )
 {
-    if( ! path ) return;
-
-    // If recording, redirect to DisplayList
-    if( mRecordingDisplayList ) {
-        mRecordingDisplayList->recordFillPath( path, paint, rule );
-        return;
-    }
-
-    if( ! mRiveRenderer ) return;
+    if( ! path || ! mRiveRenderer ) return;
 
     auto d3d12Path = std::dynamic_pointer_cast<CachedPathD3d12>( path );
     if( ! d3d12Path || ! d3d12Path->mImpl->rivePath ) {
+        // Fall back to base class implementation using source shape
         Canvas::fillPath( path, paint, rule );
         return;
     }
@@ -630,83 +457,16 @@ void CanvasD3d12::fillPath( const CachedPathRef &path, const Paint &paint, FillR
 
 void CanvasD3d12::strokePath( const CachedPathRef &path, const Paint &paint )
 {
-    if( ! path ) return;
-
-    // If recording, redirect to DisplayList
-    if( mRecordingDisplayList ) {
-        mRecordingDisplayList->recordStrokePath( path, paint );
-        return;
-    }
-
-    if( ! mRiveRenderer ) return;
+    if( ! path || ! mRiveRenderer ) return;
 
     auto d3d12Path = std::dynamic_pointer_cast<CachedPathD3d12>( path );
     if( ! d3d12Path || ! d3d12Path->mImpl->rivePath ) {
+        // Fall back to base class implementation using source shape
         Canvas::strokePath( path, paint );
         return;
     }
 
     drawCachedPathInternal( d3d12Path.get(), paint, false, true );
-}
-
-// ------------------------------------------------------------------------------------------------
-// Uncached Path API (override for DisplayList recording)
-// ------------------------------------------------------------------------------------------------
-
-void CanvasD3d12::fillPath( const Path2d &path, const Paint &paint, FillRule rule )
-{
-    // If recording, create a CachedPath on-the-fly and record it
-    if( mRecordingDisplayList ) {
-        auto cachedPath = createPath( path );
-        if( cachedPath )
-            mRecordingDisplayList->recordFillPath( cachedPath, paint, rule );
-        return;
-    }
-
-    // Otherwise, use the base class implementation
-    Canvas::fillPath( path, paint, rule );
-}
-
-void CanvasD3d12::strokePath( const Path2d &path, const Paint &paint )
-{
-    // If recording, create a CachedPath on-the-fly and record it
-    if( mRecordingDisplayList ) {
-        auto cachedPath = createPath( path );
-        if( cachedPath )
-            mRecordingDisplayList->recordStrokePath( cachedPath, paint );
-        return;
-    }
-
-    // Otherwise, use the base class implementation
-    Canvas::strokePath( path, paint );
-}
-
-void CanvasD3d12::fillShape( const Shape2d &shape, const Paint &paint, FillRule rule )
-{
-    // If recording, create a CachedPath on-the-fly and record it
-    if( mRecordingDisplayList ) {
-        auto cachedPath = createPath( shape );
-        if( cachedPath )
-            mRecordingDisplayList->recordFillPath( cachedPath, paint, rule );
-        return;
-    }
-
-    // Otherwise, use the base class implementation
-    Canvas::fillShape( shape, paint, rule );
-}
-
-void CanvasD3d12::strokeShape( const Shape2d &shape, const Paint &paint )
-{
-    // If recording, create a CachedPath on-the-fly and record it
-    if( mRecordingDisplayList ) {
-        auto cachedPath = createPath( shape );
-        if( cachedPath )
-            mRecordingDisplayList->recordStrokePath( cachedPath, paint );
-        return;
-    }
-
-    // Otherwise, use the base class implementation
-    Canvas::strokeShape( shape, paint );
 }
 
 void CanvasD3d12::drawCachedPathInternal( const CachedPathD3d12* cachedPath, const Paint &paint,
@@ -769,122 +529,31 @@ ImageRef CanvasD3d12::createImage( const gl::Texture2dRef &texture )
 
 ImageRef CanvasD3d12::createImage( const Surface &surface )
 {
-    if( ! mRiveContextD3d12 ) {
-        CI_LOG_W( "Cannot create image without valid context" );
-        return nullptr;
-    }
-
-    auto image = std::make_shared<ImageD3d12>();
-    image->mSize = ivec2( surface.getWidth(), surface.getHeight() );
-
-    // Convert to RGBA premultiplied
-    std::vector<uint8_t> rgbaData( surface.getWidth() * surface.getHeight() * 4 );
-
-    const uint8_t* srcData = surface.getData();
-    bool srcHasAlpha = surface.hasAlpha();
-    int srcPixelInc = surface.getPixelInc();
-    int srcRowBytes = surface.getRowBytes();
-
-    for( int y = 0; y < surface.getHeight(); ++y ) {
-        const uint8_t* srcRow = srcData + y * srcRowBytes;
-        uint8_t* dstRow = rgbaData.data() + y * surface.getWidth() * 4;
-
-        for( int x = 0; x < surface.getWidth(); ++x ) {
-            uint8_t r = srcRow[0];
-            uint8_t g = srcRow[1];
-            uint8_t b = srcRow[2];
-            uint8_t a = srcHasAlpha ? srcRow[3] : 255;
-
-            // Premultiply alpha
-            dstRow[0] = static_cast<uint8_t>( r * a / 255 );
-            dstRow[1] = static_cast<uint8_t>( g * a / 255 );
-            dstRow[2] = static_cast<uint8_t>( b * a / 255 );
-            dstRow[3] = a;
-
-            srcRow += srcPixelInc;
-            dstRow += 4;
-        }
-    }
-
-    auto riveTexture = mRiveContextD3d12->makeImageTexture(
-        surface.getWidth(), surface.getHeight(),
-        1, // mip levels
-        rgbaData.data() );
-
-    image->mImpl->riveImage = make_rcp<RiveRenderImage>( std::move( riveTexture ) );
-
-    return image;
+    // TODO: Create D3D12 texture from surface and wrap in Image
+    CI_LOG_W( "CanvasD3d12::createImage(Surface) not yet implemented" );
+    return nullptr;
 }
 
 void CanvasD3d12::drawImage( const ImageRef &image, const Rectf &destRect )
 {
-    if( ! image ) return;
-
-    // If recording, redirect to DisplayList
-    if( mRecordingDisplayList ) {
-        mRecordingDisplayList->recordDrawImage( image, destRect );
-        return;
-    }
-
-    if( ! mInFrame || ! mRiveRenderer ) return;
+    if( ! image || ! mRiveRenderer ) return;
 
     auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
-    if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage ) {
+    if( ! d3d12Image || ! d3d12Image->mImpl->riveImage ) {
         CI_LOG_W( "drawImage: Invalid D3D12 image" );
         return;
     }
 
-    mRiveRenderer->save();
-    mRiveRenderer->transform( toRiveMat( mTransform ) );
-
-    // Scale and position the image
-    float sx = destRect.getWidth() / image->getWidth();
-    float sy = destRect.getHeight() / image->getHeight();
-    mRiveRenderer->transform( Mat2D( sx, 0, 0, sy, destRect.x1, destRect.y1 ) );
-
-    mRiveRenderer->drawImage( d3d12Image->mImpl->riveImage.get(), rive::ImageSampler::LinearClamp(), rive::BlendMode::srcOver, 1.0f );
-    mRiveRenderer->restore();
+    // TODO: Implement image drawing
+    CI_LOG_W( "CanvasD3d12::drawImage not yet implemented" );
 }
 
 void CanvasD3d12::drawImage( const ImageRef &image, const Rectf &srcRect, const Rectf &destRect )
 {
-    if( ! image ) return;
+    if( ! image || ! mRiveRenderer ) return;
 
-    // If recording, redirect to DisplayList
-    if( mRecordingDisplayList ) {
-        mRecordingDisplayList->recordDrawImage( image, srcRect, destRect );
-        return;
-    }
-
-    if( ! mInFrame || ! mRiveRenderer ) return;
-
-    auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
-    if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage )
-        return;
-
-    // Create a mesh for the sub-rectangle
-    float u0 = srcRect.x1 / image->getWidth();
-    float v0 = srcRect.y1 / image->getHeight();
-    float u1 = srcRect.x2 / image->getWidth();
-    float v1 = srcRect.y2 / image->getHeight();
-
-    std::vector<vec2> vertices = {
-        vec2( destRect.x1, destRect.y1 ),
-        vec2( destRect.x2, destRect.y1 ),
-        vec2( destRect.x2, destRect.y2 ),
-        vec2( destRect.x1, destRect.y2 )
-    };
-
-    std::vector<vec2> uvs = {
-        vec2( u0, v0 ),
-        vec2( u1, v0 ),
-        vec2( u1, v1 ),
-        vec2( u0, v1 )
-    };
-
-    std::vector<uint16_t> indices = { 0, 1, 2, 0, 2, 3 };
-
-    drawImageMesh( image, vertices, uvs, indices, 1.0f );
+    // TODO: Implement image drawing with source rect
+    CI_LOG_W( "CanvasD3d12::drawImage(srcRect) not yet implemented" );
 }
 
 void CanvasD3d12::drawImageMesh( const ImageRef &image,
@@ -893,51 +562,59 @@ void CanvasD3d12::drawImageMesh( const ImageRef &image,
                                   std::span<const uint16_t> indices,
                                   float opacity )
 {
-    if( ! mInFrame || ! mRiveRenderer || ! mRiveContext || ! image ) return;
-    if( vertices.size() != uvs.size() ) return;
+    if( ! image || ! mRiveRenderer ) return;
 
-    auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
-    if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage )
-        return;
+    // TODO: Implement mesh image drawing
+    CI_LOG_W( "CanvasD3d12::drawImageMesh not yet implemented" );
+}
 
-    // Create Rive buffers
-    auto vertexBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::vertex, RenderBufferFlags::none, vertices.size() * sizeof( float ) * 2 );
-    auto uvBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::vertex, RenderBufferFlags::none, uvs.size() * sizeof( float ) * 2 );
-    auto indexBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::index, RenderBufferFlags::none, indices.size() * sizeof( uint16_t ) );
+// ------------------------------------------------------------------------------------------------
+// FrozenPath API
+// ------------------------------------------------------------------------------------------------
 
-    // Map and fill buffers
-    float* vertexData = static_cast<float*>( vertexBuffer->map() );
-    float* uvData = static_cast<float*>( uvBuffer->map() );
-    uint16_t* indexData = static_cast<uint16_t*>( indexBuffer->map() );
+FrozenPathRef CanvasD3d12::freezePathFill( const CachedPathRef &path, const Paint &paint, FillRule rule )
+{
+    if( ! path ) return nullptr;
 
-    for( size_t i = 0; i < vertices.size(); ++i ) {
-        vertexData[i * 2] = vertices[i].x;
-        vertexData[i * 2 + 1] = vertices[i].y;
-        uvData[i * 2] = uvs[i].x;
-        uvData[i * 2 + 1] = uvs[i].y;
+    auto frozen = std::make_shared<FrozenPathD3d12>();
+    frozen->mSourcePath = path;
+    frozen->mBounds = path->getBounds();
+    frozen->mIsStroke = false;
+    frozen->mFillRule = rule;
+    frozen->mImpl->cachedPath = path;
+    frozen->mImpl->isStroke = false;
+
+    return frozen;
+}
+
+FrozenPathRef CanvasD3d12::freezePathStroke( const CachedPathRef &path, const Paint &paint )
+{
+    if( ! path ) return nullptr;
+
+    auto frozen = std::make_shared<FrozenPathD3d12>();
+    frozen->mSourcePath = path;
+    frozen->mBounds = path->getBounds();
+    frozen->mIsStroke = true;
+    frozen->mStrokeWidth = paint.getStrokeWidth();
+    frozen->mImpl->cachedPath = path;
+    frozen->mImpl->isStroke = true;
+
+    return frozen;
+}
+
+void CanvasD3d12::drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint )
+{
+    if( ! frozenPath ) return;
+
+    auto d3d12Frozen = std::dynamic_pointer_cast<FrozenPathD3d12>( frozenPath );
+    if( ! d3d12Frozen || ! d3d12Frozen->mImpl->cachedPath ) return;
+
+    // Just draw the cached path - D3D12/Rive handles caching internally
+    if( d3d12Frozen->mImpl->isStroke ) {
+        strokePath( d3d12Frozen->mImpl->cachedPath, paint );
+    } else {
+        fillPath( d3d12Frozen->mImpl->cachedPath, paint, d3d12Frozen->mFillRule );
     }
-
-    std::memcpy( indexData, indices.data(), indices.size() * sizeof( uint16_t ) );
-
-    vertexBuffer->unmap();
-    uvBuffer->unmap();
-    indexBuffer->unmap();
-
-    mRiveRenderer->save();
-    mRiveRenderer->transform( toRiveMat( mTransform ) );
-
-    mRiveRenderer->drawImageMesh(
-        d3d12Image->mImpl->riveImage.get(),
-        rive::ImageSampler::LinearClamp(),
-        vertexBuffer,
-        uvBuffer,
-        indexBuffer,
-        static_cast<uint32_t>( vertices.size() ),
-        static_cast<uint32_t>( indices.size() ),
-        rive::BlendMode::srcOver,
-        opacity );
-
-    mRiveRenderer->restore();
 }
 
 // ------------------------------------------------------------------------------------------------

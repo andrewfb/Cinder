@@ -30,6 +30,7 @@
 #include <wrl/client.h>
 
 #include <vector>
+#include <functional>
 
 // Forward declarations for Rive types
 namespace rive {
@@ -98,12 +99,37 @@ private:
 };
 
 // ------------------------------------------------------------------------------------------------
+// FrozenPathD3d12 - D3D12 implementation of FrozenPath
+// ------------------------------------------------------------------------------------------------
+
+// Forward declare internal struct defined in cpp file
+struct FrozenPathD3d12Impl;
+
+class CI_API FrozenPathD3d12 : public FrozenPath {
+public:
+    FrozenPathD3d12();
+    ~FrozenPathD3d12() override;
+
+    //! Check if this frozen path is valid (tessellation was captured successfully)
+    bool isValid() const override;
+
+    //! Get the fill rule used when freezing (for fills)
+    FillRule getFillRule() const { return mFillRule; }
+
+private:
+    friend class CanvasD3d12;
+
+    FillRule mFillRule = FillRule::NonZero;
+    std::unique_ptr<FrozenPathD3d12Impl> mImpl;
+};
+
+// ------------------------------------------------------------------------------------------------
 // DisplayListD3d12 - D3D12 implementation of DisplayList
 // ------------------------------------------------------------------------------------------------
 
 class CanvasD3d12;  // Forward declaration
 
-//! D3D12 implementation of DisplayList that records drawing commands.
+//! D3D12 implementation of DisplayList that records drawing commands and creates FrozenPaths.
 class CI_API DisplayListD3d12 : public DisplayList {
 public:
     DisplayListD3d12( CanvasD3d12* canvas );
@@ -133,16 +159,6 @@ public:
     //! Get content bounds
     Rectf getBounds() const override { return mBounds; }
 
-    // Recording methods (called by CanvasD3d12 during recording)
-    void recordFillPath( const CachedPathRef& path, const Paint& paint, FillRule rule );
-    void recordStrokePath( const CachedPathRef& path, const Paint& paint );
-    void recordDrawImage( const ImageRef& image, const Rectf& destRect );
-    void recordDrawImage( const ImageRef& image, const Rectf& srcRect, const Rectf& destRect );
-    void recordSave();
-    void recordRestore();
-    void recordSetTransform( const mat3& transform );
-    void recordClip( const CachedPathRef& path, FillRule rule );
-
 private:
     friend class CanvasD3d12;
 
@@ -160,7 +176,8 @@ private:
     // A recorded draw command
     struct Command {
         CommandType type;
-        CachedPathRef cachedPath;
+        FrozenPathRef frozenPath;
+        CachedPathRef cachedPath;  // For clip commands
         ImageRef image;
         Paint paint;
         mat3 transform;
@@ -209,18 +226,9 @@ public:
     CanvasD3d12& operator=( const CanvasD3d12& ) = delete;
 
     // === Frame Management ===
-    //! Begin rendering at the given size with the provided command list.
-    //! The command list must be in the recording state (Reset() already called).
-    //! After end(), the command list remains open for additional rendering (e.g., ImGui).
-    //! The caller is responsible for closing and executing the command list.
-    void begin( const ivec2 &size, ID3D12GraphicsCommandList* commandList );
-
-    //! Legacy begin() without command list - will assert. Use begin(size, commandList) instead.
+    //! Begin rendering at the given size
     void begin( const ivec2 &size ) override;
 
-    //! End canvas rendering. Flushes Rive but leaves command list open.
-    //! After this call, the render target is in RENDER_TARGET state and ready for
-    //! additional rendering. Caller must close and execute the command list.
     void end() override;
     bool inFrame() const override { return Canvas::mInFrame; }
 
@@ -231,17 +239,20 @@ public:
     //! Get the current clear color
     ColorAf getClearColor() const { return mClearColor; }
 
+    //! Callback type for post-flush rendering (e.g., ImGui)
+    //! Called after Rive flush but before command list is closed.
+    //! The command list and render target are ready for additional rendering.
+    using PostFlushCallback = std::function<void( ID3D12GraphicsCommandList* cmdList )>;
+
+    //! Set callback for post-flush rendering (e.g., ImGui)
+    //! The callback is invoked in end() after Rive's flush with render target in RENDER_TARGET state
+    void setPostFlushCallback( PostFlushCallback callback ) { mPostFlushCallback = std::move( callback ); }
+
     // === Cached Path API ===
     using Canvas::createPath;  // Bring createPath(Path2d) into scope
     CachedPathRef createPath( const Shape2d &shape ) override;
     void fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
     void strokePath( const CachedPathRef &path, const Paint &paint ) override;
-
-    // === Uncached Path API (override for DisplayList recording) ===
-    void fillPath( const Path2d &path, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
-    void strokePath( const Path2d &path, const Paint &paint ) override;
-    void fillShape( const Shape2d &shape, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
-    void strokeShape( const Shape2d &shape, const Paint &paint ) override;
 
     // === Image API ===
     //! Create an image from a D3D12 resource (texture)
@@ -260,6 +271,12 @@ public:
                         std::span<const uint16_t> indices,
                         float opacity = 1.0f ) override;
 
+    // === FrozenPath API ===
+    FrozenPathRef freezePathFill( const CachedPathRef &path, const Paint &paint,
+                                   FillRule rule = FillRule::NonZero ) override;
+    FrozenPathRef freezePathStroke( const CachedPathRef &path, const Paint &paint ) override;
+    void drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint ) override;
+
     // === DisplayList API ===
     DisplayListRef createDisplayList() override;
 
@@ -270,15 +287,9 @@ public:
     //! Get the D3D12 renderer
     app::RendererD3d12Ref getRenderer() const { return mRenderer; }
 
-    //! Get the current frame's command list (valid after begin())
+    //! Get the current frame's command list (valid after begin(), before end())
     //! Useful for interleaving custom D3D12 rendering (e.g., ImGui) with canvas commands
-    ID3D12GraphicsCommandList* getCommandList() const { return mCommandList; }
-
-    //! Release cached render targets that hold references to back buffers.
-    //! Call this in your app's resize() handler so the renderer can successfully
-    //! ResizeBuffers() on the next frame (the framework triggers RendererD3d12::defaultResize()
-    //! before App::resize(), so swapchain resizing is deferred until startDraw()).
-    void releaseRenderTargets();
+    ID3D12GraphicsCommandList* getCommandList() const { return mCommandList.Get(); }
 
 private:
     // Private constructor - use create() factory method
@@ -297,8 +308,10 @@ private:
     // D3D12-specific Rive context access
     rive::gpu::RenderContextD3D12Impl* mRiveContextD3d12 = nullptr;  // Raw pointer for D3D12-specific calls
 
-    // Command list provided by caller (not owned)
-    ID3D12GraphicsCommandList* mCommandList = nullptr;
+    // Per-frame command allocators (one per swap chain buffer)
+    static const UINT MaxFrameCount = app::RendererD3d12::MaxFrameCount;
+    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mCommandAllocators[MaxFrameCount];
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList;
 
     // Cached render targets (one per swap chain buffer)
     std::vector<rive::rcp<rive::gpu::RenderTargetD3D12>> mRenderTargets;
@@ -308,6 +321,11 @@ private:
 
     // Last frame size (for resize detection)
     ivec2 mLastFrameSize;
+
+    // Track back buffer state per frame (true = in COMMON state after resize, needs COMMON→PRESENT)
+    // Initialized to false because swap chain buffers from CreateSwapChain start in PRESENT state
+    // Only set to true after ResizeBuffers() which creates buffers in COMMON state
+    bool mBackBufferInCommonState[MaxFrameCount] = { false, false, false };
 
     // Frame counter for Rive resource management
     // Rive requires monotonically increasing frame numbers for resource lifecycle
@@ -319,6 +337,9 @@ private:
 
     // Clear color for frame (used with Rive's clear loadAction)
     ColorAf mClearColor = ColorAf( 0.2f, 0.2f, 0.25f, 1.0f );
+
+    // Post-flush callback for additional D3D12 rendering (e.g., ImGui)
+    PostFlushCallback mPostFlushCallback;
 };
 
 } } // namespace cinder::vg
