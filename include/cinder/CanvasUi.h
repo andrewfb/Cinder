@@ -102,6 +102,13 @@ class CI_API CanvasUi {
 	const mat4& getModelMatrix() const;
 	//! Get inverse model matrix (window to content transform)
 	const mat4& getInverseModelMatrix() const;
+	//! Get 2D transform matrix (content to window transform)
+	//! Returns a column-major mat3:
+	//! | zoom   0    translate_x |
+	//! |  0   zoom   translate_y |
+	//! |  0     0         1      |
+	//! Use with vg::Canvas::setTransform() or cairo::Context::setMatrix().
+	mat3 getTransform2d() const;
 	//! Get current position offset in viewport coordinates
 	vec2 getPosition() const { return mPosition; }
 	//! Get current zoom factor
