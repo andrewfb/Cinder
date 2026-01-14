@@ -94,12 +94,37 @@ private:
 };
 
 // ------------------------------------------------------------------------------------------------
+// FrozenPathGl - GL implementation of FrozenPath
+// ------------------------------------------------------------------------------------------------
+
+// Forward declare internal struct defined in cpp file
+struct FrozenPathGlImpl;
+
+class CI_API FrozenPathGl : public FrozenPath {
+public:
+    FrozenPathGl();
+    ~FrozenPathGl() override;
+
+    //! Check if this frozen path is valid (tessellation was captured successfully)
+    bool isValid() const override;
+
+    //! Get the fill rule used when freezing (for fills)
+    FillRule getFillRule() const { return mFillRule; }
+
+private:
+    friend class CanvasGl;
+
+    FillRule mFillRule = FillRule::NonZero;
+    std::unique_ptr<FrozenPathGlImpl> mImpl;
+};
+
+// ------------------------------------------------------------------------------------------------
 // DisplayListGl - GL implementation of DisplayList
 // ------------------------------------------------------------------------------------------------
 
 class CanvasGl;  // Forward declaration
 
-//! GL implementation of DisplayList that records drawing commands.
+//! GL implementation of DisplayList that records drawing commands and creates FrozenPaths.
 class CI_API DisplayListGl : public DisplayList {
 public:
     DisplayListGl( CanvasGl* canvas );
@@ -146,7 +171,8 @@ private:
     // A recorded draw command
     struct Command {
         CommandType type;
-        CachedPathRef cachedPath;
+        FrozenPathRef frozenPath;
+        CachedPathRef cachedPath;  // For clip commands
         ImageRef image;
         Paint paint;
         mat3 transform;
@@ -165,10 +191,14 @@ private:
     void recordSetTransform( const mat3& transform );
     void recordClip( const CachedPathRef& path, FillRule rule = FillRule::NonZero );
 
+    //! Create frozen paths for all recorded path commands (call after endRecording)
+    void createFrozenPaths();
+
     CanvasGl* mOwnerCanvas = nullptr;
     Canvas* mRecordingCanvas = nullptr;
     bool mRecording = false;
     bool mValid = false;
+    bool mFrozenPathsCreated = false;
     std::vector<Command> mCommands;
     Rectf mBounds;
 };
@@ -278,6 +308,12 @@ public:
 
     // === Clipping API ===
     // clipRect, clipPath, clipShape - use base class implementations (delegates to implClipPath)
+
+    // === FrozenPath API ===
+    FrozenPathRef freezePathFill( const CachedPathRef &path, const Paint &paint,
+                                   FillRule rule = FillRule::NonZero ) override;
+    FrozenPathRef freezePathStroke( const CachedPathRef &path, const Paint &paint ) override;
+    void drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint ) override;
 
     // === DisplayList API ===
     DisplayListRef createDisplayList() override;

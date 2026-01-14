@@ -8,7 +8,6 @@
 #include "rive/renderer/gl/gl_utils.hpp"
 #include "rive/renderer/gl/render_target_gl.hpp"
 #include "shaders/constants.glsl"
-#include <map>
 #include <sstream>
 
 #include "generated/shaders/pls_load_store_ext.glsl.exports.h"
