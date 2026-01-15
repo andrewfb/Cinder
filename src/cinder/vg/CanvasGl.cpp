@@ -211,6 +211,7 @@ void CanvasGl::initializeGl( bool forceMsaaMode )
     const auto& features = mRiveContext->platformFeatures();
     CI_LOG_I( "CanvasGl created - supportsRasterOrderingMode=" << features.supportsRasterOrderingMode
               << " supportsAtomicMode=" << features.supportsAtomicMode
+              << " supportsClockwiseMode=" << features.supportsClockwiseMode
               << " supportsClockwiseAtomicMode=" << features.supportsClockwiseAtomicMode );
 
     // CRITICAL: Clean up Rive's initialization state
@@ -465,7 +466,15 @@ void CanvasGl::begin( const ivec2 &size )
         frameDesc.renderTargetHeight = size.y;
         frameDesc.loadAction = gpu::LoadAction::clear;
         frameDesc.clearColor = 0x00000000;  // Transparent black
-        frameDesc.clockwiseFillOverride = true; // Enable feathering for any fill rule
+        // clockwiseFillOverride enables feathering (ENABLE_FEATHER shader feature).
+        // On GL with fragment_shader_interlock support, this triggers InterlockMode::clockwise
+        // which sets clipUpdateOnly on clip updates, making isPaintDraw=false.
+        // This causes an assertion failure for feathered clip operations:
+        //   assert(isPaintDraw || interlockMode == gpu::InterlockMode::atomics)
+        // Solution: Set disableRasterOrdering=true to skip clockwise mode and use atomics
+        // mode instead, where the assertion passes.
+        frameDesc.clockwiseFillOverride = true;  // Enable feathering
+        frameDesc.disableRasterOrdering = true;  // Force atomics mode to avoid assertion
         frameDesc.msaaSampleCount = 0;  // Always render to non-MSAA target (internal FBO or non-MSAA window)
 
         // Invalidate GL state since Cinder may have modified it
