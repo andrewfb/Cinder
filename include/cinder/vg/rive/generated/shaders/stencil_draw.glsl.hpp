@@ -6,10 +6,10 @@ namespace rive {
 namespace gpu {
 namespace glsl {
 const char stencil_draw[] = R"===(#ifdef BB
-g1(c0)i0(0,R3,KB);h1 j3 k3 g4 h4 p1(IF,c0,D,p,O){j0(p,D,KB,R3);g J=R2(KB.xy);uint H6=floatBitsToUint(KB.z)&0xffffu;J.z=H9(H6);l1(J);}
+w1(c0)l0(0,y4,MB);x1 n3 o3 U3 V3 y1(JF,c0,F,B,O){n0(B,F,MB,y4);g P=H3(MB.xy);uint E6=floatBitsToUint(MB.z)&0xffffu;P.z=z9(E6);z1(P);}
 #endif
 #ifdef GB
-W2 X2 U1(i,UD){V1(T0(.0));}
+c3 d3 d2(i,UD){e2(c1(.0));}
 #endif
 )===";
 } // namespace glsl
