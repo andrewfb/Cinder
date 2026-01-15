@@ -6,96 +6,96 @@ namespace rive {
 namespace gpu {
 namespace glsl {
 const char draw_clockwise_path_frag[] = R"===(#ifdef GB
-v2
-#ifndef FB
-F0(T3,z0);
+n2
+#ifndef EB
+C0(J3,x0);
 #endif
-Z0(L4,M0);
-#ifndef FB
-F0(M6,H2);
+U0(C4,K0);
+#ifndef EB
+C0(J6,B2);
 #endif
-Z0(h6,B1);w2
+U0(h6,v1);o2
+#ifdef EB
+G2(IB)
+#else
+C1(IB)
+#endif
+{H(Z0,g);
+#ifdef DB
+T(A1,e);
+#else
+T(J,N2);
+#endif
+H(m0,e);
+#ifdef L
+H(M1,E);
+#endif
+#ifdef Z
+H(J0,g);
+#endif
 #ifdef FB
-M2(JB)
-#else
-F1(JB)
+H(T1,e);
 #endif
-{I(o1,g);
-#ifdef EB
-L(W0,d);
-#else
-L(C,c3);
-#endif
-I(e0,d);
-#ifdef Q
-I(a2,G);
-#endif
+e a1=
 #ifdef DB
-I(S0,g);
-#endif
-#ifdef HB
-I(m2,d);
-#endif
-d m0=
-#ifdef EB
-W0;
+A1;
 #else
-lg(C);
+Xc(J);
 #endif
-i D0;d v3;
-#if defined(EB)&&defined(OB)
-if(!OB)
+i e1;e j3;
+#if defined(DB)&&defined(JB)
+if(!JB)
 #endif
-{D0=J8(o1,1. U2);v3=1.;
-#ifdef DB
-if(DB){d og=J7(F5(S0));v3=min(og,v3);}
+{e1=m7(Z0,1. H2);j3=1.;
+#ifdef Z
+if(Z){e lg=D7(D5(J0));j3=min(lg,j3);}
 #endif
-}i2;
-#if defined(EB)&&defined(OB)
-if(OB){d1(B1,packHalf2x16(f3(m0,e0)));
-#ifndef FB
-h2(z0);
+}g2;
+#if defined(DB)&&defined(JB)
+if(JB){W0(v1,packHalf2x16(X2(a1,m0)));
+#ifndef EB
+f2(x0);
 #endif
 }else
 #endif
-{G Z2=unpackHalf2x16(Y0(B1));d K8=Z2.y;d G4=K8==e0?Z2.x:k1(.0);d dd=
+{E r4=unpackHalf2x16(T0(v1));e D8=r4.y;e v4=D8==m0?r4.x:d1(.0);e dd=
+#ifndef DB
+y5(J)?max(v4,a1):
+#endif
+v4+a1;
+#ifdef L
+if(L&&M1.x!=.0){E D0=unpackHalf2x16(T0(K0));e l5=D0.y;e mg=l5==M1.x?D0.x:d1(.0);j3=min(mg,j3);}
+#endif
+j3=max(j3,.0);e ra=r9(v4,.0,j3);e I1=r9(dd,.0,j3);
 #ifndef EB
-B5(C)?max(G4,m0):
-#endif
-G4+m0;
-#ifdef Q
-if(Q&&a2.x!=.0){G I0=unpackHalf2x16(Y0(M0));d o5=I0.y;d pg=o5==a2.x?I0.x:k1(.0);v3=min(pg,v3);}
-#endif
-v3=max(v3,.0);d za=C9(G4,.0,v3);d H1=C9(dd,.0,v3);
-#ifndef FB
-i E1=X0(z0);
-#ifdef HB
-if(HB){if(m2!=J5(r5)&&H1!=.0){if(za==.0){D0.xyz=v5(D0.xyz,E1,C6(m2));
-#ifndef EB
-if(H1<v3){c1(H2,D0);}
-#endif
-}else{D0=X0(H2);h2(H2);}}D0.xyz*=D0.w;}
-#endif
-#endif
-D0*=(H1-za)/max(1.-za*D0.w,xe);
-#ifndef EB
-#ifdef HB
-#define ed (!HB||m2==J5(r5))&&D0.w>=1.
-#else
-#define ed D0.w>=1.
-#endif
-zc(ed,B1,packHalf2x16(f3(dd,e0)));
-#else
-Q1(B1);
-#endif
-#ifndef FB
-yc(D0.w==.0,z0,E1*(1.-D0.w)+D0);
-#endif
-}Q1(M0);j2;
+i B1=S0(x0);
 #ifdef FB
-r1=D0;
+if(FB){if(T1!=H5(o5)&&I1!=.0){if(ra==.0){e1.xyz=p5(e1.xyz,B1,z6(T1));
+#ifndef DB
+if(I1<j3){V0(B2,e1);}
 #endif
-x2;}
+}else{e1=S0(B2);f2(B2);}}e1.xyz*=e1.w;}
+#endif
+#endif
+e1*=(I1-ra)/max(1.-ra*e1.w,ve);
+#ifndef DB
+#ifdef FB
+#define ed (!FB||T1==H5(o5))&&e1.w>=1.
+#else
+#define ed e1.w>=1.
+#endif
+tc(ed,v1,packHalf2x16(X2(dd,m0)));
+#else
+L1(v1);
+#endif
+#ifndef EB
+sc(e1.w==.0,x0,B1*(1.-e1.w)+e1);
+#endif
+}L1(K0);h2;
+#ifdef EB
+l1=e1;
+#endif
+p2;}
 #endif
 )===";
 } // namespace glsl
