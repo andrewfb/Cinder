@@ -1,5 +1,6 @@
 ---
 Language: Cpp
+LineEnding: CRLF
 AccessModifierOffset: -2
 AlignAfterOpenBracket: false
 AlignConsecutiveAssignments: false

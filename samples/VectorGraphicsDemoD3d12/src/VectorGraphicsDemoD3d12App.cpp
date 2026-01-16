@@ -714,13 +714,11 @@ void VectorGraphicsDemoD3d12App::setup()
 
 void VectorGraphicsDemoD3d12App::resize()
 {
-    // Wait for GPU work before resize
-    if( mRenderer )
-        mRenderer->waitForGpu();
-
-    // Let the renderer handle swap chain resize
-    if( mRenderer )
-        mRenderer->defaultResize();
+    // Release canvas render targets so ResizeBuffers() can succeed.
+    // The framework calls defaultResize() before this handler, which sets a pending flag.
+    // The actual resize happens in startDraw() after we've released our references here.
+    if( mCanvas )
+        mCanvas->releaseRenderTargets();
 }
 
 void VectorGraphicsDemoD3d12App::switchDemo( int i )
@@ -746,10 +744,20 @@ void VectorGraphicsDemoD3d12App::update()
 
 void VectorGraphicsDemoD3d12App::draw()
 {
-    if( !mCanvas ) return;
+    if( ! mCanvas || ! mRenderer )
+        return;
+
+    // Get back buffer - may be null during resize
+    ID3D12Resource* backBuffer = mRenderer->getCurrentBackBuffer();
+    if( ! backBuffer )
+        return;
+
+    // Use back buffer dimensions (may differ from window size during resize)
+    D3D12_RESOURCE_DESC bufferDesc = backBuffer->GetDesc();
+    ivec2 bufferSize( static_cast<int>( bufferDesc.Width ), static_cast<int>( bufferDesc.Height ) );
 
     // Canvas rendering
-    mCanvas->begin( toPixels( getWindowSize() ) );
+    mCanvas->begin( bufferSize );
     mCanvas->setTransform( mCanvasUi.getTransform2d() );
 
     if( mDemo ) {
