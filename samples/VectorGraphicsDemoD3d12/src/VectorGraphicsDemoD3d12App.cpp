@@ -12,6 +12,7 @@
 #include "cinder/CinderImGui.h"
 #include "imgui/imgui_impl_dx12.h"
 #include <d3d12.h>
+#define NONMINMAX
 
 #include "cinder/vg/CanvasD3d12.h"
 #include "cinder/vg/Paint.h"
@@ -248,7 +249,322 @@ private:
 };
 
 // ============================================================================
-// Demo 4: Feathering
+// Demo 4: Paths
+// ============================================================================
+class PathsDemo : public Demo {
+public:
+    // Minimal shape definition - just what's needed
+    struct Shape {
+        vec2                        offset;
+        std::vector<vec2>           points;
+        std::function<Path2d(const std::vector<vec2>&)> buildPath;
+        ColorAf                     fillColor{ 0,0,0,0 };
+        ColorAf                     strokeColor{ 0,0,0,0 };
+        float                       strokeWidth = 0;
+        std::vector<std::pair<int,int>> handleLines;  // For bezier control handles
+    };
+
+    std::string getName() const override { return "Paths"; }
+    std::string getDescription() const override { return "Click to select, drag control points to edit"; }
+    Rectf getContentBounds() const override { return Rectf( 0, 0, 700, 400 ); }
+
+    void setup( vg::CanvasD3d12Ref canvas ) override {
+        mCanvas = canvas;
+        initializeShapes();
+    }
+
+    void initializeShapes() {
+        mShapes.clear();
+
+        // Star - linear path through alternating radii
+        Shape star;
+        star.offset = vec2(80, 80);
+        for( int i = 0; i < 10; i++ ) {
+            float a = i * M_PI / 5.0f - M_PI / 2;
+            float r = (i % 2 == 0) ? 50.0f : 22.0f;
+            star.points.push_back( vec2( cos(a), sin(a) ) * r );
+        }
+        star.buildPath = []( const std::vector<vec2>& pts ) {
+            Path2d p;
+            for( size_t i = 0; i < pts.size(); i++ ) {
+                if( i == 0 ) p.moveTo( pts[i] ); else p.lineTo( pts[i] );
+            }
+            p.close();
+            return p;
+        };
+        star.fillColor = ColorAf(1, 0.85f, 0, 1);
+        mShapes.push_back( star );
+
+        // Heart - two cubic beziers
+        Shape heart;
+        heart.offset = vec2(270, 70);
+        float scale = 0.7f, cx = 70, cy = 67.5f;
+        heart.points = {
+            vec2((70 - cx) * scale, (40 - cy) * scale),   // 0: top
+            vec2((45 - cx) * scale, (0 - cy) * scale),    // 1: ctrl
+            vec2((0 - cx) * scale, (60 - cy) * scale),    // 2: ctrl
+            vec2((70 - cx) * scale, (95 - cy) * scale),   // 3: bottom
+            vec2((140 - cx) * scale, (60 - cy) * scale),  // 4: ctrl
+            vec2((95 - cx) * scale, (0 - cy) * scale)     // 5: ctrl
+        };
+        heart.buildPath = []( const std::vector<vec2>& pts ) {
+            Path2d p;
+            p.moveTo( pts[0] );
+            p.curveTo( pts[1], pts[2], pts[3] );
+            p.curveTo( pts[4], pts[5], pts[0] );
+            p.close();
+            return p;
+        };
+        heart.fillColor = ColorAf(1, 0.2f, 0.4f, 1);
+        heart.handleLines = {{0,1}, {3,2}, {0,5}, {3,4}};
+        mShapes.push_back( heart );
+
+        // Polygon
+        Shape poly;
+        poly.offset = vec2(430, 80);
+        for( int i = 0; i < mSides; i++ ) {
+            float a = i * M_PI * 2.0f / mSides - M_PI / 2.0f;
+            poly.points.push_back( vec2( cos(a), sin(a) ) * 50.0f );
+        }
+        poly.buildPath = []( const std::vector<vec2>& pts ) {
+            Path2d p;
+            for( size_t i = 0; i < pts.size(); i++ ) {
+                if( i == 0 ) p.moveTo( pts[i] ); else p.lineTo( pts[i] );
+            }
+            p.close();
+            return p;
+        };
+        poly.fillColor = ColorAf(0.5f, 0.8f, 0.5f, 1);
+        poly.strokeColor = ColorAf(0.2f, 0.4f, 0.2f, 1);
+        poly.strokeWidth = 4;
+        mShapes.push_back( poly );
+
+        // Rounded Rect - 4 corners with quadratic curves
+        Shape rrect;
+        rrect.offset = vec2(550, 30);
+        float w = 100, h = 100, r = 15;
+        rrect.points = {
+            vec2(r, 0), vec2(w-r, 0),       // 0,1: top edge
+            vec2(w, 0),                      // 2: TR corner control
+            vec2(w, r), vec2(w, h-r),       // 3,4: right edge
+            vec2(w, h),                      // 5: BR corner control
+            vec2(w-r, h), vec2(r, h),       // 6,7: bottom edge
+            vec2(0, h),                      // 8: BL corner control
+            vec2(0, h-r), vec2(0, r),       // 9,10: left edge
+            vec2(0, 0)                       // 11: TL corner control
+        };
+        rrect.buildPath = []( const std::vector<vec2>& pts ) {
+            Path2d p;
+            p.moveTo( pts[0] );
+            p.lineTo( pts[1] );
+            p.quadTo( pts[2], pts[3] );   // TR corner
+            p.lineTo( pts[4] );
+            p.quadTo( pts[5], pts[6] );   // BR corner
+            p.lineTo( pts[7] );
+            p.quadTo( pts[8], pts[9] );   // BL corner
+            p.lineTo( pts[10] );
+            p.quadTo( pts[11], pts[0] );  // TL corner
+            p.close();
+            return p;
+        };
+        rrect.fillColor = ColorAf(0.3f, 0.7f, 0.9f, 0.8f);
+        rrect.strokeColor = ColorAf(0.1f, 0.3f, 0.5f, 1);
+        rrect.strokeWidth = 3;
+        rrect.handleLines = {{1,2}, {4,5}, {7,8}, {10,11}};
+        mShapes.push_back( rrect );
+
+        // Cubic bezier curve
+        Shape cubic;
+        cubic.offset = vec2(80, 280);
+        cubic.points = { vec2(0,0), vec2(40,-70), vec2(80,70), vec2(120,0),
+                         vec2(160,-70), vec2(200,70), vec2(240,0) };
+        cubic.buildPath = []( const std::vector<vec2>& pts ) {
+            Path2d p;
+            p.moveTo( pts[0] );
+            p.curveTo( pts[1], pts[2], pts[3] );
+            p.curveTo( pts[4], pts[5], pts[6] );
+            return p;
+        };
+        cubic.strokeColor = ColorAf(0.5f, 0.5f, 1, 1);
+        cubic.strokeWidth = 4;
+        cubic.handleLines = {{0,1}, {3,2}, {3,4}, {6,5}};
+        mShapes.push_back( cubic );
+
+        // Quadratic bezier curve
+        Shape quad;
+        quad.offset = vec2(400, 280);
+        quad.points = { vec2(0,0), vec2(60,-80), vec2(120,0), vec2(180,80), vec2(240,0) };
+        quad.buildPath = []( const std::vector<vec2>& pts ) {
+            Path2d p;
+            p.moveTo( pts[0] );
+            p.quadTo( pts[1], pts[2] );
+            p.quadTo( pts[3], pts[4] );
+            return p;
+        };
+        quad.strokeColor = ColorAf(1, 0.5f, 0.5f, 1);
+        quad.strokeWidth = 4;
+        quad.handleLines = {{0,1}, {2,1}, {2,3}, {4,3}};
+        mShapes.push_back( quad );
+    }
+
+    vec2 toContent( vec2 windowPos ) const {
+        return mCanvasUi ? mCanvasUi->toContent( windowPos ) : windowPos;
+    }
+
+    void drawControlPoints( vg::CanvasD3d12Ref canvas, const Shape& shape, ColorAf color ) {
+        // Handle lines first
+        vg::Paint linePaint;
+        linePaint.setColor( ColorAf(0.5f, 0.5f, 0.5f, 0.6f) ).setStrokeWidth(1);
+        for( const auto& line : shape.handleLines ) {
+            canvas->drawLine( shape.points[line.first], shape.points[line.second], linePaint );
+        }
+        // Build set of "endpoint" indices (points that are connected by handle lines)
+        std::set<int> endpoints;
+        for( const auto& line : shape.handleLines ) {
+            endpoints.insert( line.first );
+        }
+        // Control points - white for intermediates, colored for endpoints
+        for( size_t i = 0; i < shape.points.size(); i++ ) {
+            bool isEndpoint = shape.handleLines.empty() || endpoints.count((int)i) > 0;
+            float r = isEndpoint ? 5.0f : 4.0f;
+            vg::Paint fill;
+            fill.setColor( isEndpoint ? color : ColorAf(1,1,1,0.9f) );
+            canvas->fillCircle( shape.points[i], r, fill );
+            vg::Paint outline; outline.setColor( ColorAf(0.2f, 0.2f, 0.3f, 1) ).setStrokeWidth(1.5f);
+            canvas->strokeCircle( shape.points[i], r, outline );
+        }
+    }
+
+    void draw( vg::CanvasD3d12Ref canvas ) override {
+        // Update polygon if sides changed
+        if( mShapes.size() > 2 && mShapes[2].points.size() != (size_t)mSides ) {
+            mShapes[2].points.clear();
+            for( int i = 0; i < mSides; i++ ) {
+                float a = i * M_PI * 2.0f / mSides - M_PI / 2.0f;
+                mShapes[2].points.push_back( vec2( cos(a), sin(a) ) * 50.0f );
+            }
+        }
+
+        for( int idx = 0; idx < (int)mShapes.size(); idx++ ) {
+            const auto& shape = mShapes[idx];
+            Path2d path = shape.buildPath( shape.points );
+            bool isFilled = shape.fillColor.a > 0;
+
+            canvas->save();
+            canvas->translate( shape.offset );
+
+            // Hover glow
+            if( mHovered == idx ) {
+                vg::Paint glow;
+                glow.setColor( ColorAf(1, 1, 1, 0.25f) ).setFeather(8).setStrokeWidth( isFilled ? 6 : 10 );
+                canvas->strokePath( canvas->createPath( path ), glow );
+            }
+
+            // Fill
+            if( isFilled ) {
+                vg::Paint fill; fill.setColor( shape.fillColor );
+                canvas->fillPath( canvas->createPath( path ), fill );
+            }
+
+            // Stroke
+            if( shape.strokeColor.a > 0 && shape.strokeWidth > 0 ) {
+                vg::Paint stroke;
+                stroke.setColor( shape.strokeColor ).setStrokeWidth( shape.strokeWidth );
+                canvas->strokePath( canvas->createPath( path ), stroke );
+            }
+
+            // Control points when selected
+            if( mSelected == idx && !shape.points.empty() ) {
+                ColorAf handleColor = isFilled ? shape.fillColor : shape.strokeColor;
+                handleColor.a = 1.0f;
+                drawControlPoints( canvas, shape, handleColor );
+            }
+
+            canvas->restore();
+        }
+    }
+
+    int hitTestShapes( vec2 contentPos, float threshold = 15.0f ) {
+        struct Hit { int idx; float dist; };
+        std::vector<Hit> hits;
+
+        for( int idx = 0; idx < (int)mShapes.size(); idx++ ) {
+            const auto& shape = mShapes[idx];
+            Path2d path = shape.buildPath( shape.points );
+            vec2 local = contentPos - shape.offset;
+            bool isFilled = shape.fillColor.a > 0;
+
+            if( isFilled && path.contains( local ) ) return idx;
+            float dist = path.calcDistance( local );
+            if( dist < threshold ) hits.push_back({ idx, dist });
+        }
+
+        if( hits.empty() ) return -1;
+        std::sort( hits.begin(), hits.end(), []( const Hit& a, const Hit& b ) { return a.dist < b.dist; } );
+        return hits[0].idx;
+    }
+
+    int hitTestControlPoints( vec2 contentPos, int shapeIdx, float radius = 12.0f ) {
+        if( shapeIdx < 0 || shapeIdx >= (int)mShapes.size() ) return -1;
+        const auto& shape = mShapes[shapeIdx];
+        for( size_t i = 0; i < shape.points.size(); i++ ) {
+            if( glm::distance( contentPos, shape.points[i] + shape.offset ) < radius ) return (int)i;
+        }
+        return -1;
+    }
+
+    bool onMouseMove( ci::app::MouseEvent event ) override {
+        mHovered = hitTestShapes( toContent( vec2( event.getPos() ) ) );
+        return false;
+    }
+
+    bool onMouseDown( ci::app::MouseEvent event ) override {
+        if( !event.isLeftDown() ) return false;
+        vec2 contentPos = toContent( vec2( event.getPos() ) );
+
+        if( mSelected >= 0 ) {
+            int ptIdx = hitTestControlPoints( contentPos, mSelected );
+            if( ptIdx >= 0 ) {
+                mDragShape = mSelected;
+                mDragIndex = ptIdx;
+                return true;
+            }
+        }
+
+        int hit = hitTestShapes( contentPos );
+        mSelected = hit;
+        return hit >= 0;
+    }
+
+    bool onMouseDrag( ci::app::MouseEvent event ) override {
+        if( mDragIndex < 0 || mDragShape < 0 ) return false;
+        vec2 contentPos = toContent( vec2( event.getPos() ) );
+        if( mDragShape < (int)mShapes.size() && mDragIndex < (int)mShapes[mDragShape].points.size() ) {
+            mShapes[mDragShape].points[mDragIndex] = contentPos - mShapes[mDragShape].offset;
+        }
+        return true;
+    }
+
+    bool onMouseUp( ci::app::MouseEvent event ) override {
+        bool wasDragging = mDragIndex >= 0;
+        mDragIndex = -1;
+        mDragShape = -1;
+        return wasDragging;
+    }
+
+    void drawUI() override {
+        ImGui::SliderInt( "Polygon Sides", &mSides, 3, 12 );
+        if( ImGui::Button( "Reset All" ) ) initializeShapes();
+    }
+
+private:
+    std::vector<Shape> mShapes;
+    int mHovered = -1, mSelected = -1, mDragShape = -1, mDragIndex = -1;
+    int mSides = 6;
+};
+
+// ============================================================================
+// Demo 5: Feathering
 // ============================================================================
 class FeatheringDemo : public Demo {
 public:
@@ -649,6 +965,414 @@ private:
 };
 
 // ============================================================================
+// Demo 10: Image Mesh
+// ============================================================================
+class ImageMeshDemo : public Demo {
+public:
+    std::string getName() const override { return "Image Mesh"; }
+    std::string getDescription() const override { return "drawImageMesh - arbitrary mesh distortions"; }
+    Rectf getContentBounds() const override { return Rectf( 0, 0, 700, 500 ); }
+
+    void setup( vg::CanvasD3d12Ref canvas ) override {
+        mCanvas = canvas;
+        // Create checkerboard texture
+        Surface8u surf( 64, 64, true );
+        auto iter = surf.getIter();
+        while( iter.line() ) {
+            while( iter.pixel() ) {
+                bool light = ((iter.x()/8) + (iter.y()/8)) % 2 == 0;
+                iter.r() = light ? 255 : 60;
+                iter.g() = light ? 220 : 100;
+                iter.b() = light ? 100 : 200;
+                iter.a() = 255;
+            }
+        }
+        mImage = canvas->createImage( surf );
+        rebuildMesh();
+    }
+
+    void rebuildMesh() {
+        mVertices.clear();
+        mUvs.clear();
+        mIndices.clear();
+
+        // Create NxN grid of vertices
+        int n = mGridSize + 1;
+        for( int y = 0; y < n; y++ ) {
+            for( int x = 0; x < n; x++ ) {
+                float u = x / (float)mGridSize;
+                float v = y / (float)mGridSize;
+                mUvs.push_back( vec2( u, v ) );
+                mVertices.push_back( vec2( mMeshRect.x1 + u * mMeshRect.getWidth(),
+                                           mMeshRect.y1 + v * mMeshRect.getHeight() ) );
+            }
+        }
+
+        // Create triangle indices (two triangles per cell)
+        for( int y = 0; y < mGridSize; y++ ) {
+            for( int x = 0; x < mGridSize; x++ ) {
+                uint16_t i = y * n + x;
+                mIndices.push_back( i );
+                mIndices.push_back( i + 1 );
+                mIndices.push_back( i + n );
+                mIndices.push_back( i + 1 );
+                mIndices.push_back( i + n + 1 );
+                mIndices.push_back( i + n );
+            }
+        }
+    }
+
+    void update( double dt ) override {
+        if( mAnimate ) mTime += dt * mSpeed;
+
+        // Apply warp to vertices
+        int n = mGridSize + 1;
+        for( int y = 0; y < n; y++ ) {
+            for( int x = 0; x < n; x++ ) {
+                float u = x / (float)mGridSize;
+                float v = y / (float)mGridSize;
+
+                vec2 pos( mMeshRect.x1 + u * mMeshRect.getWidth(),
+                          mMeshRect.y1 + v * mMeshRect.getHeight() );
+
+                if( mWarpMode == 0 ) {
+                    // Wave warp
+                    float wave = sin( u * M_PI * mWaveFreq + mTime * 2 ) * mWarpAmount;
+                    pos.y += wave;
+                    float wave2 = sin( v * M_PI * mWaveFreq + mTime * 1.5f ) * mWarpAmount * 0.5f;
+                    pos.x += wave2;
+                }
+                else if( mWarpMode == 1 ) {
+                    // Bulge/pinch
+                    vec2 center = mMeshRect.getCenter();
+                    vec2 toCenter = pos - center;
+                    float dist = glm::length( toCenter );
+                    float maxDist = glm::length( mMeshRect.getSize() ) * 0.5f;
+                    float t = 1.0f - glm::clamp( dist / maxDist, 0.0f, 1.0f );
+                    float bulge = t * t * mWarpAmount * (sin( mTime ) * 0.5f + 0.5f);
+                    pos += glm::normalize( toCenter + vec2(0.001f) ) * bulge;
+                }
+                else if( mWarpMode == 2 ) {
+                    // Twist
+                    vec2 center = mMeshRect.getCenter();
+                    vec2 toCenter = pos - center;
+                    float dist = glm::length( toCenter );
+                    float maxDist = glm::length( mMeshRect.getSize() ) * 0.5f;
+                    float angle = (1.0f - dist / maxDist) * mWarpAmount * 0.02f * sin( mTime );
+                    float c = cos( angle ), s = sin( angle );
+                    pos = center + vec2( toCenter.x * c - toCenter.y * s,
+                                         toCenter.x * s + toCenter.y * c );
+                }
+                else if( mWarpMode == 3 ) {
+                    // Flag wave
+                    float wave = sin( u * M_PI * 3 + mTime * 3 ) * mWarpAmount * (1.0f - u * 0.5f);
+                    pos.y += wave;
+                }
+
+                mVertices[y * n + x] = pos;
+            }
+        }
+    }
+
+    void draw( vg::CanvasD3d12Ref canvas ) override {
+        if( !mImage ) return;
+
+        canvas->drawImageMesh( mImage, mVertices, mUvs, mIndices, mOpacity );
+
+        if( mShowGrid ) {
+            vg::Paint gridPaint;
+            gridPaint.setColor( ColorAf( 0.3f, 0.8f, 0.3f, 0.5f ) ).setStrokeWidth( 1 );
+            int n = mGridSize + 1;
+            for( int y = 0; y < n; y++ ) {
+                for( int x = 0; x < mGridSize; x++ ) {
+                    canvas->drawLine( mVertices[y * n + x], mVertices[y * n + x + 1], gridPaint );
+                }
+            }
+            for( int x = 0; x < n; x++ ) {
+                for( int y = 0; y < mGridSize; y++ ) {
+                    canvas->drawLine( mVertices[y * n + x], mVertices[(y + 1) * n + x], gridPaint );
+                }
+            }
+        }
+
+        if( mShowHandles ) {
+            vg::Paint handlePaint;
+            handlePaint.setColor( ColorAf( 1, 0.5f, 0.2f, 0.8f ) );
+            int n = mGridSize + 1;
+            canvas->fillCircle( mVertices[0], 6, handlePaint );
+            canvas->fillCircle( mVertices[mGridSize], 6, handlePaint );
+            canvas->fillCircle( mVertices[mGridSize * n], 6, handlePaint );
+            canvas->fillCircle( mVertices[n * n - 1], 6, handlePaint );
+        }
+
+        // Second example: simple quad distortion
+        float qx = 450, qy = 50;
+        std::vector<vec2> quadVerts = {
+            vec2( qx, qy ),
+            vec2( qx + 180, qy + sin(mTime) * 20 ),
+            vec2( qx + 200, qy + 180 + cos(mTime * 1.3f) * 30 ),
+            vec2( qx - 20 + sin(mTime * 0.7f) * 15, qy + 160 )
+        };
+        std::vector<vec2> quadUvs = {
+            vec2( 0, 0 ), vec2( 1, 0 ), vec2( 1, 1 ), vec2( 0, 1 )
+        };
+        std::vector<uint16_t> quadIndices = { 0, 1, 2, 0, 2, 3 };
+        canvas->drawImageMesh( mImage, quadVerts, quadUvs, quadIndices, mOpacity );
+
+        if( mShowGrid ) {
+            vg::Paint outlinePaint;
+            outlinePaint.setColor( ColorAf( 0.8f, 0.5f, 0.3f, 0.6f ) ).setStrokeWidth( 1 );
+            canvas->drawLine( quadVerts[0], quadVerts[1], outlinePaint );
+            canvas->drawLine( quadVerts[1], quadVerts[2], outlinePaint );
+            canvas->drawLine( quadVerts[2], quadVerts[3], outlinePaint );
+            canvas->drawLine( quadVerts[3], quadVerts[0], outlinePaint );
+        }
+
+        vg::Paint textPaint;
+        textPaint.setColor( ColorAf( 0.7f, 0.7f, 0.7f, 1 ) );
+        Font font( "Arial", 12 );
+        canvas->drawString( "Grid mesh with warp", vec2( 80, 280 ), font, textPaint );
+        canvas->drawString( "Simple quad", vec2( 500, 260 ), font, textPaint );
+    }
+
+    void drawUI() override {
+        const char* warpNames[] = { "Wave", "Bulge", "Twist", "Flag" };
+        ImGui::Combo( "Warp Mode", &mWarpMode, warpNames, 4 );
+        ImGui::SliderFloat( "Warp Amount", &mWarpAmount, 0, 50 );
+        if( mWarpMode == 0 ) {
+            ImGui::SliderFloat( "Wave Freq", &mWaveFreq, 1, 5 );
+        }
+        ImGui::Separator();
+        if( ImGui::SliderInt( "Grid Size", &mGridSize, 2, 20 ) ) {
+            rebuildMesh();
+        }
+        ImGui::SliderFloat( "Opacity", &mOpacity, 0, 1 );
+        ImGui::Separator();
+        ImGui::Checkbox( "Show Grid", &mShowGrid );
+        ImGui::Checkbox( "Show Handles", &mShowHandles );
+        ImGui::Checkbox( "Animate", &mAnimate );
+        if( mAnimate ) ImGui::SliderFloat( "Speed", &mSpeed, 0.1f, 3.0f );
+    }
+
+private:
+    vg::ImageRef mImage;
+    std::vector<vec2> mVertices;
+    std::vector<vec2> mUvs;
+    std::vector<uint16_t> mIndices;
+
+    Rectf mMeshRect{ 50, 50, 300, 250 };
+    int mGridSize = 8;
+    int mWarpMode = 0;
+    float mWarpAmount = 20;
+    float mWaveFreq = 2;
+    float mOpacity = 1.0f;
+    float mTime = 0, mSpeed = 1.0f;
+    bool mAnimate = true;
+    bool mShowGrid = true;
+    bool mShowHandles = true;
+};
+
+// ============================================================================
+// Demo 11: Shadow (Dynamic Lighting Simulation)
+// ============================================================================
+class ShadowDemo : public Demo {
+public:
+    std::string getName() const override { return "Shadow"; }
+    std::string getDescription() const override { return "Dynamic lighting simulation with feathered shadows"; }
+    Rectf getContentBounds() const override { return Rectf( 0, 0, 600, 500 ); }
+
+    void setup( vg::CanvasD3d12Ref canvas ) override {
+        mCanvas = canvas;
+        mCenter = vec2( 300, 250 );
+        mLightPos = vec2( 450, 100 );
+    }
+
+    void draw( vg::CanvasD3d12Ref canvas ) override {
+        vec2 center = mCenter;
+        float sphereRadius = mSphereRadius;
+        vec2 center2 = center + vec2( -120, -60 );
+        float radius2 = sphereRadius * 0.5f;
+
+        auto safeNorm = [](const vec2 &v) {
+            float len = glm::length(v);
+            return len > 1e-4f ? v / len : vec2(0, -1);
+        };
+
+        vec2 lightDir1 = safeNorm( mLightPos - center );
+        vec2 lightDir2 = safeNorm( mLightPos - center2 );
+
+        float lightDist1 = glm::distance( mLightPos, center );
+        float lightDist2 = glm::distance( mLightPos, center2 );
+        float normalizedDist1 = glm::clamp( lightDist1 / 400.0f, 0.0f, 1.0f );
+        float normalizedDist2 = glm::clamp( lightDist2 / 400.0f, 0.0f, 1.0f );
+
+        float shadowScale1 = 1.0f + normalizedDist1 * mShadowSpread;
+        float shadowScale2 = 1.0f + normalizedDist2 * mShadowSpread;
+        float shadowAlpha1 = mShadowOpacity * (1.0f - normalizedDist1 * 0.3f);
+        float shadowAlpha2 = mShadowOpacity * (1.0f - normalizedDist2 * 0.3f) * 0.8f;
+
+        if( mShowGround ) {
+            vg::Paint groundPaint;
+            groundPaint.setColor( ColorAf( 0.15f, 0.15f, 0.18f, 1.0f ) );
+            canvas->fillRect( Rectf( 50, center.y + sphereRadius + 50, 550, center.y + sphereRadius + 55 ), groundPaint );
+        }
+
+        // Main sphere shadow
+        {
+            vec2 shadowOffset = -lightDir1 * mShadowOffset * (1.0f + normalizedDist1 * 0.5f);
+            float shadowRadius = sphereRadius * shadowScale1;
+            vg::Paint shadowPaint;
+            float shadowFeather = mShadowFeather * (1.0f + normalizedDist1 * 0.5f);
+            shadowPaint.setColor( ColorAf( 0, 0, 0, shadowAlpha1 ) )
+                       .setFeather( shadowFeather );
+            vec2 shadowRadii( shadowRadius * 1.2f, shadowRadius * 0.4f );
+            vec2 shadowPos = center + shadowOffset + vec2( 0, sphereRadius * 0.8f );
+            canvas->fillEllipse( shadowPos, shadowRadii, shadowPaint );
+        }
+
+        // Second sphere shadow
+        if( mShowSecondSphere ) {
+            vec2 shadowOffset2 = -lightDir2 * mShadowOffset * 0.7f * (1.0f + normalizedDist2 * 0.5f);
+            float shadowRadius2 = radius2 * shadowScale2;
+            vg::Paint shadowPaint2;
+            float shadowFeather2 = mShadowFeather * 0.7f * (1.0f + normalizedDist2 * 0.5f);
+            shadowPaint2.setColor( ColorAf( 0, 0, 0, shadowAlpha2 ) )
+                       .setFeather( shadowFeather2 );
+            vec2 shadowRadii2( shadowRadius2 * 1.2f, shadowRadius2 * 0.4f );
+            vec2 shadowPos2 = center2 + shadowOffset2 + vec2( 0, radius2 * 0.8f );
+            canvas->fillEllipse( shadowPos2, shadowRadii2, shadowPaint2 );
+        }
+
+        auto drawSphere = [&]( vec2 sphereCenter, float radius, vec2 lightDir, float normDist, const ColorAf& baseColor ) {
+            vec2 highlightCenter = sphereCenter + lightDir * radius * 0.4f;
+            ColorAf highlightColor = baseColor;
+            highlightColor.r = std::min<float>( 1.0f, highlightColor.r * 1.5f );
+            highlightColor.g = std::min<float>( 1.0f, highlightColor.g * 1.5f );
+			highlightColor.b = std::min<float>( 1.0f, highlightColor.b * 1.5f );
+            ColorAf shadowColor = baseColor;
+            shadowColor.r *= 0.25f;
+            shadowColor.g *= 0.25f;
+            shadowColor.b *= 0.25f;
+            vg::Paint basePaint;
+            basePaint.setRadialGradient( highlightCenter, radius * 1.8f, highlightColor, shadowColor );
+            canvas->fillCircle( sphereCenter, radius, basePaint );
+
+            if( mShowRim ) {
+                vec2 aoCenter = sphereCenter + vec2( 0, radius * 0.7f );
+                vg::Paint ao;
+                ao.setRadialGradient( aoCenter, radius * 0.9f,
+                                      ColorAf( 0, 0, 0, 0.3f ), ColorAf( 0, 0, 0, 0.0f ) )
+                  .setFeather( radius * 0.3f );
+                canvas->fillEllipse( aoCenter, vec2( radius * 0.9f, radius * 0.5f ), ao );
+            }
+
+            if( mShowRim ) {
+                vec2 rimCenter = sphereCenter - lightDir * radius * 0.15f;
+                vg::Paint rim;
+                rim.setRadialGradient( rimCenter, radius * 1.05f,
+                                       ColorAf( 1, 1, 1, 0.0f ), ColorAf( 1, 1, 1, 0.2f ) )
+                   .setFeather( radius * 0.2f );
+                canvas->fillCircle( sphereCenter, radius * 1.0f, rim );
+            }
+
+            if( mShowRim ) {
+                vec2 bounceCenter = sphereCenter + vec2( 0, radius * 0.5f );
+                vg::Paint bounce;
+                bounce.setRadialGradient( bounceCenter, radius * 0.9f,
+                                          ColorAf( 0.5f, 0.45f, 0.4f, 0.12f ), ColorAf( 0.5f, 0.45f, 0.4f, 0.0f ) );
+                canvas->fillCircle( sphereCenter, radius * 0.95f, bounce );
+            }
+
+            if( mShowSpecular ) {
+                vec2 specularPos = sphereCenter + lightDir * radius * 0.5f;
+                vg::Paint specWide;
+                specWide.setRadialGradient( specularPos, radius * 0.35f,
+                                            ColorAf( 1, 1, 1, 0.3f ), ColorAf( 1, 1, 1, 0.0f ) );
+                canvas->fillCircle( specularPos, radius * 0.35f, specWide );
+            }
+
+            if( mShowSpecular ) {
+                vec2 specularPos = sphereCenter + lightDir * radius * 0.55f;
+                float specRadius = radius * 0.12f;
+                vg::Paint specTight;
+                specTight.setRadialGradient( specularPos, specRadius,
+                                             ColorAf( 1, 1, 1, 0.95f ), ColorAf( 1, 1, 1, 0.0f ) );
+                canvas->fillCircle( specularPos, specRadius, specTight );
+            }
+        };
+
+        drawSphere( center, sphereRadius, lightDir1, normalizedDist1, mSphereColor );
+
+        if( mShowSecondSphere ) {
+            ColorAf color2( 0.3f, 0.7f, 0.9f, 1.0f );
+            drawSphere( center2, radius2, lightDir2, normalizedDist2, color2 );
+        }
+
+        if( mShowLightIndicator ) {
+            vg::Paint lightPaint;
+            lightPaint.setRadialGradient( mLightPos, 25,
+                                          ColorAf( 1, 1, 0.8f, 1.0f ),
+                                          ColorAf( 1, 0.8f, 0.2f, 0.0f ) );
+            canvas->fillCircle( mLightPos, 20, lightPaint );
+
+            vg::Paint rayPaint;
+            rayPaint.setColor( ColorAf( 1, 1, 0.5f, 0.3f ) ).setStrokeWidth( 2 );
+            for( int i = 0; i < 8; i++ ) {
+                float angle = i * M_PI / 4.0f;
+                vec2 rayStart = mLightPos + vec2( cos(angle), sin(angle) ) * 25.0f;
+                vec2 rayEnd = mLightPos + vec2( cos(angle), sin(angle) ) * 35.0f;
+                canvas->drawLine( rayStart, rayEnd, rayPaint );
+            }
+        }
+    }
+
+    bool onMouseMove( ci::app::MouseEvent event ) override {
+        if( ! mCanvasUi ) return false;
+        mLightPos = mCanvasUi->toContent( vec2( event.getPos() ) );
+        return true;
+    }
+
+    bool onMouseDrag( ci::app::MouseEvent event ) override {
+        if( ! mCanvasUi ) return false;
+        mLightPos = mCanvasUi->toContent( vec2( event.getPos() ) );
+        return true;
+    }
+
+    void drawUI() override {
+        ImGui::Text( "Move mouse to control light position" );
+        ImGui::Separator();
+        ImGui::SliderFloat( "Sphere Radius", &mSphereRadius, 30, 120 );
+        ImGui::SliderFloat( "Shadow Offset", &mShadowOffset, 10, 100 );
+        ImGui::SliderFloat( "Shadow Feather", &mShadowFeather, 5, 80 );
+        ImGui::SliderFloat( "Shadow Opacity", &mShadowOpacity, 0.1f, 1.0f );
+        ImGui::SliderFloat( "Shadow Spread", &mShadowSpread, 0.0f, 1.0f );
+        ImGui::Separator();
+        ImGui::ColorEdit3( "Sphere Color", &mSphereColor.r );
+        ImGui::Separator();
+        ImGui::Checkbox( "Show Specular", &mShowSpecular );
+        ImGui::Checkbox( "Show Rim/AO", &mShowRim );
+        ImGui::Checkbox( "Show Light Indicator", &mShowLightIndicator );
+        ImGui::Checkbox( "Show Ground", &mShowGround );
+        ImGui::Checkbox( "Show Second Sphere", &mShowSecondSphere );
+    }
+
+private:
+    vec2 mCenter;
+    vec2 mLightPos;
+    float mSphereRadius = 80;
+    float mShadowOffset = 40;
+    float mShadowFeather = 30;
+    float mShadowOpacity = 0.6f;
+    float mShadowSpread = 0.3f;
+    ColorAf mSphereColor{ 0.9f, 0.4f, 0.3f, 1.0f };
+    bool mShowSpecular = true;
+    bool mShowRim = true;
+    bool mShowLightIndicator = true;
+    bool mShowGround = true;
+    bool mShowSecondSphere = true;
+};
+
+// ============================================================================
 // Main App
 // ============================================================================
 class VectorGraphicsDemoD3d12App : public App {
@@ -701,11 +1425,14 @@ void VectorGraphicsDemoD3d12App::setup()
         std::make_shared<PrimitivesDemo>(),
         std::make_shared<GradientsDemo>(),
         std::make_shared<TransformsDemo>(),
+        std::make_shared<PathsDemo>(),
         std::make_shared<FeatheringDemo>(),
         std::make_shared<InstancingDemo>(),
         std::make_shared<BlendModesDemo>(),
         std::make_shared<ClippingDemo>(),
-        std::make_shared<ImagesDemo>()
+        std::make_shared<ImagesDemo>(),
+        std::make_shared<ImageMeshDemo>(),
+        std::make_shared<ShadowDemo>()
     };
     for( auto& d : mDemos ) d->setup( mCanvas );
     switchDemo( 0 );
@@ -796,8 +1523,8 @@ void VectorGraphicsDemoD3d12App::renderImGui( ID3D12GraphicsCommandList* cmdList
         ImGui::Separator();
 
         // Demo selector
-        const char* demoNames[] = { "Primitives", "Gradients", "Transforms", "Feathering",
-                                    "Instancing", "Blend Modes", "Clipping", "Images" };
+        const char* demoNames[] = { "Primitives", "Gradients", "Transforms", "Paths", "Feathering",
+                                    "Instancing", "Blend Modes", "Clipping", "Images", "Image Mesh", "Shadow" };
         if( ImGui::BeginCombo( "Demo", demoNames[mDemoIndex] ) ) {
             for( int i = 0; i < (int)mDemos.size(); i++ ) {
                 bool selected = ( i == mDemoIndex );
@@ -828,7 +1555,7 @@ void VectorGraphicsDemoD3d12App::renderImGui( ID3D12GraphicsCommandList* cmdList
 void VectorGraphicsDemoD3d12App::keyDown( KeyEvent event )
 {
     if( event.getCode() == KeyEvent::KEY_ESCAPE || event.getChar() == 'q' ) quit();
-    else if( event.getChar() >= '1' && event.getChar() <= '8' ) switchDemo( event.getChar() - '1' );
+    else if( event.getChar() >= '1' && event.getChar() <= '9' ) switchDemo( event.getChar() - '1' );
     else if( event.getChar() == '0' ) mCanvasUi.fitAll();
 }
 

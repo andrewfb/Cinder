@@ -328,11 +328,6 @@ private:
     // Last frame size (for resize detection)
     ivec2 mLastFrameSize;
 
-    // Track back buffer state per frame (true = in COMMON state after resize, needs COMMON→PRESENT)
-    // Initialized to false because swap chain buffers from CreateSwapChain start in PRESENT state
-    // Only set to true after ResizeBuffers() which creates buffers in COMMON state
-    bool mBackBufferInCommonState[MaxFrameCount] = { false, false, false };
-
     // Frame counter for Rive resource management
     // Rive requires monotonically increasing frame numbers for resource lifecycle
     uint64_t mFrameNumber = 2;  // Start at 2 since Rive init uses frame 1

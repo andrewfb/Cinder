@@ -193,10 +193,10 @@ void CanvasD3d12::releaseRenderTargets()
         mRenderTargets[i] = nullptr;
     }
 
-    // Mark all back buffers as being in COMMON state after resize
-    for( UINT i = 0; i < MaxFrameCount; i++ ) {
-        mBackBufferInCommonState[i] = true;
-    }
+    // Set sentinel value so begin() will detect that releaseRenderTargets was called
+    // and new buffers from ResizeBuffers() will be in COMMON state
+    // Use -1 to distinguish from initial state (0,0) which means "first frame"
+    mLastFrameSize = ivec2( -1, -1 );
 
     CI_LOG_I( "CanvasD3d12::releaseRenderTargets() - released " << bufferCount << " render targets" );
 }
@@ -312,29 +312,20 @@ void CanvasD3d12::begin( const ivec2 &size )
     D3D12_RESOURCE_DESC backDesc = backBuffer->GetDesc();
     ivec2 backBufferSize( static_cast<int>( backDesc.Width ), static_cast<int>( backDesc.Height ) );
 
-    // Detect resize by comparing to last known back buffer size
-    bool resizeDetected = ( mLastFrameSize != backBufferSize && mLastFrameSize.x > 0 && mLastFrameSize.y > 0 );
-    if( resizeDetected ) {
+    // Detect resize: either explicit (mLastFrameSize set to -1 by releaseRenderTargets)
+    // or implicit (back buffer size changed from previous frame)
+    bool resizeFromRelease = ( mLastFrameSize.x == -1 );
+    bool resizeFromSizeChange = ( mLastFrameSize != backBufferSize && mLastFrameSize.x > 0 );
+    if( resizeFromRelease || resizeFromSizeChange ) {
         // Invalidate ALL render targets (all back buffers are recreated)
         UINT bufferCount = mRenderer->getBufferCount();
         for( UINT i = 0; i < bufferCount; i++ ) {
             mRenderTargets[i] = nullptr;
-            mBackBufferInCommonState[i] = true;  // All new buffers are in COMMON state
         }
     }
 
-    // Handle new buffers from ResizeBuffers - they start in COMMON state
-    // Rive's setTargetTexture() assumes PRESENT state, so transition COMMON→PRESENT
-    // DON'T transition to RENDER_TARGET here - Rive will do that internally
-    if( mBackBufferInCommonState[frameIndex] ) {
-        CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-            backBuffer,
-            D3D12_RESOURCE_STATE_COMMON,
-            D3D12_RESOURCE_STATE_PRESENT );
-        mCommandList->ResourceBarrier( 1, &barrier );
-        mBackBufferInCommonState[frameIndex] = false;
-    }
-    // Note: Do NOT transition PRESENT→RENDER_TARGET here - Rive handles this internally
+    // Note: Don't manually transition buffer states here - Rive handles all
+    // state transitions internally via setTargetTexture() and flush()
 
     // Get or create cached render target for this frame
     if( ! mRenderTargets[frameIndex] ||
@@ -560,31 +551,106 @@ ImageRef CanvasD3d12::createImage( const gl::Texture2dRef &texture )
 
 ImageRef CanvasD3d12::createImage( const Surface &surface )
 {
-    // TODO: Create D3D12 texture from surface and wrap in Image
-    CI_LOG_W( "CanvasD3d12::createImage(Surface) not yet implemented" );
-    return nullptr;
+    if( ! mRiveContextD3d12 ) {
+        CI_LOG_W( "Cannot create image without valid context" );
+        return nullptr;
+    }
+
+    auto image = std::make_shared<ImageD3d12>();
+    image->mSize = ivec2( surface.getWidth(), surface.getHeight() );
+
+    // Convert to RGBA premultiplied
+    std::vector<uint8_t> rgbaData( surface.getWidth() * surface.getHeight() * 4 );
+
+    const uint8_t* srcData = surface.getData();
+    bool srcHasAlpha = surface.hasAlpha();
+    int srcPixelInc = surface.getPixelInc();
+    int srcRowBytes = surface.getRowBytes();
+
+    for( int y = 0; y < surface.getHeight(); ++y ) {
+        const uint8_t* srcRow = srcData + y * srcRowBytes;
+        uint8_t* dstRow = rgbaData.data() + y * surface.getWidth() * 4;
+
+        for( int x = 0; x < surface.getWidth(); ++x ) {
+            uint8_t r = srcRow[0];
+            uint8_t g = srcRow[1];
+            uint8_t b = srcRow[2];
+            uint8_t a = srcHasAlpha ? srcRow[3] : 255;
+
+            // Premultiply alpha
+            dstRow[0] = static_cast<uint8_t>( r * a / 255 );
+            dstRow[1] = static_cast<uint8_t>( g * a / 255 );
+            dstRow[2] = static_cast<uint8_t>( b * a / 255 );
+            dstRow[3] = a;
+
+            srcRow += srcPixelInc;
+            dstRow += 4;
+        }
+    }
+
+    auto riveTexture = mRiveContextD3d12->makeImageTexture(
+        surface.getWidth(), surface.getHeight(),
+        1, // mip levels
+        rgbaData.data() );
+
+    image->mImpl->riveImage = make_rcp<RiveRenderImage>( std::move( riveTexture ) );
+
+    return image;
 }
 
 void CanvasD3d12::drawImage( const ImageRef &image, const Rectf &destRect )
 {
-    if( ! image || ! mRiveRenderer ) return;
+    if( ! mInFrame || ! mRiveRenderer || ! image ) return;
 
     auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
-    if( ! d3d12Image || ! d3d12Image->mImpl->riveImage ) {
+    if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage ) {
         CI_LOG_W( "drawImage: Invalid D3D12 image" );
         return;
     }
 
-    // TODO: Implement image drawing
-    CI_LOG_W( "CanvasD3d12::drawImage not yet implemented" );
+    mRiveRenderer->save();
+    mRiveRenderer->transform( toRiveMat( mTransform ) );
+
+    // Scale and position the image
+    float sx = destRect.getWidth() / image->getWidth();
+    float sy = destRect.getHeight() / image->getHeight();
+    mRiveRenderer->transform( Mat2D( sx, 0, 0, sy, destRect.x1, destRect.y1 ) );
+
+    mRiveRenderer->drawImage( d3d12Image->mImpl->riveImage.get(), rive::ImageSampler::LinearClamp(), rive::BlendMode::srcOver, 1.0f );
+    mRiveRenderer->restore();
 }
 
 void CanvasD3d12::drawImage( const ImageRef &image, const Rectf &srcRect, const Rectf &destRect )
 {
-    if( ! image || ! mRiveRenderer ) return;
+    if( ! mInFrame || ! mRiveRenderer || ! image ) return;
 
-    // TODO: Implement image drawing with source rect
-    CI_LOG_W( "CanvasD3d12::drawImage(srcRect) not yet implemented" );
+    auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
+    if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage )
+        return;
+
+    // Create a mesh for the sub-rectangle
+    float u0 = srcRect.x1 / image->getWidth();
+    float v0 = srcRect.y1 / image->getHeight();
+    float u1 = srcRect.x2 / image->getWidth();
+    float v1 = srcRect.y2 / image->getHeight();
+
+    std::vector<vec2> vertices = {
+        vec2( destRect.x1, destRect.y1 ),
+        vec2( destRect.x2, destRect.y1 ),
+        vec2( destRect.x2, destRect.y2 ),
+        vec2( destRect.x1, destRect.y2 )
+    };
+
+    std::vector<vec2> uvs = {
+        vec2( u0, v0 ),
+        vec2( u1, v0 ),
+        vec2( u1, v1 ),
+        vec2( u0, v1 )
+    };
+
+    std::vector<uint16_t> indices = { 0, 1, 2, 0, 2, 3 };
+
+    drawImageMesh( image, vertices, uvs, indices, 1.0f );
 }
 
 void CanvasD3d12::drawImageMesh( const ImageRef &image,
@@ -593,10 +659,51 @@ void CanvasD3d12::drawImageMesh( const ImageRef &image,
                                   std::span<const uint16_t> indices,
                                   float opacity )
 {
-    if( ! image || ! mRiveRenderer ) return;
+    if( ! mInFrame || ! mRiveRenderer || ! mRiveContext || ! image ) return;
+    if( vertices.size() != uvs.size() ) return;
 
-    // TODO: Implement mesh image drawing
-    CI_LOG_W( "CanvasD3d12::drawImageMesh not yet implemented" );
+    auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
+    if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage )
+        return;
+
+    // Create Rive buffers
+    auto vertexBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::vertex, RenderBufferFlags::none, vertices.size() * sizeof( float ) * 2 );
+    auto uvBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::vertex, RenderBufferFlags::none, uvs.size() * sizeof( float ) * 2 );
+    auto indexBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::index, RenderBufferFlags::none, indices.size() * sizeof( uint16_t ) );
+
+    // Map and fill buffers
+    float* vertexData = static_cast<float*>( vertexBuffer->map() );
+    float* uvData = static_cast<float*>( uvBuffer->map() );
+    uint16_t* indexData = static_cast<uint16_t*>( indexBuffer->map() );
+
+    for( size_t i = 0; i < vertices.size(); ++i ) {
+        vertexData[i * 2] = vertices[i].x;
+        vertexData[i * 2 + 1] = vertices[i].y;
+        uvData[i * 2] = uvs[i].x;
+        uvData[i * 2 + 1] = uvs[i].y;
+    }
+
+    std::memcpy( indexData, indices.data(), indices.size() * sizeof( uint16_t ) );
+
+    vertexBuffer->unmap();
+    uvBuffer->unmap();
+    indexBuffer->unmap();
+
+    mRiveRenderer->save();
+    mRiveRenderer->transform( toRiveMat( mTransform ) );
+
+    mRiveRenderer->drawImageMesh(
+        d3d12Image->mImpl->riveImage.get(),
+        rive::ImageSampler::LinearClamp(),
+        vertexBuffer,
+        uvBuffer,
+        indexBuffer,
+        static_cast<uint32_t>( vertices.size() ),
+        static_cast<uint32_t>( indices.size() ),
+        rive::BlendMode::srcOver,
+        opacity );
+
+    mRiveRenderer->restore();
 }
 
 // ------------------------------------------------------------------------------------------------
