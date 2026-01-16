@@ -179,6 +179,28 @@ CanvasD3d12::~CanvasD3d12()
     mRiveContext.reset();
 }
 
+void CanvasD3d12::releaseRenderTargets()
+{
+    // Wait for GPU to finish using render targets
+    if( mRenderer ) {
+        mRenderer->waitForGpu();
+    }
+
+    // Clear all cached render targets - this releases references to back buffers
+    // Required before ResizeBuffers() can succeed
+    UINT bufferCount = mRenderer ? mRenderer->getBufferCount() : 0;
+    for( UINT i = 0; i < bufferCount && i < mRenderTargets.size(); i++ ) {
+        mRenderTargets[i] = nullptr;
+    }
+
+    // Mark all back buffers as being in COMMON state after resize
+    for( UINT i = 0; i < MaxFrameCount; i++ ) {
+        mBackBufferInCommonState[i] = true;
+    }
+
+    CI_LOG_I( "CanvasD3d12::releaseRenderTargets() - released " << bufferCount << " render targets" );
+}
+
 void CanvasD3d12::initializeD3d12()
 {
     CI_LOG_I( "Creating Rive D3D12 context" );
@@ -254,7 +276,13 @@ void CanvasD3d12::initializeD3d12()
 void CanvasD3d12::begin( const ivec2 &size )
 {
     CI_ASSERT_MSG( ! mInFrame, "begin() called while already in frame - did you forget to call end()?" );
-    CI_ASSERT_MSG( size.x > 0 && size.y > 0, "begin() size must be positive" );
+
+    // During resize/minimize, size can be 0 - skip frame gracefully
+    if( size.x <= 0 || size.y <= 0 ) {
+        mFrameSize = ivec2( 0 );
+        mInFrame = false;
+        return;
+    }
 
     mFrameSize = size;
     mInFrame = true;
@@ -343,7 +371,10 @@ void CanvasD3d12::begin( const ivec2 &size )
 
 void CanvasD3d12::end()
 {
-    CI_ASSERT_MSG( mInFrame, "end() called without begin()" );
+    // If begin() skipped the frame (resize/minimize), just return
+    if( ! mInFrame ) {
+        return;
+    }
 
     // Clear base class pointer and destroy the renderer before flush
     mRiveRenderer = nullptr;

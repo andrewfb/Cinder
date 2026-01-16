@@ -291,6 +291,12 @@ public:
     //! Useful for interleaving custom D3D12 rendering (e.g., ImGui) with canvas commands
     ID3D12GraphicsCommandList* getCommandList() const { return mCommandList.Get(); }
 
+    //! Release cached render targets that hold references to back buffers.
+    //! Call this in your app's resize() handler so the renderer can successfully
+    //! ResizeBuffers() on the next frame (the framework triggers RendererD3d12::defaultResize()
+    //! before App::resize(), so swapchain resizing is deferred until startDraw()).
+    void releaseRenderTargets();
+
 private:
     // Private constructor - use create() factory method
     CanvasD3d12( app::RendererD3d12Ref renderer );
