@@ -13,6 +13,8 @@
 #include "cinder/vg/CanvasD3d12.h"
 #include "cinder/vg/Paint.h"
 
+#include <d3d12.h>
+
 using namespace ci;
 using namespace ci::app;
 
@@ -50,19 +52,28 @@ void VectorGraphicsBasicD3d12App::setup()
 
 void VectorGraphicsBasicD3d12App::resize()
 {
-    // Wait for GPU work before resize
-    if( mRenderer )
-        mRenderer->waitForGpu();
-
-    // Let the renderer handle swap chain resize
-    if( mRenderer )
-        mRenderer->defaultResize();
+    // Release canvas render targets so ResizeBuffers() can succeed.
+    // The framework calls defaultResize() before this handler, which sets a pending flag.
+    // The actual resize happens in startDraw() after we've released our references here.
+    if( mCanvas )
+        mCanvas->releaseRenderTargets();
 }
 
 void VectorGraphicsBasicD3d12App::draw()
 {
-    // D3D12 clear happens in begin() or via renderer
-    mCanvas->begin( toPixels( getWindowSize() ) );
+    if( ! mRenderer || ! mCanvas )
+        return;
+
+    // Get back buffer - may be null during resize
+    ID3D12Resource* backBuffer = mRenderer->getCurrentBackBuffer();
+    if( ! backBuffer )
+        return;
+
+    // Use back buffer dimensions (may differ from window size during resize)
+    D3D12_RESOURCE_DESC bufferDesc = backBuffer->GetDesc();
+    ivec2 bufferSize( static_cast<int>( bufferDesc.Width ), static_cast<int>( bufferDesc.Height ) );
+
+    mCanvas->begin( bufferSize );
 
     // ========================================
     // 1. CIRCLE WITH SOLID COLOR
