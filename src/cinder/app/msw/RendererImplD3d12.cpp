@@ -608,6 +608,9 @@ void RendererImplD3d12::kill()
 void RendererImplD3d12::prepareToggleFullScreen()
 {
 	waitForIdle();
+
+	// Emit signal so external code can release back buffer references before fullscreen toggle
+	mRenderer->getSignalSwapChainBuffersWillRecreate().emit();
 }
 
 void RendererImplD3d12::finishToggleFullScreen()
@@ -676,13 +679,17 @@ void RendererImplD3d12::defaultResize() const
 	// Must wait for GPU idle before ResizeBuffers
 	self->waitForIdle();
 
+	// Emit signal so external code can release back buffer references
+	self->mRenderer->getSignalSwapChainBuffersWillRecreate().emit();
+
+	// Release our back buffer references
 	self->releaseBackBuffers();
 
-	UINT	flags = self->mTearingSupport ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
+	UINT flags = self->mTearingSupport ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
 	HRESULT hr = mSwapChain->ResizeBuffers( self->mBufferCount, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, flags );
 
 	if( FAILED( hr ) ) {
-		CI_LOG_E( "[D3D12] defaultResize: Failed to resize swap chain buffers, hr=" << std::hex << hr );
+		CI_LOG_E( "[D3D12] ResizeBuffers failed (hr=" << std::hex << hr << "). Ensure all back buffer references are released via getSignalResizeBegin()." );
 		return;
 	}
 

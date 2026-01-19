@@ -24,6 +24,7 @@
 #pragma once
 
 #include "cinder/app/Renderer.h"
+#include "cinder/Signals.h"
 #include <d3d12.h>
 #include <dxgi1_4.h>
 
@@ -250,7 +251,13 @@ class RendererD3d12 : public Renderer {
 	//! Returns 0 if the frame has not been signaled yet.
 	UINT64 getFenceValue( UINT frameIndex ) const;
 
+	//! Signal emitted before swap chain buffers are recreated (resize, fullscreen toggle, etc.).
+	//! Listeners MUST release all ComPtr references to back buffers before returning.
+	//! After this signal, back buffer pointers are invalid until re-acquired via getCurrentBackBuffer().
+	signals::Signal<void()>& getSignalSwapChainBuffersWillRecreate() { return mSignalSwapChainBuffersWillRecreate; }
+
   protected:
+	signals::Signal<void()> mSignalSwapChainBuffersWillRecreate;
 	RendererD3d12( const RendererD3d12 &renderer );
 
 	Options mOptions;
