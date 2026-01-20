@@ -35,6 +35,12 @@ void VectorGraphicsBasicD3d12App::setup()
     mRenderer = std::dynamic_pointer_cast<RendererD3d12>( getRenderer() );
     mCanvas = vg::CanvasD3d12::create( mRenderer );
 
+    // Release render targets before swap chain buffers are recreated
+    mRenderer->getSignalSwapChainBuffersWillRecreate().connect( [this]() {
+        if( mCanvas )
+            mCanvas->releaseRenderTargets();
+    } );
+
     // Create a star path using Path2d
     Path2d star;
     for( int i = 0; i < 10; i++ ) {
@@ -52,11 +58,7 @@ void VectorGraphicsBasicD3d12App::setup()
 
 void VectorGraphicsBasicD3d12App::resize()
 {
-    // Release canvas render targets so ResizeBuffers() can succeed.
-    // The framework calls defaultResize() before this handler, which sets a pending flag.
-    // The actual resize happens in startDraw() after we've released our references here.
-    if( mCanvas )
-        mCanvas->releaseRenderTargets();
+    // Render target release handled by getSignalSwapChainBuffersWillRecreate() in setup()
 }
 
 void VectorGraphicsBasicD3d12App::draw()

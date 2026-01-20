@@ -1421,6 +1421,12 @@ void VectorGraphicsDemoD3d12App::setup()
         renderImGui( cmdList );
     } );
 
+    // Release render targets before swap chain buffers are recreated
+    mRenderer->getSignalSwapChainBuffersWillRecreate().connect( [this]() {
+        if( mCanvas )
+            mCanvas->releaseRenderTargets();
+    } );
+
     mDemos = {
         std::make_shared<PrimitivesDemo>(),
         std::make_shared<GradientsDemo>(),
@@ -1441,11 +1447,8 @@ void VectorGraphicsDemoD3d12App::setup()
 
 void VectorGraphicsDemoD3d12App::resize()
 {
-    // Release canvas render targets so ResizeBuffers() can succeed.
-    // The framework calls defaultResize() before this handler, which sets a pending flag.
-    // The actual resize happens in startDraw() after we've released our references here.
-    if( mCanvas )
-        mCanvas->releaseRenderTargets();
+    // Render target release is now handled by getSignalResizeBegin() connection in setup()
+    // which fires BEFORE defaultResize() calls ResizeBuffers()
 }
 
 void VectorGraphicsDemoD3d12App::switchDemo( int i )

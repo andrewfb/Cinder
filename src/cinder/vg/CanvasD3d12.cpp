@@ -181,24 +181,50 @@ CanvasD3d12::~CanvasD3d12()
 
 void CanvasD3d12::releaseRenderTargets()
 {
-    // Wait for GPU to finish using render targets
-    if( mRenderer ) {
-        mRenderer->waitForGpu();
+    // Track if we were in a Rive frame - affects what cleanup we can do
+    bool wasInRiveFrame = mInFrame;
+
+    // If we're in a frame, abort it and close the command list
+    if( mInFrame ) {
+        mRiveRenderer = nullptr;
+        mOwnedRiveRenderer.reset();
+        if( mCommandList )
+            mCommandList->Close();
+        mInFrame = false;
     }
 
-    // Clear all cached render targets - this releases references to back buffers
-    // Required before ResizeBuffers() can succeed
+    // Wait for GPU to finish using render targets
+    if( mRenderer )
+        mRenderer->waitForGpu();
+
+    // Release all cached render targets (releases ComPtr refs to back buffers)
     UINT bufferCount = mRenderer ? mRenderer->getBufferCount() : 0;
-    for( UINT i = 0; i < bufferCount && i < mRenderTargets.size(); i++ ) {
+    for( UINT i = 0; i < mRenderTargets.size(); i++ ) {
+        if( mRenderTargets[i] )
+            mRenderTargets[i]->releaseTexturesImmediately();
         mRenderTargets[i] = nullptr;
     }
+    mRenderTargets.clear();
+    mRenderTargets.resize( bufferCount );
 
-    // Set sentinel value so begin() will detect that releaseRenderTargets was called
-    // and new buffers from ResizeBuffers() will be in COMMON state
-    // Use -1 to distinguish from initial state (0,0) which means "first frame"
+    // Release Rive resources (only if we weren't mid-frame)
+    if( mRiveContext && !wasInRiveFrame )
+        mRiveContext->releaseResources();
+
+    // Force-purge Rive's resource purgatory to release deferred D3D12Texture deletions
+    if( mRiveContextD3d12 ) {
+        auto manager = mRiveContextD3d12->manager();
+        if( manager ) {
+            uint64_t currentFrame = manager->currentFrameNumber();
+            uint64_t bc = mRenderer ? mRenderer->getBufferCount() : 3;
+            uint64_t newFrame = currentFrame + bc + 2;
+            uint64_t newSafeFrame = currentFrame;
+            manager->advanceFrameNumber( newFrame, newSafeFrame );
+            mFrameNumber = newSafeFrame + bc + 2;
+        }
+    }
+
     mLastFrameSize = ivec2( -1, -1 );
-
-    CI_LOG_I( "CanvasD3d12::releaseRenderTargets() - released " << bufferCount << " render targets" );
 }
 
 void CanvasD3d12::initializeD3d12()
