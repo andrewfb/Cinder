@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html>
+   <head>
+      <title>Vector Graphics Guide</title>
+
+      <!-- keywords used for searching -->
+      <meta name="keywords" content="guide, vector, graphics, vg, canvas, rive, path, stroke, fill, gradient, feather">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+
+      <!-- reference to Cinder classes -->
+      <ci seealso dox="cinder::vg" label="Vector Graphics in Cinder"></ci>
+
+      <!-- master stylesheet - these links will be replaced when compiled -->
+      <link rel="stylesheet" href="../../_assets/css/foundation.css">
+      <link rel="stylesheet" href="../../_assets/css/prism.css">
+      <link rel="stylesheet" href="../../_assets/css/style.css">
+      <link href='http://fonts.googleapis.com/css?family=Open+Sans:400,300,600,700' rel='stylesheet' type='text/css'>
+
+      <style>
+         .demo-canvas {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin: 10px 0;
+            background: #1a1a2e;
+         }
+         .demo-row {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin: 15px 0;
+         }
+         .demo-label {
+            font-family: monospace;
+            min-width: 120px;
+            color: #666;
+         }
+         .config-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+         }
+         .config-table th, .config-table td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+         }
+         .config-table th {
+            background: #f5f5f5;
+         }
+         .config-table code {
+            background: #eee;
+            padding: 2px 5px;
+            border-radius: 3px;
+         }
+         .note {
+            background: #fff8e1;
+            border-left: 4px solid #ffc107;
+            padding: 12px 15px;
+            margin: 15px 0;
+         }
+         .warning {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 12px 15px;
+            margin: 15px 0;
+         }
+         .matrix-table {
+            border-collapse: collapse;
+            font-family: monospace;
+            font-size: 14px;
+            margin: 10px 0;
+         }
+         .matrix-table td {
+            width: 50px;
+            height: 30px;
+            text-align: center;
+            border: 1px solid #ccc;
+            background: #f8f8f8;
+         }
+         .matrix-table td.label-cell {
+            background: #e0e0e0;
+            font-weight: bold;
+         }
+         .matrix-table td.zero-cell {
+            background: #f0f0f0;
+            color: #999;
+         }
+      </style>
+   </head>
+
+   <body id="guide-contents">
+      <!-- CONTENT STARTS HERE -->
+      <h1>Vector Graphics in Cinder</h1>
+
+      <p>
+         This document provides an overview of the vector graphics capabilities in Cinder's
+         <ci kind="namespace" dox="cinder::vg">cinder::vg</ci> namespace. The API provides GPU-accelerated
+         2D rendering with analytical anti-aliasing, gradient fills, feathering (soft edges), and high-performance
+         path rendering.
+      </p>
+
+
+      <a class="anchor" id="introduction"></a>
+      <section>
+         <h2>Introduction</h2>
+
+         <p>The <ci>cinder::vg</ci> rendering engine is built on the GPU renderer from <a href="https://rive.app/">Rive</a>,
+         a real-time interactive design tool. However, this is <strong>not</strong> the Rive runtime for playing
+         <code>.riv</code> animation files&mdash;it is the standalone rendering engine extracted and adapted for
+         general-purpose 2D vector graphics.</p>
+
+         <p>Key features include:</p>
+         <ul>
+            <li><strong>Analytical anti-aliasing</strong> via Pixel Local Storage (PLS) or atomic operations</li>
+            <li><strong>Feathering</strong> for soft, blurred edges on fills and strokes</li>
+            <li><strong>Linear and radial gradients</strong> with configurable spread modes</li>
+            <li><strong>High-performance path tessellation</strong> with optional caching</li>
+            <li><strong>Instanced drawing</strong> for efficiently rendering many identical shapes</li>
+            <li><strong>DisplayList recording</strong> for caching complex scenes</li>
+            <li><strong>Multiple backends</strong>: OpenGL and Direct3D 12 (experimental)</li>
+         </ul>
+
+         <p>The API follows familiar conventions from HTML5 Canvas and other 2D graphics libraries, making it
+         approachable while offering significant performance advantages through GPU acceleration.</p>
+      </section>
+
+
+      <a class="anchor" id="design"></a>
+      <section>
+         <h2>Design</h2>
+
+         <p>The architecture centers on an abstract <ci dox="cinder::vg::Canvas">Canvas</ci> base class with
+         platform-specific implementations:</p>
+
+         <ul>
+            <li><ci dox="cinder::vg::CanvasGl">CanvasGl</ci> &ndash; OpenGL backend (4.1+ macOS, 4.5+ Windows/Linux)</li>
+            <li><ci dox="cinder::vg::CanvasD3d12">CanvasD3d12</ci> &ndash; Direct3D 12 backend (Windows, experimental)</li>
+         </ul>
+
+         <p>Supporting classes provide resource management and styling:</p>
+         <ul>
+            <li><ci dox="cinder::vg::Paint">Paint</ci> &ndash; visual styling (colors, gradients, stroke properties)</li>
+            <li><ci dox="cinder::vg::CachedPath">CachedPath</ci> &ndash; GPU-cached path representation</li>
+            <li><ci dox="cinder::vg::FrozenPath">FrozenPath</ci> &ndash; pre-tessellated path for maximum performance</li>
+            <li><ci dox="cinder::vg::Image">Image</ci> &ndash; GPU texture wrapper for image drawing</li>
+            <li><ci dox="cinder::vg::DisplayList">DisplayList</ci> &ndash; recorded sequence of draw commands</li>
+         </ul>
+
+         <p>All drawing commands are captured and batched before being sent to the GPU via Rive's
+         <code>RiveRenderer</code>. This deferred rendering approach enables efficient state management
+         and draw call batching.</p>
+      </section>
+
+
+      <a class="anchor" id="getting_started"></a>
+      <section>
+         <h2>Getting Started</h2>
+
+         <a class="anchor" id="window_rendering"></a>
+         <h3>Window Rendering (OpenGL)</h3>
+
+         <p>The simplest way to use <ci>cinder::vg</ci> is to create a canvas and draw directly to the window:</p>
+
+<pre><code class="language-cpp">
+#include "cinder/vg/CanvasGl.h"
+
+class MyApp : public App {
+    vg::CanvasGlRef mCanvas;
+
+    void setup() override {
+        mCanvas = vg::CanvasGl::create();
+    }
+
+    void draw() override {
+        mCanvas->begin( getWindowSize() );
+
+        vg::Paint paint;
+        paint.setColor( ColorAf( 0.2f, 0.7f, 1.0f ) );
+        mCanvas->fillCircle( vec2( 200, 200 ), 80, paint );
+
+        mCanvas->end();
+    }
+};
+</code></pre>
+
+         <p>In window mode, the canvas automatically detects MSAA settings and configures itself appropriately.
+         On most platforms, it uses an internal framebuffer with PLS or atomic mode for analytical anti-aliasing,
+         then blits the result to your window.</p>
+
+         <a class="anchor" id="offscreen_rendering"></a>
+         <h3>Offscreen Rendering</h3>
+
+         <p>To render to a texture for post-processing or capture:</p>
+
+<pre><code class="language-cpp">
+// Create an offscreen canvas with explicit dimensions
+mCanvas = vg::CanvasGl::create( 1920, 1080 );
+
+void draw() override {
+    // Render to internal FBO
+    mCanvas->begin( mCanvas->getFboSize() );
+    // ... drawing commands ...
+    mCanvas->end();
+
+    // Use the resulting texture
+    gl::draw( mCanvas->getTexture(), getWindowBounds() );
+}
+</code></pre>
+
+         <p>Offscreen mode always uses atomic mode for consistent analytical anti-aliasing, regardless of
+         window MSAA settings. The internal texture format is RGBA16F.</p>
+
+         <a class="anchor" id="d3d12"></a>
+         <h3>Direct3D 12 (Experimental)</h3>
+
+         <p>A Direct3D 12 backend is available via <ci dox="cinder::vg::CanvasD3d12">CanvasD3d12</ci> for Windows
+         applications. This backend is currently experimental and may have limitations. The API mirrors
+         <ci dox="cinder::vg::CanvasGl">CanvasGl</ci>, so switching backends requires minimal code changes.</p>
+      </section>
+
+
+      <a class="anchor" id="canvas_config"></a>
+      <section>
+         <h2>Canvas Configuration</h2>
+
+         <p>The canvas supports several rendering modes that affect quality and performance. Understanding these
+         is important for getting the best results on your target platform.</p>
+
+         <a class="anchor" id="pls_atomic"></a>
+         <h3>PLS, Atomic, and MSAA Modes</h3>
+
+         <p>The Rive renderer supports multiple anti-aliasing strategies, each with different capabilities:</p>
+
+         <table class="config-table">
+            <tr>
+               <th>Mode</th>
+               <th>Description</th>
+               <th>AA Quality</th>
+               <th>Feathering</th>
+               <th>Requirements</th>
+            </tr>
+            <tr>
+               <td><strong><a href="https://www.khronos.org/opengl/wiki/Pixel_Buffer_Object#Pixel_Local_Storage">PLS</a></strong></td>
+               <td><a href="https://www.khronos.org/opengl/wiki/Pixel_Buffer_Object#Pixel_Local_Storage">Pixel Local Storage</a> for coverage-based AA</td>
+               <td>Best</td>
+               <td>Full support</td>
+               <td>GL 4.5+ with GL_EXT_shader_framebuffer_fetch</td>
+            </tr>
+            <tr>
+               <td><strong>Atomic</strong></td>
+               <td>Atomic operations for analytical AA</td>
+               <td>Excellent</td>
+               <td>Full support</td>
+               <td>GL 4.5+ with shader atomics</td>
+            </tr>
+            <tr>
+               <td><strong>MSAA</strong></td>
+               <td>Traditional multisample anti-aliasing</td>
+               <td>Good</td>
+               <td>Limited</td>
+               <td>Any GL version (fallback)</td>
+            </tr>
+         </table>
+
+         <h4>Feature Comparison by Mode</h4>
+
+         <table class="config-table">
+            <tr>
+               <th>Feature</th>
+               <th>PLS</th>
+               <th>Atomic</th>
+               <th>MSAA</th>
+            </tr>
+            <tr>
+               <td>Feathering (soft edges)</td>
+               <td>Yes</td>
+               <td>Yes</td>
+               <td>Reduced quality</td>
+            </tr>
+            <tr>
+               <td>Analytical AA</td>
+               <td>Yes</td>
+               <td>Yes</td>
+               <td>No (sample-based)</td>
+            </tr>
+            <tr>
+               <td>Complex blend modes</td>
+               <td>Full</td>
+               <td>Full</td>
+               <td>Full</td>
+            </tr>
+            <tr>
+               <td>Performance</td>
+               <td>Best</td>
+               <td>Good</td>
+               <td>Varies with sample count</td>
+            </tr>
+            <tr>
+               <td>Memory usage</td>
+               <td>Low</td>
+               <td>Moderate</td>
+               <td>High (scales with MSAA level)</td>
+            </tr>
+         </table>
+
+         <p>The canvas auto-selects the best available mode. On desktop Windows/Linux with GL 4.5+, PLS or atomic
+         mode is preferred. The canvas creates an internal FBO to ensure consistent rendering regardless of
+         your window's MSAA settings.</p>
+
+         <a class="anchor" id="clockwise"></a>
+         <h3>Clockwise Fill Override</h3>
+
+         <p>The <code>clockwiseFillOverride</code> setting enables feathering support. This is enabled by
+         default in <ci dox="cinder::vg::CanvasGl">CanvasGl</ci>. When enabled:</p>
+         <ul>
+            <li>Feathering (soft edges) works on fills and strokes</li>
+            <li>Requires <code>disableRasterOrdering = true</code> (atomic mode)</li>
+            <li>May slightly affect fill rule interpretation for complex self-intersecting paths</li>
+         </ul>
+
+         <a class="anchor" id="platform_differences"></a>
+         <h3>Platform Differences</h3>
+
+         <table class="config-table">
+            <tr>
+               <th>Platform</th>
+               <th>GL Version</th>
+               <th>Default Mode</th>
+               <th>Feathering</th>
+            </tr>
+            <tr>
+               <td>Windows</td>
+               <td>4.5+</td>
+               <td>PLS or Atomic</td>
+               <td>Full support</td>
+            </tr>
+            <tr>
+               <td>Linux</td>
+               <td>4.5+</td>
+               <td>PLS or Atomic</td>
+               <td>Full support</td>
+            </tr>
+            <tr>
+               <td>macOS</td>
+               <td>4.1</td>
+               <td>MSAA only</td>
+               <td>Reduced quality</td>
+            </tr>
+         </table>
+
+         <div class="note">
+            <strong>macOS Note:</strong> Due to OpenGL 4.1 limitations, macOS always uses MSAA mode.
+            PLS and Fragment Shader Interlock are not available. Feathering will still work but with
+            reduced quality compared to PLS/Atomic modes.
+         </div>
+      </section>
+
+
+      <a class="anchor" id="transforms"></a>
+      <section>
+         <h2>Transform Stack</h2>
+
+         <p>The canvas maintains a transform stack similar to HTML5 Canvas. Use <ci dox="cinder::vg::Canvas::save">save()</ci> and
+         <ci dox="cinder::vg::Canvas::restore">restore()</ci> to push and pop the current transform and clip state:</p>
+
+<pre><code class="language-cpp">
+mCanvas->save();
+
+mCanvas->translate( vec2( 100, 100 ) );
+mCanvas->rotate( glm::radians( 45.0f ) );
+mCanvas->scale( vec2( 2.0f, 1.0f ) );
+
+mCanvas->fillRect( Rectf( -50, -25, 50, 25 ), paint );
+
+mCanvas->restore();  // Transform reverted
+</code></pre>
+
+         <h4>Visualizing the Transform Stack</h4>
+
+         <p>The stack grows with each <code>save()</code> and shrinks with <code>restore()</code>. Each level
+         preserves both the transform matrix and the current clip region:</p>
+
+         <!-- Transform stack visualization -->
+         <div class="demo-row">
+            <canvas id="stack-demo" class="demo-canvas" width="600" height="200"></canvas>
+         </div>
+         <script>
+         (function() {
+            var canvas = document.getElementById('stack-demo');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            // Draw stack frames
+            function drawStackFrame(x, y, w, h, color, label, transform) {
+               ctx.fillStyle = color;
+               ctx.globalAlpha = 0.3;
+               ctx.fillRect(x, y, w, h);
+               ctx.globalAlpha = 1;
+               ctx.strokeStyle = color;
+               ctx.lineWidth = 2;
+               ctx.strokeRect(x, y, w, h);
+               ctx.fillStyle = '#fff';
+               ctx.font = 'bold 11px monospace';
+               ctx.fillText(label, x + 5, y + 15);
+               ctx.font = '10px monospace';
+               ctx.fillStyle = '#aaa';
+               ctx.fillText(transform, x + 5, y + 30);
+            }
+
+            // Stack visualization
+            ctx.fillStyle = '#888';
+            ctx.font = '12px monospace';
+            ctx.fillText('Transform Stack Growth:', 10, 20);
+
+            drawStackFrame(10, 35, 130, 50, '#4ecdc4', 'Level 0 (base)', 'identity');
+            drawStackFrame(10, 90, 130, 50, '#ff6b6b', 'Level 1', 'translate(100,100)');
+            drawStackFrame(10, 145, 130, 50, '#ffd93d', 'Level 2', 'rotate(45deg)');
+
+            // Arrow
+            ctx.strokeStyle = '#888';
+            ctx.fillStyle = '#888';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(70, 32);
+            ctx.lineTo(70, 148);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(65, 143);
+            ctx.lineTo(70, 153);
+            ctx.lineTo(75, 143);
+            ctx.fill();
+
+            ctx.fillStyle = '#888';
+            ctx.font = '10px monospace';
+            ctx.fillText('save()', 85, 75);
+            ctx.fillText('save()', 85, 130);
+
+            // Visual result
+            ctx.save();
+            ctx.translate(400, 100);
+
+            // Base grid
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 1;
+            for (var i = -80; i <= 80; i += 20) {
+               ctx.beginPath();
+               ctx.moveTo(i, -80);
+               ctx.lineTo(i, 80);
+               ctx.stroke();
+               ctx.beginPath();
+               ctx.moveTo(-80, i);
+               ctx.lineTo(80, i);
+               ctx.stroke();
+            }
+
+            // Axes
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-80, 0);
+            ctx.lineTo(80, 0);
+            ctx.moveTo(0, -80);
+            ctx.lineTo(0, 80);
+            ctx.stroke();
+
+            // Level 0 rect (identity)
+            ctx.fillStyle = 'rgba(78, 205, 196, 0.3)';
+            ctx.strokeStyle = '#4ecdc4';
+            ctx.fillRect(-30, -15, 60, 30);
+            ctx.strokeRect(-30, -15, 60, 30);
+
+            // Level 1 (translated)
+            ctx.save();
+            ctx.translate(30, 30);
+            ctx.fillStyle = 'rgba(255, 107, 107, 0.3)';
+            ctx.strokeStyle = '#ff6b6b';
+            ctx.fillRect(-30, -15, 60, 30);
+            ctx.strokeRect(-30, -15, 60, 30);
+
+            // Level 2 (rotated)
+            ctx.save();
+            ctx.rotate(Math.PI / 4);
+            ctx.fillStyle = 'rgba(255, 217, 61, 0.3)';
+            ctx.strokeStyle = '#ffd93d';
+            ctx.fillRect(-30, -15, 60, 30);
+            ctx.strokeRect(-30, -15, 60, 30);
+            ctx.restore();
+            ctx.restore();
+            ctx.restore();
+
+            ctx.fillStyle = '#888';
+            ctx.font = '11px monospace';
+            ctx.fillText('Visual: transforms accumulate', 320, 190);
+         })();
+         </script>
+
+         <h4>The mat3 Transform Matrix</h4>
+
+         <p>Internally, transforms are represented as a 3x3 matrix. Each transform operation modifies this matrix:</p>
+
+         <table class="matrix-table">
+            <tr>
+               <td class="label-cell">sx</td>
+               <td class="label-cell">shx</td>
+               <td class="label-cell">tx</td>
+            </tr>
+            <tr>
+               <td class="label-cell">shy</td>
+               <td class="label-cell">sy</td>
+               <td class="label-cell">ty</td>
+            </tr>
+            <tr>
+               <td class="zero-cell">0</td>
+               <td class="zero-cell">0</td>
+               <td class="zero-cell">1</td>
+            </tr>
+         </table>
+         <p style="font-size: 11px; color: #666; margin-top: 5px;">
+            sx, sy = scale &nbsp;&nbsp; shx, shy = shear &nbsp;&nbsp; tx, ty = translation
+         </p>
+
+         <!-- Matrix transformation demo -->
+         <div class="demo-row">
+            <canvas id="matrix-demo" class="demo-canvas" width="600" height="180"></canvas>
+         </div>
+         <script>
+         (function() {
+            var canvas = document.getElementById('matrix-demo');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            function drawTransform(x, y, matrix, label, sublabel) {
+               ctx.save();
+               ctx.translate(x, y);
+
+               // Grid
+               ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+               ctx.lineWidth = 1;
+               for (var i = -40; i <= 40; i += 10) {
+                  ctx.beginPath();
+                  ctx.moveTo(i, -40);
+                  ctx.lineTo(i, 40);
+                  ctx.stroke();
+                  ctx.beginPath();
+                  ctx.moveTo(-40, i);
+                  ctx.lineTo(40, i);
+                  ctx.stroke();
+               }
+
+               // Apply transform and draw shape
+               ctx.save();
+               ctx.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
+               ctx.fillStyle = 'rgba(78, 205, 196, 0.5)';
+               ctx.strokeStyle = '#4ecdc4';
+               ctx.lineWidth = 2;
+               ctx.fillRect(-20, -15, 40, 30);
+               ctx.strokeRect(-20, -15, 40, 30);
+               // Origin marker
+               ctx.fillStyle = '#ff6b6b';
+               ctx.beginPath();
+               ctx.arc(0, 0, 3, 0, Math.PI * 2);
+               ctx.fill();
+               ctx.restore();
+
+               ctx.fillStyle = '#888';
+               ctx.font = 'bold 11px monospace';
+               ctx.fillText(label, -40, 60);
+               ctx.font = '10px monospace';
+               ctx.fillStyle = '#666';
+               ctx.fillText(sublabel, -40, 73);
+               ctx.restore();
+            }
+
+            // Identity
+            drawTransform(60, 75, [1, 0, 0, 1, 0, 0], 'Identity', '[1,0,0,1,0,0]');
+
+            // Translate
+            drawTransform(180, 75, [1, 0, 0, 1, 15, 10], 'Translate', '[1,0,0,1,15,10]');
+
+            // Scale
+            drawTransform(300, 75, [1.5, 0, 0, 0.7, 0, 0], 'Scale', '[1.5,0,0,0.7,0,0]');
+
+            // Rotate
+            var angle = Math.PI / 6;
+            drawTransform(420, 75, [Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle), 0, 0], 'Rotate 30', '[cos,sin,-sin,cos,0,0]');
+
+            // Skew
+            drawTransform(540, 75, [1, 0, 0.3, 1, 0, 0], 'Skew', '[1,0,0.3,1,0,0]');
+         })();
+         </script>
+
+         <p>Available transform methods:</p>
+         <ul>
+            <li><ci dox="cinder::vg::Canvas::translate"><code>translate( const vec2& offset )</code></ci></li>
+            <li><ci dox="cinder::vg::Canvas::rotate"><code>rotate( float radians )</code></ci></li>
+            <li><ci dox="cinder::vg::Canvas::scale"><code>scale( const vec2& s )</code></ci></li>
+            <li><ci dox="cinder::vg::Canvas::transform"><code>transform( const mat3& m )</code></ci> &ndash; concatenate matrix</li>
+            <li><ci dox="cinder::vg::Canvas::setTransform"><code>setTransform( const mat3& m )</code></ci> &ndash; replace matrix</li>
+            <li><ci dox="cinder::vg::Canvas::resetTransform"><code>resetTransform()</code></ci></li>
+            <li><ci dox="cinder::vg::Canvas::getTransform"><code>getTransform()</code></ci> &ndash; returns current mat3</li>
+         </ul>
+      </section>
+
+
+      <a class="anchor" id="paint"></a>
+      <section>
+         <h2>Paint and Styling</h2>
+
+         <p>The <ci dox="cinder::vg::Paint">Paint</ci> class controls visual appearance of drawn shapes.
+         It supports solid colors, gradients, stroke styling, feathering, and blend modes.</p>
+
+         <a class="anchor" id="solid_colors"></a>
+         <h3>Solid Colors</h3>
+
+<pre><code class="language-cpp">
+vg::Paint paint;
+paint.setColor( ColorAf( 1.0f, 0.5f, 0.2f ) );      // RGBA
+paint.setColor( Color( 0.2f, 0.7f, 1.0f ) );        // RGB (alpha = 1)
+paint.setOpacity( 0.8f );                            // Multiply alpha
+</code></pre>
+
+         <a class="anchor" id="gradients"></a>
+         <h3>Gradients</h3>
+
+         <p><strong>Linear Gradient:</strong></p>
+<pre><code class="language-cpp">
+paint.setLinearGradient(
+    vec2( 0, 0 ),      // start point
+    vec2( 200, 0 ),    // end point
+    ColorAf( 1, 0, 0 ),  // start color
+    ColorAf( 0, 0, 1 )   // end color
+);
+</code></pre>
+
+         <p><strong>Radial Gradient:</strong></p>
+<pre><code class="language-cpp">
+paint.setRadialGradient(
+    vec2( 100, 100 ),  // center
+    80.0f,             // radius
+    ColorAf( 1, 1, 0 ),  // inner color
+    ColorAf( 1, 0, 0 )   // outer color
+);
+</code></pre>
+
+         <p><strong>Multi-stop Gradients:</strong></p>
+<pre><code class="language-cpp">
+std::vector&lt;vg::GradientStop&gt; stops = {
+    { 0.0f, ColorAf( 1, 0, 0 ) },
+    { 0.5f, ColorAf( 0, 1, 0 ) },
+    { 1.0f, ColorAf( 0, 0, 1 ) }
+};
+paint.setLinearGradient( vec2( 0, 0 ), vec2( 200, 0 ), stops );
+</code></pre>
+
+         <p><strong>Gradient Spread Modes:</strong></p>
+<pre><code class="language-cpp">
+paint.setGradientSpread( vg::GradientSpread::Pad );     // Extend edge colors (default)
+paint.setGradientSpread( vg::GradientSpread::Repeat );  // Tile the gradient
+paint.setGradientSpread( vg::GradientSpread::Reflect ); // Mirror at edges
+</code></pre>
+
+         <!-- Interactive gradient demo -->
+         <div class="demo-row">
+            <canvas id="gradient-demo" class="demo-canvas" width="500" height="80"></canvas>
+         </div>
+         <script>
+         (function() {
+            var canvas = document.getElementById('gradient-demo');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            // Pad
+            var grad1 = ctx.createLinearGradient(20, 0, 100, 0);
+            grad1.addColorStop(0, '#ff4444');
+            grad1.addColorStop(1, '#4444ff');
+            ctx.fillStyle = grad1;
+            ctx.fillRect(10, 10, 150, 60);
+            ctx.fillStyle = '#888';
+            ctx.font = '11px monospace';
+            ctx.fillText('Pad', 60, 55);
+
+            // Repeat (simulated)
+            for (var i = 0; i < 3; i++) {
+               var grad2 = ctx.createLinearGradient(170 + i*50, 0, 220 + i*50, 0);
+               grad2.addColorStop(0, '#ff4444');
+               grad2.addColorStop(1, '#4444ff');
+               ctx.fillStyle = grad2;
+               ctx.fillRect(170 + i*50, 10, 50, 60);
+            }
+            ctx.fillStyle = '#888';
+            ctx.fillText('Repeat', 210, 55);
+
+            // Reflect (simulated)
+            var grad3a = ctx.createLinearGradient(340, 0, 390, 0);
+            grad3a.addColorStop(0, '#ff4444');
+            grad3a.addColorStop(1, '#4444ff');
+            ctx.fillStyle = grad3a;
+            ctx.fillRect(340, 10, 50, 60);
+            var grad3b = ctx.createLinearGradient(440, 0, 390, 0);
+            grad3b.addColorStop(0, '#ff4444');
+            grad3b.addColorStop(1, '#4444ff');
+            ctx.fillStyle = grad3b;
+            ctx.fillRect(390, 10, 50, 60);
+            var grad3c = ctx.createLinearGradient(440, 0, 490, 0);
+            grad3c.addColorStop(0, '#ff4444');
+            grad3c.addColorStop(1, '#4444ff');
+            ctx.fillStyle = grad3c;
+            ctx.fillRect(440, 10, 50, 60);
+            ctx.fillStyle = '#888';
+            ctx.fillText('Reflect', 380, 55);
+         })();
+         </script>
+
+         <a class="anchor" id="stroke_properties"></a>
+         <h3>Stroke Properties</h3>
+
+         <p><strong>Stroke Width:</strong></p>
+<pre><code class="language-cpp">
+paint.setStrokeWidth( 5.0f );
+</code></pre>
+
+         <p><strong>Line Cap:</strong> Controls how line endpoints are drawn.</p>
+<pre><code class="language-cpp">
+paint.setLineCap( vg::LineCap::Butt );    // Flat end at exact endpoint
+paint.setLineCap( vg::LineCap::Round );   // Semicircle at endpoint
+paint.setLineCap( vg::LineCap::Square );  // Extends by half stroke width
+</code></pre>
+
+         <!-- Interactive line cap demo -->
+         <div class="demo-row">
+            <canvas id="linecap-demo" class="demo-canvas" width="500" height="100"></canvas>
+         </div>
+         <script>
+         (function() {
+            var canvas = document.getElementById('linecap-demo');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            ctx.strokeStyle = '#4ecdc4';
+            ctx.lineWidth = 20;
+
+            // Butt
+            ctx.lineCap = 'butt';
+            ctx.beginPath();
+            ctx.moveTo(50, 50);
+            ctx.lineTo(130, 50);
+            ctx.stroke();
+            ctx.fillStyle = '#888';
+            ctx.font = '12px monospace';
+            ctx.fillText('Butt', 70, 85);
+
+            // Round
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(200, 50);
+            ctx.lineTo(280, 50);
+            ctx.stroke();
+            ctx.fillText('Round', 215, 85);
+
+            // Square
+            ctx.lineCap = 'square';
+            ctx.beginPath();
+            ctx.moveTo(350, 50);
+            ctx.lineTo(430, 50);
+            ctx.stroke();
+            ctx.fillText('Square', 365, 85);
+
+            // Reference lines showing actual endpoints
+            ctx.strokeStyle = 'rgba(255,100,100,0.5)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            [50, 130, 200, 280, 350, 430].forEach(function(x) {
+               ctx.beginPath();
+               ctx.moveTo(x, 30);
+               ctx.lineTo(x, 70);
+               ctx.stroke();
+            });
+         })();
+         </script>
+
+         <p><strong>Line Join:</strong> Controls how line segments connect at corners.</p>
+<pre><code class="language-cpp">
+paint.setLineJoin( vg::LineJoin::Miter );  // Sharp corner (default)
+paint.setLineJoin( vg::LineJoin::Round );  // Rounded corner
+paint.setLineJoin( vg::LineJoin::Bevel );  // Flat corner
+</code></pre>
+
+         <!-- Interactive line join demo -->
+         <div class="demo-row">
+            <canvas id="linejoin-demo" class="demo-canvas" width="500" height="120"></canvas>
+         </div>
+         <script>
+         (function() {
+            var canvas = document.getElementById('linejoin-demo');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            ctx.strokeStyle = '#ff6b6b';
+            ctx.lineWidth = 20;
+
+            function drawAngle(x, join, label) {
+               ctx.lineJoin = join;
+               ctx.beginPath();
+               ctx.moveTo(x, 90);
+               ctx.lineTo(x + 40, 30);
+               ctx.lineTo(x + 80, 90);
+               ctx.stroke();
+               ctx.fillStyle = '#888';
+               ctx.font = '12px monospace';
+               ctx.fillText(label, x + 20, 110);
+            }
+
+            drawAngle(30, 'miter', 'Miter');
+            drawAngle(180, 'round', 'Round');
+            drawAngle(330, 'bevel', 'Bevel');
+         })();
+         </script>
+
+         <p><strong>Miter Limit:</strong> When using miter joins, limits the spike length for sharp angles.</p>
+<pre><code class="language-cpp">
+paint.setMiterLimit( 4.0f );  // Default is 4
+</code></pre>
+
+         <p><strong>Dashing:</strong> Create dashed or dotted lines.</p>
+<pre><code class="language-cpp">
+// Pattern: 10px on, 5px off, 3px on, 5px off
+paint.setDash( { 10.0f, 5.0f, 3.0f, 5.0f }, 0.0f );
+</code></pre>
+
+         <!-- Interactive dash demo -->
+         <div class="demo-row">
+            <canvas id="dash-demo" class="demo-canvas" width="500" height="115"></canvas>
+         </div>
+         <script>
+         (function() {
+            var canvas = document.getElementById('dash-demo');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            ctx.strokeStyle = '#95e1d3';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+
+            // Solid
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(30, 20);
+            ctx.lineTo(470, 20);
+            ctx.stroke();
+            ctx.fillStyle = '#888';
+            ctx.font = '11px monospace';
+            ctx.fillText('Solid (no dash)', 30, 35);
+
+            // Simple dash
+            ctx.setLineDash([15, 10]);
+            ctx.beginPath();
+            ctx.moveTo(30, 55);
+            ctx.lineTo(470, 55);
+            ctx.stroke();
+            ctx.fillText('[15, 10]', 30, 70);
+
+            // Complex dash
+            ctx.setLineDash([20, 5, 5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(30, 90);
+            ctx.lineTo(470, 90);
+            ctx.stroke();
+            ctx.fillText('[20, 5, 5, 5]', 30, 105);
+         })();
+         </script>
+
+         <a class="anchor" id="feathering"></a>
+         <h3>Feathering (Soft Edges)</h3>
+
+         <p>Feathering creates soft, blurred edges on shapes&mdash;a unique feature of the Rive renderer:</p>
+
+<pre><code class="language-cpp">
+paint.setFeather( 15.0f );  // 15 pixel blur radius
+mCanvas->fillCircle( center, radius, paint );
+</code></pre>
+
+         <!-- Feathering demo using canvas blur -->
+         <div class="demo-row">
+            <canvas id="feather-demo" class="demo-canvas" width="500" height="130"></canvas>
+         </div>
+         <script>
+         (function() {
+            var canvas = document.getElementById('feather-demo');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            function drawFeatheredCircle(x, feather, label) {
+               ctx.save();
+               ctx.filter = 'blur(' + feather + 'px)';
+               ctx.fillStyle = '#ff6b6b';
+               ctx.beginPath();
+               ctx.arc(x, 55, 30, 0, Math.PI * 2);
+               ctx.fill();
+               ctx.restore();
+
+               ctx.fillStyle = '#888';
+               ctx.font = '11px monospace';
+               ctx.fillText(label, x - 35, 115);
+            }
+
+            drawFeatheredCircle(70, 0, 'feather: 0');
+            drawFeatheredCircle(190, 4, 'feather: 4');
+            drawFeatheredCircle(310, 10, 'feather: 10');
+            drawFeatheredCircle(430, 18, 'feather: 18');
+         })();
+         </script>
+
+         <div class="note">
+            <strong>Note:</strong> Feathering requires <a href="https://www.khronos.org/opengl/wiki/Pixel_Buffer_Object#Pixel_Local_Storage">PLS</a> or Atomic mode for full quality. On macOS (MSAA mode),
+            feathering still works but with reduced quality. See the
+            <a href="#pls_atomic">mode comparison table</a> for details.
+         </div>
+
+         <a class="anchor" id="blend_modes"></a>
+         <h3>Blend Modes</h3>
+
+         <p>Standard Porter-Duff and Photoshop-style blend modes are supported:</p>
+
+<pre><code class="language-cpp">
+paint.setBlendMode( vg::BlendMode::SrcOver );     // Default (normal alpha blending)
+paint.setBlendMode( vg::BlendMode::Multiply );
+paint.setBlendMode( vg::BlendMode::Screen );
+paint.setBlendMode( vg::BlendMode::Overlay );
+// ... Darken, Lighten, ColorDodge, ColorBurn, HardLight, SoftLight,
+//     Difference, Exclusion, Hue, Saturation, Color, Luminosity
+</code></pre>
+
+         <!-- Blend mode demo -->
+         <div class="demo-row">
+            <canvas id="blend-demo" class="demo-canvas" width="550" height="100"></canvas>
+         </div>
+         <script>
+         (function() {
+            var canvas = document.getElementById('blend-demo');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            function drawBlendDemo(x, y, mode, label) {
+               ctx.save();
+
+               // Background circle (red)
+               ctx.fillStyle = '#ff4444';
+               ctx.beginPath();
+               ctx.arc(x, y, 28, 0, Math.PI * 2);
+               ctx.fill();
+
+               // Foreground circle (blue) with blend mode
+               ctx.globalCompositeOperation = mode;
+               ctx.fillStyle = '#4444ff';
+               ctx.beginPath();
+               ctx.arc(x + 18, y + 12, 28, 0, Math.PI * 2);
+               ctx.fill();
+
+               ctx.restore();
+
+               ctx.fillStyle = '#888';
+               ctx.font = '10px monospace';
+               ctx.fillText(label, x - 20, y + 52);
+            }
+
+            drawBlendDemo(55, 38, 'source-over', 'SrcOver');
+            drawBlendDemo(155, 38, 'multiply', 'Multiply');
+            drawBlendDemo(255, 38, 'screen', 'Screen');
+            drawBlendDemo(355, 38, 'overlay', 'Overlay');
+            drawBlendDemo(455, 38, 'difference', 'Difference');
+         })();
+         </script>
+      </section>
+
+
+      <a class="anchor" id="drawing"></a>
+      <section>
+         <h2>Drawing Functions</h2>
+
+         <a class="anchor" id="primitives"></a>
+         <h3>Primitives</h3>
+
+         <p>Common shapes have dedicated methods for convenience:</p>
+
+<pre><code class="language-cpp">
+// Filled shapes
+mCanvas->fillRect( Rectf( 10, 10, 100, 80 ), paint );
+mCanvas->fillRoundedRect( Rectf( 10, 10, 100, 80 ), 10.0f, paint );
+mCanvas->fillCircle( vec2( 50, 50 ), 30.0f, paint );
+mCanvas->fillEllipse( vec2( 50, 50 ), vec2( 40, 20 ), paint );
+
+// Stroked shapes
+mCanvas->strokeRect( rect, paint );
+mCanvas->strokeRoundedRect( rect, radius, paint );
+mCanvas->strokeCircle( center, radius, paint );
+mCanvas->strokeEllipse( center, radii, paint );
+mCanvas->drawLine( p0, p1, paint );
+</code></pre>
+
+         <a class="anchor" id="paths"></a>
+         <h3>Paths</h3>
+
+         <p>For complex shapes, use Cinder's <ci dox="cinder::Path2d">Path2d</ci> or
+         <ci dox="cinder::Shape2d">Shape2d</ci>:</p>
+
+<pre><code class="language-cpp">
+Path2d path;
+path.moveTo( 100, 100 );
+path.lineTo( 200, 100 );
+path.quadTo( 250, 150, 200, 200 );
+path.curveTo( 150, 250, 100, 200, 100, 150 );
+path.close();
+
+mCanvas->fillPath( path, paint, vg::FillRule::NonZero );
+mCanvas->strokePath( path, strokePaint );
+</code></pre>
+
+         <p><strong>Fill Rules:</strong></p>
+
+         <table class="config-table">
+            <tr>
+               <th>Rule</th>
+               <th>Description</th>
+            </tr>
+            <tr>
+               <td><code>FillRule::NonZero</code></td>
+               <td>Non-zero winding rule (default). A point is inside if a ray from it crosses
+               more clockwise edges than counter-clockwise.</td>
+            </tr>
+            <tr>
+               <td><code>FillRule::EvenOdd</code></td>
+               <td>Even-odd rule. A point is inside if a ray from it crosses an odd number of edges.</td>
+            </tr>
+         </table>
+
+         <!-- Fill rule demo with 5-pointed star -->
+         <div class="demo-row">
+            <canvas id="fillrule-demo" class="demo-canvas" width="500" height="150"></canvas>
+         </div>
+         <script>
+         (function() {
+            var canvas = document.getElementById('fillrule-demo');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            // Draw a 5-pointed star by connecting every other vertex (self-intersecting)
+            function drawStar(cx, cy, outerR, fillRule) {
+               ctx.beginPath();
+               for (var i = 0; i < 5; i++) {
+                  // Connect vertices 0-2-4-1-3-0 (skip every other)
+                  var idx = (i * 2) % 5;
+                  var angle = (idx * 2 * Math.PI / 5) - Math.PI / 2;
+                  var x = cx + outerR * Math.cos(angle);
+                  var y = cy + outerR * Math.sin(angle);
+                  if (i === 0) ctx.moveTo(x, y);
+                  else ctx.lineTo(x, y);
+               }
+               ctx.closePath();
+               ctx.fill(fillRule);
+            }
+
+            // NonZero - entire star filled
+            ctx.fillStyle = '#4ecdc4';
+            drawStar(125, 65, 55, 'nonzero');
+            ctx.fillStyle = '#888';
+            ctx.font = '12px monospace';
+            ctx.fillText('NonZero', 90, 140);
+
+            // EvenOdd - center pentagon hollow
+            ctx.fillStyle = '#ff6b6b';
+            drawStar(375, 65, 55, 'evenodd');
+            ctx.fillStyle = '#888';
+            ctx.fillText('EvenOdd', 340, 140);
+         })();
+         </script>
+
+         <a class="anchor" id="images"></a>
+         <h3>Images</h3>
+
+         <p>Draw textures using the <ci dox="cinder::vg::Image">Image</ci> class:</p>
+
+<pre><code class="language-cpp">
+// Create from Cinder texture
+gl::Texture2dRef texture = gl::Texture2d::create( loadImage( loadAsset( "photo.jpg" ) ) );
+vg::ImageRef image = mCanvas->createImage( texture );
+
+// Draw at position
+mCanvas->drawImage( image, vec2( 100, 100 ) );
+
+// Draw stretched to rectangle
+mCanvas->drawImage( image, Rectf( 0, 0, 400, 300 ) );
+
+// Draw sub-region
+mCanvas->drawImage( image,
+    Rectf( 0, 0, 100, 100 ),    // source rect
+    Rectf( 50, 50, 250, 250 )   // dest rect
+);
+
+// Arbitrary mesh mapping
+mCanvas->drawImageMesh( image, vertices, uvs, indices, opacity );
+</code></pre>
+
+         <a class="anchor" id="text"></a>
+         <h3>Text</h3>
+
+<pre><code class="language-cpp">
+Font font = Font( "Arial", 24 );
+mCanvas->drawString( "Hello, Vector Graphics!", vec2( 50, 100 ), font, paint );
+
+// Or create a path from text for effects
+vg::CachedPathRef textPath = mCanvas->createTextPath( "Outlined", font );
+mCanvas->strokePath( textPath, strokePaint );
+</code></pre>
+
+         <a class="anchor" id="clipping"></a>
+         <h3>Clipping</h3>
+
+         <p>Clips restrict drawing to a region. They accumulate (intersect) within save/restore blocks:</p>
+
+<pre><code class="language-cpp">
+mCanvas->save();
+
+// Rectangular clip
+mCanvas->clipRect( Rectf( 50, 50, 200, 200 ) );
+
+// Path clip (can use any shape)
+Path2d clipPath;
+clipPath.arc( vec2( 150, 150 ), 80, 0, M_PI * 2 );
+mCanvas->clipPath( clipPath );
+
+// All subsequent drawing is clipped to the intersection
+mCanvas->fillRect( Rectf( 0, 0, 400, 400 ), paint );
+
+mCanvas->restore();  // Clip state restored
+</code></pre>
+
+         <!-- Clipping demo -->
+         <div class="demo-row">
+            <canvas id="clip-demo" class="demo-canvas" width="600" height="160"></canvas>
+         </div>
+         <script>
+         (function() {
+            var canvas = document.getElementById('clip-demo');
+            var dpr = window.devicePixelRatio || 1;
+            var rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            var ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+
+            // Demo 1: No clip
+            ctx.save();
+            ctx.fillStyle = '#4ecdc4';
+            ctx.fillRect(30, 30, 120, 100);
+            ctx.fillStyle = '#888';
+            ctx.font = '11px monospace';
+            ctx.fillText('No clip', 60, 150);
+            ctx.restore();
+
+            // Demo 2: Rectangular clip
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(200, 50, 80, 60);
+            ctx.clip();
+            ctx.fillStyle = '#ff6b6b';
+            ctx.fillRect(180, 30, 120, 100);
+            ctx.restore();
+            // Draw clip outline
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.setLineDash([4, 4]);
+            ctx.strokeRect(200, 50, 80, 60);
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#888';
+            ctx.font = '11px monospace';
+            ctx.fillText('clipRect', 210, 150);
+
+            // Demo 3: Circular clip
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(420, 80, 45, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.fillStyle = '#ffd93d';
+            ctx.fillRect(360, 30, 120, 100);
+            ctx.restore();
+            // Draw clip outline
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.arc(420, 80, 45, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#888';
+            ctx.fillText('clipPath (circle)', 380, 150);
+
+            // Demo 4: Intersected clips
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(520, 40, 70, 80);
+            ctx.clip();
+            ctx.beginPath();
+            ctx.arc(555, 80, 50, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.fillStyle = '#95e1d3';
+            ctx.fillRect(500, 20, 120, 120);
+            ctx.restore();
+            // Draw clip outlines
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.setLineDash([4, 4]);
+            ctx.strokeRect(520, 40, 70, 80);
+            ctx.beginPath();
+            ctx.arc(555, 80, 50, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#888';
+            ctx.fillText('Intersection', 520, 150);
+         })();
+         </script>
+      </section>
+
+
+      <a class="anchor" id="performance"></a>
+      <section>
+         <h2>Performance Optimization</h2>
+
+         <p>The <ci>cinder::vg</ci> API provides several mechanisms for optimizing repeated drawing operations.</p>
+
+         <a class="anchor" id="cached_path"></a>
+         <h3>CachedPath</h3>
+
+         <p>When drawing the same path multiple times, create a <ci dox="cinder::vg::CachedPath">CachedPath</ci>
+         to avoid repeated CPU-side path conversion:</p>
+
+<pre><code class="language-cpp">
+// Create once
+vg::CachedPathRef cachedPath = mCanvas->createPath( complexShape );
+
+// Draw many times (GPU representation is reused)
+for ( const vec2& position : positions ) {
+    mCanvas->save();
+    mCanvas->translate( position );
+    mCanvas->fillPath( cachedPath, paint );
+    mCanvas->restore();
+}
+</code></pre>
+
+         <p><strong>When to use:</strong> Any path drawn more than once per frame, especially complex paths
+         with many segments.</p>
+
+         <a class="anchor" id="frozen_path"></a>
+         <h3>FrozenPath</h3>
+
+         <p>For maximum performance, <ci dox="cinder::vg::FrozenPath">FrozenPath</ci> pre-tessellates the
+         path, skipping expensive Wang's formula calculations during drawing:</p>
+
+<pre><code class="language-cpp">
+// Create cached path first
+vg::CachedPathRef cachedPath = mCanvas->createPath( shape );
+
+// Freeze at current transform scale (expensive operation)
+vg::FrozenPathRef frozenFill = mCanvas->freezePathFill( cachedPath, paint );
+vg::FrozenPathRef frozenStroke = mCanvas->freezePathStroke( cachedPath, strokePaint );
+
+// Draw very efficiently
+mCanvas->drawFrozenPath( frozenFill, paint );
+</code></pre>
+
+         <div class="warning">
+            <strong>Important:</strong> FrozenPath tessellation is computed at a specific scale. The path
+            will render correctly under translation and rotation, but <strong>may show artifacts if drawn
+            at a significantly different scale</strong>. Create new frozen paths when scale changes substantially.
+         </div>
+
+         <p><strong>When to use:</strong> Particle systems, repeated icons, UI elements that don't change scale.</p>
+
+         <a class="anchor" id="display_list"></a>
+         <h3>DisplayList</h3>
+
+         <p>Record complex drawing sequences for efficient replay:</p>
+
+<pre><code class="language-cpp">
+// Record once
+vg::DisplayListRef displayList = mCanvas->createDisplayList();
+displayList->beginRecording( mCanvas.get() );
+
+mCanvas->draw( complexSvgDoc );  // Commands captured
+
+displayList->endRecording();
+
+// Replay efficiently each frame
+void draw() {
+    mCanvas->begin( size );
+    displayList->replay( mCanvas.get() );
+    mCanvas->end();
+}
+</code></pre>
+
+         <p><strong>When to use:</strong> Static SVG content, complex scenes that don't change,
+         UI backgrounds.</p>
+
+         <a class="anchor" id="instanced"></a>
+         <h3>Instanced Drawing</h3>
+
+         <p>Draw many identical shapes efficiently with a single call:</p>
+
+<pre><code class="language-cpp">
+std::vector&lt;vec2&gt; positions;
+// ... fill with particle positions ...
+
+// Single draw call for all circles
+mCanvas->drawCircles( positions, 5.0f, paint );
+
+// Or with full transforms
+std::vector&lt;mat3&gt; transforms;
+mCanvas->drawCircles( transforms, 5.0f, paint );
+
+// Works with cached and frozen paths too
+mCanvas->drawPaths( positions, cachedPath, paint );
+mCanvas->drawFrozenPaths( positions, frozenPath, paint );
+</code></pre>
+      </section>
+
+
+      <a class="anchor" id="limitations"></a>
+      <section>
+         <h2>Limitations</h2>
+
+         <h3>General</h3>
+         <ul>
+            <li><strong>Thread safety:</strong> Canvas instances are not thread-safe. Serialize access or use
+            one canvas per thread.</li>
+            <li><strong>Nested frames:</strong> Cannot call <ci dox="cinder::vg::Canvas::begin"><code>begin()</code></ci> while already in a frame.
+            Check with <ci dox="cinder::vg::Canvas::inFrame"><code>inFrame()</code></ci>.</li>
+         </ul>
+
+         <h3>OpenGL (<ci dox="cinder::vg::CanvasGl">CanvasGl</ci>)</h3>
+         <ul>
+            <li><strong>MSAA interaction:</strong> Cannot render directly to MSAA framebuffers. The canvas
+            creates an internal non-MSAA FBO and blits to your target.</li>
+            <li><strong>GL state:</strong> Extensive GL state modification occurs during rendering. State is
+            saved and restored, but custom GL code should not assume state persistence across canvas calls.</li>
+            <li><strong>macOS:</strong> Limited to GL 4.1. No PLS or FSI support&mdash;always uses MSAA mode.
+            Feathering quality reduced.</li>
+         </ul>
+
+         <h3>Path Rendering</h3>
+         <ul>
+            <li><strong>FrozenPath scale:</strong> Tessellation is scale-dependent. Significant scale changes
+            may cause visual artifacts.</li>
+            <li><strong>Precision:</strong> Rive uses float32 internally. Extremely large coordinates may
+            lose precision.</li>
+         </ul>
+
+         <h3>Feathering</h3>
+         <ul>
+            <li>Requires atomic mode (<code>disableRasterOrdering = true</code>)</li>
+            <li>Requires <code>clockwiseFillOverride = true</code></li>
+            <li>Both settings are configured automatically in <ci dox="cinder::vg::CanvasGl">CanvasGl</ci></li>
+            <li>On MSAA-only platforms (macOS), feathering works but with reduced quality</li>
+         </ul>
+      </section>
+
+
+      <a class="anchor" id="api_reference"></a>
+      <section>
+         <h2>API Reference</h2>
+
+         <h3>Canvas Methods</h3>
+
+         <table class="config-table">
+            <tr><th>Method</th><th>Description</th></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::begin"><code>begin( ivec2 size )</code></ci></td><td>Start a rendering frame</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::end"><code>end()</code></ci></td><td>Flush commands to GPU</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::inFrame"><code>inFrame()</code></ci></td><td>Returns true if between begin/end</td></tr>
+            <tr><td colspan="2"><strong>Transform Stack</strong></td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::save"><code>save()</code></ci></td><td>Push transform and clip state</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::restore"><code>restore()</code></ci></td><td>Pop transform and clip state</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::translate"><code>translate( vec2 )</code></ci></td><td>Translate current transform</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::rotate"><code>rotate( float radians )</code></ci></td><td>Rotate current transform</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::scale"><code>scale( vec2 )</code></ci></td><td>Scale current transform</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::transform"><code>transform( mat3 )</code></ci></td><td>Concatenate matrix</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::setTransform"><code>setTransform( mat3 )</code></ci></td><td>Replace current transform</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::resetTransform"><code>resetTransform()</code></ci></td><td>Reset to identity</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::getTransform"><code>getTransform()</code></ci></td><td>Get current transform matrix</td></tr>
+            <tr><td colspan="2"><strong>Primitives</strong></td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::fillRect"><code>fillRect( Rectf, Paint )</code></ci></td><td>Fill rectangle</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::fillRoundedRect"><code>fillRoundedRect( Rectf, float radius, Paint )</code></ci></td><td>Fill rounded rectangle</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::fillCircle"><code>fillCircle( vec2 center, float radius, Paint )</code></ci></td><td>Fill circle</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::fillEllipse"><code>fillEllipse( vec2 center, vec2 radii, Paint )</code></ci></td><td>Fill ellipse</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::strokeRect"><code>strokeRect</code></ci>, <ci dox="cinder::vg::Canvas::strokeRoundedRect"><code>strokeRoundedRect</code></ci>, etc.</td><td>Stroke variants</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawLine"><code>drawLine( vec2 p0, vec2 p1, Paint )</code></ci></td><td>Draw line segment</td></tr>
+            <tr><td colspan="2"><strong>Paths</strong></td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::fillPath"><code>fillPath( Path2d, Paint, FillRule )</code></ci></td><td>Fill path</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::strokePath"><code>strokePath( Path2d, Paint )</code></ci></td><td>Stroke path</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::fillShape"><code>fillShape( Shape2d, Paint, FillRule )</code></ci></td><td>Fill shape</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::createPath"><code>createPath( Path2d )</code></ci></td><td>Create CachedPath</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::freezePathFill"><code>freezePathFill( CachedPath, Paint, FillRule )</code></ci></td><td>Create FrozenPath for fills</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::freezePathStroke"><code>freezePathStroke( CachedPath, Paint )</code></ci></td><td>Create FrozenPath for strokes</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawFrozenPath"><code>drawFrozenPath( FrozenPath, Paint )</code></ci></td><td>Draw pre-tessellated path</td></tr>
+            <tr><td colspan="2"><strong>Clipping</strong></td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::clipRect"><code>clipRect( Rectf )</code></ci></td><td>Clip to rectangle</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::clipPath"><code>clipPath( Path2d, FillRule )</code></ci></td><td>Clip to path</td></tr>
+            <tr><td colspan="2"><strong>Images</strong></td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::createImage"><code>createImage( gl::Texture2dRef )</code></ci></td><td>Create Image from texture</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawImage"><code>drawImage( Image, vec2 )</code></ci></td><td>Draw image at position</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawImage"><code>drawImage( Image, Rectf dest )</code></ci></td><td>Draw image stretched to rect</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawImage"><code>drawImage( Image, Rectf src, Rectf dest )</code></ci></td><td>Draw sub-region</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawImageMesh"><code>drawImageMesh( Image, vertices, uvs, indices, opacity )</code></ci></td><td>Draw with custom mesh</td></tr>
+            <tr><td colspan="2"><strong>Text</strong></td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawString"><code>drawString( string, vec2, Font, Paint )</code></ci></td><td>Draw text</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::createTextPath"><code>createTextPath( string, Font )</code></ci></td><td>Create path from text</td></tr>
+            <tr><td colspan="2"><strong>Instanced Drawing</strong></td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawCircles"><code>drawCircles( span&lt;vec2&gt;, float radius, Paint )</code></ci></td><td>Draw many circles</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawRects"><code>drawRects( span&lt;vec2&gt;, vec2 size, Paint )</code></ci></td><td>Draw many rectangles</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawPaths"><code>drawPaths( span&lt;vec2&gt;, CachedPath, Paint )</code></ci></td><td>Draw many paths</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::drawFrozenPaths"><code>drawFrozenPaths( span&lt;vec2&gt;, FrozenPath, Paint )</code></ci></td><td>Draw many frozen paths</td></tr>
+            <tr><td colspan="2"><strong>Other</strong></td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::draw"><code>draw( svg::Doc )</code></ci></td><td>Render SVG document</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::createDisplayList"><code>createDisplayList()</code></ci></td><td>Create DisplayList for recording</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::clearGlyphCache"><code>clearGlyphCache()</code></ci></td><td>Clear cached glyph data</td></tr>
+         </table>
+
+         <h3>Paint Methods</h3>
+
+         <table class="config-table">
+            <tr><th>Method</th><th>Description</th></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setColor"><code>setColor( ColorAf )</code></ci></td><td>Set solid fill color</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setOpacity"><code>setOpacity( float )</code></ci></td><td>Set opacity multiplier (0-1)</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setLinearGradient"><code>setLinearGradient( start, end, colors )</code></ci></td><td>Set linear gradient</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setRadialGradient"><code>setRadialGradient( center, radius, colors )</code></ci></td><td>Set radial gradient</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setGradientSpread"><code>setGradientSpread( GradientSpread )</code></ci></td><td>Pad, Repeat, or Reflect</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setGradientTransform"><code>setGradientTransform( mat3 )</code></ci></td><td>Transform gradient coordinates</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setStrokeWidth"><code>setStrokeWidth( float )</code></ci></td><td>Set stroke width in pixels</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setLineCap"><code>setLineCap( LineCap )</code></ci></td><td>Butt, Round, or Square</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setLineJoin"><code>setLineJoin( LineJoin )</code></ci></td><td>Miter, Round, or Bevel</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setMiterLimit"><code>setMiterLimit( float )</code></ci></td><td>Limit miter join spikes</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setDash"><code>setDash( vector&lt;float&gt;, offset )</code></ci></td><td>Set dash pattern</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setFeather"><code>setFeather( float )</code></ci></td><td>Set soft edge blur radius</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setBlendMode"><code>setBlendMode( BlendMode )</code></ci></td><td>Set compositing mode</td></tr>
+            <tr><td><ci dox="cinder::vg::Paint::setImage"><code>setImage( Image )</code></ci></td><td>Set image fill</td></tr>
+         </table>
+
+         <h3>Enumerations</h3>
+
+         <table class="config-table">
+            <tr><th>Enum</th><th>Values</th></tr>
+            <tr><td><ci dox="cinder::vg::FillRule"><code>FillRule</code></ci></td><td>NonZero, EvenOdd</td></tr>
+            <tr><td><ci dox="cinder::vg::LineCap"><code>LineCap</code></ci></td><td>Butt, Round, Square</td></tr>
+            <tr><td><ci dox="cinder::vg::LineJoin"><code>LineJoin</code></ci></td><td>Miter, Round, Bevel</td></tr>
+            <tr><td><ci dox="cinder::vg::GradientSpread"><code>GradientSpread</code></ci></td><td>Pad, Repeat, Reflect</td></tr>
+            <tr><td><ci dox="cinder::vg::BlendMode"><code>BlendMode</code></ci></td><td>SrcOver, Screen, Overlay, Darken, Lighten, ColorDodge, ColorBurn, HardLight, SoftLight, Difference, Exclusion, Multiply, Hue, Saturation, Color, Luminosity</td></tr>
+         </table>
+      </section>
+
+
+      <!-- END CONTENT -->
+
+      <!-- Scripts -->
+      <script src="../../_assets/js/prism.js" type="text/javascript"></script>
+   </body>
+</html>
