@@ -762,32 +762,6 @@ void Canvas::drawPaths( std::span<const mat3> transforms, const CachedPathRef& p
 	}
 }
 
-void Canvas::drawFrozenPaths( std::span<const vec2> positions, const FrozenPathRef& frozenPath, const Paint& paint )
-{
-	if( ! frozenPath )
-		return;
-
-	for( const auto& pos : positions ) {
-		save();
-		translate( pos );
-		drawFrozenPath( frozenPath, paint );
-		restore();
-	}
-}
-
-void Canvas::drawFrozenPaths( std::span<const mat3> transforms, const FrozenPathRef& frozenPath, const Paint& paint )
-{
-	if( ! frozenPath )
-		return;
-
-	for( const auto& xform : transforms ) {
-		save();
-		transform( xform );
-		drawFrozenPath( frozenPath, paint );
-		restore();
-	}
-}
-
 // ------------------------------------------------------------------------------------------------
 // Canvas implementation - Text
 // ------------------------------------------------------------------------------------------------

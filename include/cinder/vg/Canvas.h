@@ -69,11 +69,9 @@ enum class CI_API RenderMode {
 class Canvas;
 class CachedPath;
 class Image;
-class FrozenPath;
 
 using CachedPathRef = std::shared_ptr<CachedPath>;
 using ImageRef = std::shared_ptr<Image>;
-using FrozenPathRef = std::shared_ptr<FrozenPath>;
 
 // ------------------------------------------------------------------------------------------------
 // CachedPath - Cached path for efficient repeated drawing
@@ -120,69 +118,14 @@ protected:
 };
 
 // ------------------------------------------------------------------------------------------------
-// FrozenPath - Pre-tessellated path for efficient repeated drawing
-// ------------------------------------------------------------------------------------------------
-
-//! A pre-tessellated path that caches expensive tessellation computations.
-//! Created via Canvas::freezePath(). When drawn, skips the expensive Wang's formula
-//! calculations that normally happen during path tessellation.
-//!
-//! Use FrozenPath when:
-//! - The same path is drawn many times per frame (e.g., particle systems, repeated icons)
-//! - The path geometry doesn't change between draws
-//! - Performance profiling shows tessellation is a bottleneck
-//!
-//! Note: FrozenPath caches tessellation data computed at a specific transform scale.
-//! The cached tessellation remains valid when the path is translated or rotated,
-//! but may produce visual artifacts if drawn at a significantly different scale.
-//!
-//! Example:
-//!     // Create frozen path once (or when path changes)
-//!     auto frozen = canvas->freezePath( cachedPath, paint );
-//!
-//!     // Draw efficiently many times
-//!     for( const auto& transform : transforms ) {
-//!         canvas->drawFrozenPath( frozen, transform, paint );
-//!     }
-class CI_API FrozenPath {
-public:
-    virtual ~FrozenPath() = default;
-
-    //! Get the original source CachedPath
-    CachedPathRef getSourcePath() const { return mSourcePath; }
-
-    //! Get axis-aligned bounding box (in local path coordinates)
-    Rectf getBounds() const { return mBounds; }
-
-    //! Check if this frozen path is valid (tessellation was captured successfully)
-    virtual bool isValid() const = 0;
-
-    //! Check if this frozen path is for a stroke operation
-    bool isStroke() const { return mIsStroke; }
-
-    //! Get the stroke width (0 for fills)
-    float getStrokeWidth() const { return mStrokeWidth; }
-
-protected:
-    friend class Canvas;
-    FrozenPath() = default;
-
-    CachedPathRef mSourcePath;
-    Rectf mBounds;
-    bool mIsStroke = false;
-    float mStrokeWidth = 0.0f;
-};
-
-// ------------------------------------------------------------------------------------------------
-// DisplayList - Recorded drawing commands with frozen paths
+// DisplayList - Recorded drawing commands for efficient replay
 // ------------------------------------------------------------------------------------------------
 
 class Canvas;  // Forward declaration
 
 //! A recorded list of drawing commands that can be replayed efficiently.
-//! DisplayList captures Canvas draw commands and creates FrozenPaths for
-//! each path encountered. On replay, the frozen paths are used, skipping
-//! expensive tessellation calculations.
+//! DisplayList captures Canvas draw commands and creates CachedPaths for
+//! each path encountered, enabling efficient replay.
 //!
 //! Use DisplayList when:
 //! - Rendering complex static content like SVGs repeatedly
@@ -199,7 +142,7 @@ class Canvas;  // Forward declaration
 //!     // Playback phase (do every frame)
 //!     canvas->begin( windowSize );
 //!     canvas->setTransform( viewMatrix );
-//!     displayList->replay( canvas );  // Fast - uses frozen paths
+//!     displayList->replay( canvas );  // Fast - uses cached paths
 //!     canvas->end();
 class CI_API DisplayList {
 public:
@@ -436,34 +379,6 @@ public:
 
     //! Draw multiple cached paths with full transforms (same paint) - base implementation provided
     virtual void drawPaths( std::span<const mat3> transforms, const CachedPathRef &path, const Paint &paint );
-
-    // === FrozenPath API ===
-    //! Create a frozen path for efficient repeated drawing (fill operation).
-    //! The tessellation is computed once using the current transform scale.
-    //! Must be implemented by subclass.
-    virtual FrozenPathRef freezePathFill( const CachedPathRef &path, const Paint &paint,
-                                          FillRule rule = FillRule::NonZero ) = 0;
-
-    //! Create a frozen path for efficient repeated drawing (stroke operation).
-    //! The tessellation is computed once using the current transform scale.
-    //! Must be implemented by subclass.
-    virtual FrozenPathRef freezePathStroke( const CachedPathRef &path, const Paint &paint ) = 0;
-
-    //! Draw a frozen path using the current transform.
-    //! The frozen tessellation is reused, skipping expensive Wang's formula calculations.
-    //! Must be implemented by subclass.
-    virtual void drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint ) = 0;
-
-    //! Draw multiple frozen paths at different positions (same paint).
-    //! Efficient for particle systems, repeated icons, etc.
-    virtual void drawFrozenPaths( std::span<const vec2> positions,
-                                   const FrozenPathRef &frozenPath,
-                                   const Paint &paint );
-
-    //! Draw multiple frozen paths with full transforms (same paint).
-    virtual void drawFrozenPaths( std::span<const mat3> transforms,
-                                   const FrozenPathRef &frozenPath,
-                                   const Paint &paint );
 
     // === Clipping API ===
     // Clips are accumulated (intersected) within a save/restore block.

@@ -643,7 +643,7 @@ class FeatheringDemo : public Demo {
 	}
 
   private:
-	float	mFeather = 12, mBase = 0, mIncrement = 8, mOpacity = 1;
+	float	mFeather = 12, mBase = 0, mIncrement = 5, mOpacity = 1;
 	ColorAf mColor{ 0.4f, 0.6f, 1, 1 };
 };
 
@@ -1421,6 +1421,163 @@ class ShadowDemo : public Demo {
 };
 
 // ============================================================================
+// Demo 12: DisplayList
+// ============================================================================
+class DisplayListDemo : public Demo {
+  public:
+	std::string getName() const override { return "DisplayList"; }
+	std::string getDescription() const override { return "Record and replay drawing commands"; }
+	Rectf		getContentBounds() const override { return Rectf( 0, 0, 600, 500 ); }
+
+	void setup( vg::CanvasD3d12Ref canvas ) override
+	{
+		mCanvas = canvas;
+		mFont = Font( "Arial", 14 );
+
+		// Create some cached paths for the demo
+		Path2d star;
+		for( int i = 0; i < 10; i++ ) {
+			float angle = (float)( i * M_PI / 5.0f - M_PI / 2.0f );
+			float radius = ( i % 2 == 0 ) ? 40.0f : 18.0f;
+			vec2  pt = vec2( cos( angle ), sin( angle ) ) * radius;
+			if( i == 0 )
+				star.moveTo( pt );
+			else
+				star.lineTo( pt );
+		}
+		star.close();
+		mStarPath = canvas->createPath( star );
+
+		// Build initial display list
+		rebuildDisplayList();
+	}
+
+	void rebuildDisplayList()
+	{
+		if( ! mCanvas )
+			return;
+
+		mDisplayList = mCanvas->createDisplayList();
+		if( ! mDisplayList )
+			return;
+
+		mDisplayList->beginRecording( mCanvas.get() );
+
+		// Draw a grid of shapes
+		vg::Paint fill, stroke;
+
+		// Row 1: Colored circles
+		for( int i = 0; i < 5; i++ ) {
+			fill.setColor( ColorAf( 0.2f + i * 0.15f, 0.5f, 1.0f - i * 0.15f, 0.9f ) );
+			mCanvas->fillCircle( vec2( 60 + i * 110, 60 ), 40, fill );
+		}
+
+		// Row 2: Stroked rectangles
+		stroke.setColor( ColorAf( 1.0f, 0.6f, 0.2f, 1.0f ) ).setStrokeWidth( 3 );
+		for( int i = 0; i < 5; i++ ) {
+			mCanvas->strokeRect( Rectf( 20 + i * 110, 120, 100 + i * 110, 200 ), stroke );
+		}
+
+		// Row 3: Gradient-filled rounded rects
+		for( int i = 0; i < 5; i++ ) {
+			vg::Paint grad;
+			grad.setLinearGradient(
+				vec2( 20 + i * 110, 230 ), vec2( 100 + i * 110, 310 ),
+				ColorAf( 1.0f, 0.3f + i * 0.1f, 0.3f, 1.0f ),
+				ColorAf( 0.3f, 0.3f + i * 0.1f, 1.0f, 1.0f ) );
+			mCanvas->fillRoundedRect( Rectf( 20 + i * 110, 230, 100 + i * 110, 310 ), 10, grad );
+		}
+
+		// Row 4: Stars with feathering
+		for( int i = 0; i < 5; i++ ) {
+			vg::Paint starPaint;
+			starPaint.setColor( ColorAf( 0.9f, 0.8f, 0.2f, 1.0f ) );
+			starPaint.setFeather( 3.0f + i * 2.0f );
+			mCanvas->save();
+			mCanvas->translate( vec2( 60 + i * 110, 380 ) );
+			mCanvas->fillPath( mStarPath, starPaint );
+			mCanvas->restore();
+		}
+
+		mDisplayList->endRecording();
+	}
+
+	void draw( vg::CanvasD3d12Ref canvas ) override
+	{
+		vg::Paint textPaint;
+		textPaint.setColor( ColorAf( 0.8f, 0.8f, 0.8f, 1 ) );
+
+		if( mUseDisplayList && mDisplayList && mDisplayList->isValid() ) {
+			// Replay the display list
+			mDisplayList->replay( canvas.get() );
+
+			canvas->drawString( "Mode: DisplayList replay", vec2( 20, 450 ), mFont, textPaint );
+		}
+		else {
+			// Draw directly (same content as recorded)
+			vg::Paint fill, stroke;
+
+			for( int i = 0; i < 5; i++ ) {
+				fill.setColor( ColorAf( 0.2f + i * 0.15f, 0.5f, 1.0f - i * 0.15f, 0.9f ) );
+				canvas->fillCircle( vec2( 60 + i * 110, 60 ), 40, fill );
+			}
+
+			stroke.setColor( ColorAf( 1.0f, 0.6f, 0.2f, 1.0f ) ).setStrokeWidth( 3 );
+			for( int i = 0; i < 5; i++ ) {
+				canvas->strokeRect( Rectf( 20 + i * 110, 120, 100 + i * 110, 200 ), stroke );
+			}
+
+			for( int i = 0; i < 5; i++ ) {
+				vg::Paint grad;
+				grad.setLinearGradient(
+					vec2( 20 + i * 110, 230 ), vec2( 100 + i * 110, 310 ),
+					ColorAf( 1.0f, 0.3f + i * 0.1f, 0.3f, 1.0f ),
+					ColorAf( 0.3f, 0.3f + i * 0.1f, 1.0f, 1.0f ) );
+				canvas->fillRoundedRect( Rectf( 20 + i * 110, 230, 100 + i * 110, 310 ), 10, grad );
+			}
+
+			for( int i = 0; i < 5; i++ ) {
+				vg::Paint starPaint;
+				starPaint.setColor( ColorAf( 0.9f, 0.8f, 0.2f, 1.0f ) );
+				starPaint.setFeather( 3.0f + i * 2.0f );
+				canvas->save();
+				canvas->translate( vec2( 60 + i * 110, 380 ) );
+				canvas->fillPath( mStarPath, starPaint );
+				canvas->restore();
+			}
+
+			canvas->drawString( "Mode: Direct drawing", vec2( 20, 450 ), mFont, textPaint );
+		}
+	}
+
+	void drawUI() override
+	{
+		ImGui::Checkbox( "Use DisplayList", &mUseDisplayList );
+
+		if( mDisplayList && mDisplayList->isValid() ) {
+			ImGui::TextColored( ImVec4( 0.3f, 0.9f, 0.3f, 1.0f ), "Commands: %zu", mDisplayList->getCommandCount() );
+		}
+		else {
+			ImGui::TextColored( ImVec4( 0.9f, 0.3f, 0.3f, 1.0f ), "DisplayList: Invalid" );
+		}
+
+		if( ImGui::Button( "Rebuild DisplayList" ) ) {
+			rebuildDisplayList();
+		}
+
+		ImGui::Separator();
+		ImGui::TextWrapped( "DisplayList records drawing commands and replays them. "
+							"Toggle to compare direct drawing vs replay." );
+	}
+
+  private:
+	Font			   mFont;
+	vg::CachedPathRef  mStarPath;
+	vg::DisplayListRef mDisplayList;
+	bool			   mUseDisplayList = true;
+};
+
+// ============================================================================
 // Main App
 // ============================================================================
 class VectorGraphicsDemoD3d12App : public App {
@@ -1485,7 +1642,7 @@ void VectorGraphicsDemoD3d12App::setup()
 	} );
 
 	mDemos = { std::make_shared<PrimitivesDemo>(), std::make_shared<GradientsDemo>(), std::make_shared<TransformsDemo>(), std::make_shared<PathsDemo>(), std::make_shared<FeatheringDemo>(), std::make_shared<InstancingDemo>(),
-		std::make_shared<BlendModesDemo>(), std::make_shared<ClippingDemo>(), std::make_shared<ImagesDemo>(), std::make_shared<ImageMeshDemo>(), std::make_shared<ShadowDemo>() };
+		std::make_shared<BlendModesDemo>(), std::make_shared<ClippingDemo>(), std::make_shared<ImagesDemo>(), std::make_shared<ImageMeshDemo>(), std::make_shared<ShadowDemo>(), std::make_shared<DisplayListDemo>() };
 	for( auto& d : mDemos )
 		d->setup( mCanvas );
 	switchDemo( 0 );
@@ -1598,7 +1755,7 @@ void VectorGraphicsDemoD3d12App::renderImGui( ID3D12GraphicsCommandList* cmdList
 		ImGui::Separator();
 
 		// Demo selector
-		const char* demoNames[] = { "Primitives", "Gradients", "Transforms", "Paths", "Feathering", "Instancing", "Blend Modes", "Clipping", "Images", "Image Mesh", "Shadow" };
+		const char* demoNames[] = { "Primitives", "Gradients", "Transforms", "Paths", "Feathering", "Instancing", "Blend Modes", "Clipping", "Images", "Image Mesh", "Shadow", "DisplayList" };
 		if( ImGui::BeginCombo( "Demo", demoNames[mDemoIndex] ) ) {
 			for( int i = 0; i < (int)mDemos.size(); i++ ) {
 				bool selected = ( i == mDemoIndex );

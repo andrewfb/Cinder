@@ -98,37 +98,12 @@ private:
 };
 
 // ------------------------------------------------------------------------------------------------
-// FrozenPathD3d12 - D3D12 implementation of FrozenPath
-// ------------------------------------------------------------------------------------------------
-
-// Forward declare internal struct defined in cpp file
-struct FrozenPathD3d12Impl;
-
-class CI_API FrozenPathD3d12 : public FrozenPath {
-public:
-    FrozenPathD3d12();
-    ~FrozenPathD3d12() override;
-
-    //! Check if this frozen path is valid (tessellation was captured successfully)
-    bool isValid() const override;
-
-    //! Get the fill rule used when freezing (for fills)
-    FillRule getFillRule() const { return mFillRule; }
-
-private:
-    friend class CanvasD3d12;
-
-    FillRule mFillRule = FillRule::NonZero;
-    std::unique_ptr<FrozenPathD3d12Impl> mImpl;
-};
-
-// ------------------------------------------------------------------------------------------------
 // DisplayListD3d12 - D3D12 implementation of DisplayList
 // ------------------------------------------------------------------------------------------------
 
 class CanvasD3d12;  // Forward declaration
 
-//! D3D12 implementation of DisplayList that records drawing commands and creates FrozenPaths.
+//! D3D12 implementation of DisplayList that records drawing commands.
 class CI_API DisplayListD3d12 : public DisplayList {
 public:
     DisplayListD3d12( CanvasD3d12* canvas );
@@ -158,6 +133,16 @@ public:
     //! Get content bounds
     Rectf getBounds() const override { return mBounds; }
 
+    // Recording methods (called by CanvasD3d12 during recording)
+    void recordFillPath( const CachedPathRef& path, const Paint& paint, FillRule rule );
+    void recordStrokePath( const CachedPathRef& path, const Paint& paint );
+    void recordDrawImage( const ImageRef& image, const Rectf& destRect );
+    void recordDrawImage( const ImageRef& image, const Rectf& srcRect, const Rectf& destRect );
+    void recordSave();
+    void recordRestore();
+    void recordSetTransform( const mat3& transform );
+    void recordClip( const CachedPathRef& path, FillRule rule );
+
 private:
     friend class CanvasD3d12;
 
@@ -175,8 +160,7 @@ private:
     // A recorded draw command
     struct Command {
         CommandType type;
-        FrozenPathRef frozenPath;
-        CachedPathRef cachedPath;  // For clip commands
+        CachedPathRef cachedPath;
         ImageRef image;
         Paint paint;
         mat3 transform;
@@ -253,6 +237,12 @@ public:
     void fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
     void strokePath( const CachedPathRef &path, const Paint &paint ) override;
 
+    // === Uncached Path API (override for DisplayList recording) ===
+    void fillPath( const Path2d &path, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
+    void strokePath( const Path2d &path, const Paint &paint ) override;
+    void fillShape( const Shape2d &shape, const Paint &paint, FillRule rule = FillRule::NonZero ) override;
+    void strokeShape( const Shape2d &shape, const Paint &paint ) override;
+
     // === Image API ===
     //! Create an image from a D3D12 resource (texture)
     ImageRef createImage( const Microsoft::WRL::ComPtr<ID3D12Resource> &resource );
@@ -269,12 +259,6 @@ public:
                         std::span<const vec2> uvs,
                         std::span<const uint16_t> indices,
                         float opacity = 1.0f ) override;
-
-    // === FrozenPath API ===
-    FrozenPathRef freezePathFill( const CachedPathRef &path, const Paint &paint,
-                                   FillRule rule = FillRule::NonZero ) override;
-    FrozenPathRef freezePathStroke( const CachedPathRef &path, const Paint &paint ) override;
-    void drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint ) override;
 
     // === DisplayList API ===
     DisplayListRef createDisplayList() override;

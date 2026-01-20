@@ -61,11 +61,6 @@ struct ImageGlImpl {
 	rcp<RiveRenderImage> riveImage;
 };
 
-struct FrozenPathGlImpl {
-	CachedPathRef cachedPath;		// Just store a reference to the cached path
-	bool		  isStroke = false; // Was this frozen for fill or stroke?
-};
-
 // ------------------------------------------------------------------------------------------------
 // Helper functions (GL-specific)
 // ------------------------------------------------------------------------------------------------
@@ -98,23 +93,6 @@ ImageGl::ImageGl()
 }
 
 ImageGl::~ImageGl() = default;
-
-// ------------------------------------------------------------------------------------------------
-// FrozenPathGl implementation
-// ------------------------------------------------------------------------------------------------
-
-FrozenPathGl::FrozenPathGl()
-	: mImpl( std::make_unique<FrozenPathGlImpl>() )
-{
-}
-
-FrozenPathGl::~FrozenPathGl() = default;
-
-bool FrozenPathGl::isValid() const
-{
-	// Stub implementation - valid if we have a cached path
-	return mImpl && mImpl->cachedPath;
-}
 
 // GlyphCache implementation is now in Canvas.cpp
 
@@ -879,63 +857,6 @@ void CanvasGl::drawCachedPathInternal( const CachedPathGl* cachedPath, const Pai
 // SVG rendering is handled by the base Canvas class using SvgRendererVg
 
 // ------------------------------------------------------------------------------------------------
-// FrozenPath API - Pre-tessellation caching for repeated path drawing
-// NOTE: Currently implemented as stubs that delegate to regular CachedPath drawing.
-// True tessellation caching requires deep Rive integration and is planned for future.
-// ------------------------------------------------------------------------------------------------
-
-FrozenPathRef CanvasGl::freezePathFill( const CachedPathRef& path, const Paint& paint, FillRule rule )
-{
-	// Stub implementation - just store a reference to the cached path
-	// The actual "freezing" (tessellation caching) is not yet implemented
-	if( ! path ) {
-		return nullptr;
-	}
-
-	auto frozenPath = std::make_shared<FrozenPathGl>();
-	frozenPath->mFillRule = rule;
-	frozenPath->mImpl->cachedPath = path;
-	frozenPath->mImpl->isStroke = false;
-
-	return frozenPath;
-}
-
-FrozenPathRef CanvasGl::freezePathStroke( const CachedPathRef& path, const Paint& paint )
-{
-	// Stub implementation - just store a reference to the cached path
-	if( ! path ) {
-		return nullptr;
-	}
-
-	auto frozenPath = std::make_shared<FrozenPathGl>();
-	frozenPath->mFillRule = FillRule::NonZero; // Strokes always use non-zero
-	frozenPath->mImpl->cachedPath = path;
-	frozenPath->mImpl->isStroke = true;
-
-	return frozenPath;
-}
-
-void CanvasGl::drawFrozenPath( const FrozenPathRef& frozenPath, const Paint& paint )
-{
-	// Stub implementation - delegate to regular path drawing
-	if( ! frozenPath )
-		return;
-
-	auto glFrozen = std::dynamic_pointer_cast<FrozenPathGl>( frozenPath );
-	if( ! glFrozen || ! glFrozen->isValid() ) {
-		return;
-	}
-
-	// Delegate to regular cached path drawing
-	if( glFrozen->mImpl->isStroke ) {
-		strokePath( glFrozen->mImpl->cachedPath, paint );
-	}
-	else {
-		fillPath( glFrozen->mImpl->cachedPath, paint, glFrozen->mFillRule );
-	}
-}
-
-// ------------------------------------------------------------------------------------------------
 // DisplayListGl implementation - Recording and replaying Canvas commands
 // ------------------------------------------------------------------------------------------------
 
@@ -996,6 +917,9 @@ void DisplayListGl::replay( Canvas* canvas )
 		return;
 	}
 
+	// Get the current view transform (e.g., from CanvasUi) to compose with recorded transforms
+	mat3 viewTransform = canvas->getTransform();
+
 	for( const auto& cmd : mCommands ) {
 		switch( cmd.type ) {
 			case CommandType::Save:
@@ -1007,41 +931,47 @@ void DisplayListGl::replay( Canvas* canvas )
 				break;
 
 			case CommandType::SetTransform:
-				canvas->setTransform( cmd.transform );
+				canvas->setTransform( viewTransform * cmd.transform );
 				break;
 
 			case CommandType::FillPath:
-				if( cmd.frozenPath && cmd.frozenPath->isValid() ) {
-					glCanvas->drawFrozenPath( cmd.frozenPath, cmd.paint );
-				}
-				else if( cmd.cachedPath ) {
+				canvas->save();
+				canvas->setTransform( viewTransform * cmd.transform );
+				if( cmd.cachedPath ) {
 					glCanvas->fillPath( cmd.cachedPath, cmd.paint, cmd.fillRule );
 				}
+				canvas->restore();
 				break;
 
 			case CommandType::StrokePath:
-				if( cmd.frozenPath && cmd.frozenPath->isValid() ) {
-					glCanvas->drawFrozenPath( cmd.frozenPath, cmd.paint );
-				}
-				else if( cmd.cachedPath ) {
+				canvas->save();
+				canvas->setTransform( viewTransform * cmd.transform );
+				if( cmd.cachedPath ) {
 					glCanvas->strokePath( cmd.cachedPath, cmd.paint );
 				}
+				canvas->restore();
 				break;
 
 			case CommandType::DrawImage:
 				if( cmd.image ) {
+					canvas->save();
+					canvas->setTransform( viewTransform * cmd.transform );
 					if( cmd.srcRect.getWidth() > 0 && cmd.srcRect.getHeight() > 0 ) {
 						canvas->drawImage( cmd.image, cmd.srcRect, cmd.destRect );
 					}
 					else {
 						canvas->drawImage( cmd.image, cmd.destRect );
 					}
+					canvas->restore();
 				}
 				break;
 
 			case CommandType::Clip:
 				if( cmd.cachedPath ) {
+					canvas->save();
+					canvas->setTransform( viewTransform * cmd.transform );
 					canvas->clipPath( cmd.cachedPath, cmd.fillRule );
+					canvas->restore();
 				}
 				break;
 		}
@@ -1053,7 +983,6 @@ void DisplayListGl::clear()
 	mCommands.clear();
 	mValid = false;
 	mBounds = Rectf();
-	mFrozenPathsCreated = false;
 }
 
 void DisplayListGl::recordFillPath( const CachedPathRef& path, const Paint& paint, FillRule rule )
@@ -1193,25 +1122,6 @@ void DisplayListGl::recordClip( const CachedPathRef& path, FillRule rule )
 	cmd.cachedPath = path;
 	cmd.fillRule = rule;
 	mCommands.push_back( std::move( cmd ) );
-}
-
-void DisplayListGl::createFrozenPaths()
-{
-	if( mFrozenPathsCreated || ! mOwnerCanvas )
-		return;
-
-	for( auto& cmd : mCommands ) {
-		if( cmd.cachedPath && ! cmd.frozenPath ) {
-			if( cmd.type == CommandType::FillPath ) {
-				cmd.frozenPath = mOwnerCanvas->freezePathFill( cmd.cachedPath, cmd.paint, cmd.fillRule );
-			}
-			else if( cmd.type == CommandType::StrokePath ) {
-				cmd.frozenPath = mOwnerCanvas->freezePathStroke( cmd.cachedPath, cmd.paint );
-			}
-		}
-	}
-
-	mFrozenPathsCreated = true;
 }
 
 DisplayListRef CanvasGl::createDisplayList()

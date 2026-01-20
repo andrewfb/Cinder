@@ -141,7 +141,6 @@
          <ul>
             <li><ci dox="cinder::vg::Paint">Paint</ci> &ndash; visual styling (colors, gradients, stroke properties)</li>
             <li><ci dox="cinder::vg::CachedPath">CachedPath</ci> &ndash; GPU-cached path representation</li>
-            <li><ci dox="cinder::vg::FrozenPath">FrozenPath</ci> &ndash; pre-tessellated path for maximum performance</li>
             <li><ci dox="cinder::vg::Image">Image</ci> &ndash; GPU texture wrapper for image drawing</li>
             <li><ci dox="cinder::vg::DisplayList">DisplayList</ci> &ndash; recorded sequence of draw commands</li>
          </ul>
@@ -1302,32 +1301,6 @@ for ( const vec2& position : positions ) {
          <p><strong>When to use:</strong> Any path drawn more than once per frame, especially complex paths
          with many segments.</p>
 
-         <a class="anchor" id="frozen_path"></a>
-         <h3>FrozenPath</h3>
-
-         <p>For maximum performance, <ci dox="cinder::vg::FrozenPath">FrozenPath</ci> pre-tessellates the
-         path, skipping expensive Wang's formula calculations during drawing:</p>
-
-<pre><code class="language-cpp">
-// Create cached path first
-vg::CachedPathRef cachedPath = mCanvas->createPath( shape );
-
-// Freeze at current transform scale (expensive operation)
-vg::FrozenPathRef frozenFill = mCanvas->freezePathFill( cachedPath, paint );
-vg::FrozenPathRef frozenStroke = mCanvas->freezePathStroke( cachedPath, strokePaint );
-
-// Draw very efficiently
-mCanvas->drawFrozenPath( frozenFill, paint );
-</code></pre>
-
-         <div class="warning">
-            <strong>Important:</strong> FrozenPath tessellation is computed at a specific scale. The path
-            will render correctly under translation and rotation, but <strong>may show artifacts if drawn
-            at a significantly different scale</strong>. Create new frozen paths when scale changes substantially.
-         </div>
-
-         <p><strong>When to use:</strong> Particle systems, repeated icons, UI elements that don't change scale.</p>
-
          <a class="anchor" id="display_list"></a>
          <h3>DisplayList</h3>
 
@@ -1371,7 +1344,6 @@ mCanvas->drawCircles( transforms, 5.0f, paint );
 
 // Works with cached and frozen paths too
 mCanvas->drawPaths( positions, cachedPath, paint );
-mCanvas->drawFrozenPaths( positions, frozenPath, paint );
 </code></pre>
       </section>
 
@@ -1400,8 +1372,6 @@ mCanvas->drawFrozenPaths( positions, frozenPath, paint );
 
          <h3>Path Rendering</h3>
          <ul>
-            <li><strong>FrozenPath scale:</strong> Tessellation is scale-dependent. Significant scale changes
-            may cause visual artifacts.</li>
             <li><strong>Precision:</strong> Rive uses float32 internally. Extremely large coordinates may
             lose precision.</li>
          </ul>
@@ -1449,9 +1419,6 @@ mCanvas->drawFrozenPaths( positions, frozenPath, paint );
             <tr><td><ci dox="cinder::vg::Canvas::strokePath"><code>strokePath( Path2d, Paint )</code></ci></td><td>Stroke path</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::fillShape"><code>fillShape( Shape2d, Paint, FillRule )</code></ci></td><td>Fill shape</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::createPath"><code>createPath( Path2d )</code></ci></td><td>Create CachedPath</td></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::freezePathFill"><code>freezePathFill( CachedPath, Paint, FillRule )</code></ci></td><td>Create FrozenPath for fills</td></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::freezePathStroke"><code>freezePathStroke( CachedPath, Paint )</code></ci></td><td>Create FrozenPath for strokes</td></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::drawFrozenPath"><code>drawFrozenPath( FrozenPath, Paint )</code></ci></td><td>Draw pre-tessellated path</td></tr>
             <tr><td colspan="2"><strong>Clipping</strong></td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::clipRect"><code>clipRect( Rectf )</code></ci></td><td>Clip to rectangle</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::clipPath"><code>clipPath( Path2d, FillRule )</code></ci></td><td>Clip to path</td></tr>
@@ -1468,7 +1435,6 @@ mCanvas->drawFrozenPaths( positions, frozenPath, paint );
             <tr><td><ci dox="cinder::vg::Canvas::drawCircles"><code>drawCircles( span&lt;vec2&gt;, float radius, Paint )</code></ci></td><td>Draw many circles</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::drawRects"><code>drawRects( span&lt;vec2&gt;, vec2 size, Paint )</code></ci></td><td>Draw many rectangles</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::drawPaths"><code>drawPaths( span&lt;vec2&gt;, CachedPath, Paint )</code></ci></td><td>Draw many paths</td></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::drawFrozenPaths"><code>drawFrozenPaths( span&lt;vec2&gt;, FrozenPath, Paint )</code></ci></td><td>Draw many frozen paths</td></tr>
             <tr><td colspan="2"><strong>Other</strong></td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::draw"><code>draw( svg::Doc )</code></ci></td><td>Render SVG document</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::createDisplayList"><code>createDisplayList()</code></ci></td><td>Create DisplayList for recording</td></tr>

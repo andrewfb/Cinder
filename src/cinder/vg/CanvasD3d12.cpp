@@ -36,11 +36,6 @@ struct ImageD3d12Impl {
     rcp<RiveRenderImage> riveImage;
 };
 
-struct FrozenPathD3d12Impl {
-    CachedPathRef cachedPath;  // Just store a reference to the cached path
-    bool isStroke = false;     // Was this frozen for fill or stroke?
-};
-
 // ------------------------------------------------------------------------------------------------
 // Helper functions (D3D12-specific)
 // ------------------------------------------------------------------------------------------------
@@ -79,20 +74,6 @@ ImageD3d12::ImageD3d12() : mImpl( std::make_unique<ImageD3d12Impl>() ) {}
 ImageD3d12::~ImageD3d12() = default;
 
 // ------------------------------------------------------------------------------------------------
-// FrozenPathD3d12 implementation
-// ------------------------------------------------------------------------------------------------
-
-FrozenPathD3d12::FrozenPathD3d12() : mImpl( std::make_unique<FrozenPathD3d12Impl>() ) {}
-
-FrozenPathD3d12::~FrozenPathD3d12() = default;
-
-bool FrozenPathD3d12::isValid() const
-{
-    // Stub implementation - valid if we have a cached path
-    return mImpl && mImpl->cachedPath;
-}
-
-// ------------------------------------------------------------------------------------------------
 // DisplayListD3d12 implementation
 // ------------------------------------------------------------------------------------------------
 
@@ -114,6 +95,11 @@ void DisplayListD3d12::beginRecording( Canvas* canvas )
     mValid = false;
     mCommands.clear();
     mBounds = Rectf();
+
+    // Set recording pointer on the canvas
+    if( auto* d3d12Canvas = dynamic_cast<CanvasD3d12*>( canvas ) ) {
+        d3d12Canvas->mRecordingDisplayList = this;
+    }
 }
 
 void DisplayListD3d12::endRecording()
@@ -122,6 +108,12 @@ void DisplayListD3d12::endRecording()
         CI_LOG_W( "DisplayListD3d12::endRecording called without beginRecording" );
         return;
     }
+
+    // Clear recording pointer on the canvas
+    if( auto* d3d12Canvas = dynamic_cast<CanvasD3d12*>( mRecordingCanvas ) ) {
+        d3d12Canvas->mRecordingDisplayList = nullptr;
+    }
+
     mRecording = false;
     mRecordingCanvas = nullptr;
     mValid = !mCommands.empty();
@@ -129,12 +121,66 @@ void DisplayListD3d12::endRecording()
 
 void DisplayListD3d12::replay( Canvas* canvas )
 {
-    if( ! mValid || mCommands.empty() ) {
+    if( ! mValid || mCommands.empty() )
+        return;
+
+    auto* d3d12Canvas = dynamic_cast<CanvasD3d12*>( canvas );
+    if( ! d3d12Canvas ) {
+        CI_LOG_W( "DisplayListD3d12::replay requires a CanvasD3d12" );
         return;
     }
 
-    // TODO: Implement replay with frozen paths
-    CI_LOG_W( "DisplayListD3d12::replay not yet implemented" );
+    // Get the current view transform (e.g., from CanvasUi) to compose with recorded transforms
+    mat3 viewTransform = d3d12Canvas->getTransform();
+
+    for( const auto& cmd : mCommands ) {
+        switch( cmd.type ) {
+            case CommandType::FillPath:
+                if( cmd.cachedPath ) {
+                    d3d12Canvas->save();
+                    d3d12Canvas->setTransform( viewTransform * cmd.transform );
+                    d3d12Canvas->fillPath( cmd.cachedPath, cmd.paint, cmd.fillRule );
+                    d3d12Canvas->restore();
+                }
+                break;
+            case CommandType::StrokePath:
+                if( cmd.cachedPath ) {
+                    d3d12Canvas->save();
+                    d3d12Canvas->setTransform( viewTransform * cmd.transform );
+                    d3d12Canvas->strokePath( cmd.cachedPath, cmd.paint );
+                    d3d12Canvas->restore();
+                }
+                break;
+            case CommandType::DrawImage:
+                if( cmd.image ) {
+                    d3d12Canvas->save();
+                    d3d12Canvas->setTransform( viewTransform * cmd.transform );
+                    if( cmd.srcRect.getWidth() > 0 )
+                        d3d12Canvas->drawImage( cmd.image, cmd.srcRect, cmd.destRect );
+                    else
+                        d3d12Canvas->drawImage( cmd.image, cmd.destRect );
+                    d3d12Canvas->restore();
+                }
+                break;
+            case CommandType::Save:
+                d3d12Canvas->save();
+                break;
+            case CommandType::Restore:
+                d3d12Canvas->restore();
+                break;
+            case CommandType::SetTransform:
+                d3d12Canvas->setTransform( viewTransform * cmd.transform );
+                break;
+            case CommandType::Clip:
+                if( cmd.cachedPath ) {
+                    d3d12Canvas->save();
+                    d3d12Canvas->setTransform( viewTransform * cmd.transform );
+                    d3d12Canvas->clipPath( cmd.cachedPath, cmd.fillRule );
+                    d3d12Canvas->restore();
+                }
+                break;
+        }
+    }
 }
 
 void DisplayListD3d12::clear()
@@ -142,6 +188,114 @@ void DisplayListD3d12::clear()
     mCommands.clear();
     mValid = false;
     mBounds = Rectf();
+}
+
+void DisplayListD3d12::recordFillPath( const CachedPathRef& path, const Paint& paint, FillRule rule )
+{
+    if( ! mRecording || ! path )
+        return;
+
+    Command cmd;
+    cmd.type = CommandType::FillPath;
+    cmd.cachedPath = path;
+    cmd.paint = paint;
+    cmd.fillRule = rule;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+    mCommands.push_back( cmd );
+
+    if( path->getBounds().getWidth() > 0 )
+        mBounds.include( path->getBounds() );
+}
+
+void DisplayListD3d12::recordStrokePath( const CachedPathRef& path, const Paint& paint )
+{
+    if( ! mRecording || ! path )
+        return;
+
+    Command cmd;
+    cmd.type = CommandType::StrokePath;
+    cmd.cachedPath = path;
+    cmd.paint = paint;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+    mCommands.push_back( cmd );
+
+    if( path->getBounds().getWidth() > 0 )
+        mBounds.include( path->getBounds() );
+}
+
+void DisplayListD3d12::recordDrawImage( const ImageRef& image, const Rectf& destRect )
+{
+    if( ! mRecording || ! image )
+        return;
+
+    Command cmd;
+    cmd.type = CommandType::DrawImage;
+    cmd.image = image;
+    cmd.destRect = destRect;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+    mCommands.push_back( cmd );
+
+    mBounds.include( destRect );
+}
+
+void DisplayListD3d12::recordDrawImage( const ImageRef& image, const Rectf& srcRect, const Rectf& destRect )
+{
+    if( ! mRecording || ! image )
+        return;
+
+    Command cmd;
+    cmd.type = CommandType::DrawImage;
+    cmd.image = image;
+    cmd.srcRect = srcRect;
+    cmd.destRect = destRect;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+    mCommands.push_back( cmd );
+
+    mBounds.include( destRect );
+}
+
+void DisplayListD3d12::recordSave()
+{
+    if( ! mRecording )
+        return;
+
+    Command cmd;
+    cmd.type = CommandType::Save;
+    mCommands.push_back( cmd );
+}
+
+void DisplayListD3d12::recordRestore()
+{
+    if( ! mRecording )
+        return;
+
+    Command cmd;
+    cmd.type = CommandType::Restore;
+    mCommands.push_back( cmd );
+}
+
+void DisplayListD3d12::recordSetTransform( const mat3& transform )
+{
+    if( ! mRecording )
+        return;
+
+    Command cmd;
+    cmd.type = CommandType::SetTransform;
+    cmd.transform = transform;
+    mCommands.push_back( cmd );
+}
+
+void DisplayListD3d12::recordClip( const CachedPathRef& path, FillRule rule )
+{
+    if( ! mRecording || ! path )
+        return;
+
+    Command cmd;
+    cmd.type = CommandType::Clip;
+    cmd.cachedPath = path;
+    cmd.fillRule = rule;
+    cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
+    mCommands.push_back( cmd );
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -455,11 +609,18 @@ CachedPathRef CanvasD3d12::createPath( const Shape2d &shape )
 
 void CanvasD3d12::fillPath( const CachedPathRef &path, const Paint &paint, FillRule rule )
 {
-    if( ! path || ! mRiveRenderer ) return;
+    if( ! path ) return;
+
+    // If recording, redirect to DisplayList
+    if( mRecordingDisplayList ) {
+        mRecordingDisplayList->recordFillPath( path, paint, rule );
+        return;
+    }
+
+    if( ! mRiveRenderer ) return;
 
     auto d3d12Path = std::dynamic_pointer_cast<CachedPathD3d12>( path );
     if( ! d3d12Path || ! d3d12Path->mImpl->rivePath ) {
-        // Fall back to base class implementation using source shape
         Canvas::fillPath( path, paint, rule );
         return;
     }
@@ -469,16 +630,83 @@ void CanvasD3d12::fillPath( const CachedPathRef &path, const Paint &paint, FillR
 
 void CanvasD3d12::strokePath( const CachedPathRef &path, const Paint &paint )
 {
-    if( ! path || ! mRiveRenderer ) return;
+    if( ! path ) return;
+
+    // If recording, redirect to DisplayList
+    if( mRecordingDisplayList ) {
+        mRecordingDisplayList->recordStrokePath( path, paint );
+        return;
+    }
+
+    if( ! mRiveRenderer ) return;
 
     auto d3d12Path = std::dynamic_pointer_cast<CachedPathD3d12>( path );
     if( ! d3d12Path || ! d3d12Path->mImpl->rivePath ) {
-        // Fall back to base class implementation using source shape
         Canvas::strokePath( path, paint );
         return;
     }
 
     drawCachedPathInternal( d3d12Path.get(), paint, false, true );
+}
+
+// ------------------------------------------------------------------------------------------------
+// Uncached Path API (override for DisplayList recording)
+// ------------------------------------------------------------------------------------------------
+
+void CanvasD3d12::fillPath( const Path2d &path, const Paint &paint, FillRule rule )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( path );
+        if( cachedPath )
+            mRecordingDisplayList->recordFillPath( cachedPath, paint, rule );
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::fillPath( path, paint, rule );
+}
+
+void CanvasD3d12::strokePath( const Path2d &path, const Paint &paint )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( path );
+        if( cachedPath )
+            mRecordingDisplayList->recordStrokePath( cachedPath, paint );
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::strokePath( path, paint );
+}
+
+void CanvasD3d12::fillShape( const Shape2d &shape, const Paint &paint, FillRule rule )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( shape );
+        if( cachedPath )
+            mRecordingDisplayList->recordFillPath( cachedPath, paint, rule );
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::fillShape( shape, paint, rule );
+}
+
+void CanvasD3d12::strokeShape( const Shape2d &shape, const Paint &paint )
+{
+    // If recording, create a CachedPath on-the-fly and record it
+    if( mRecordingDisplayList ) {
+        auto cachedPath = createPath( shape );
+        if( cachedPath )
+            mRecordingDisplayList->recordStrokePath( cachedPath, paint );
+        return;
+    }
+
+    // Otherwise, use the base class implementation
+    Canvas::strokeShape( shape, paint );
 }
 
 void CanvasD3d12::drawCachedPathInternal( const CachedPathD3d12* cachedPath, const Paint &paint,
@@ -590,7 +818,15 @@ ImageRef CanvasD3d12::createImage( const Surface &surface )
 
 void CanvasD3d12::drawImage( const ImageRef &image, const Rectf &destRect )
 {
-    if( ! mInFrame || ! mRiveRenderer || ! image ) return;
+    if( ! image ) return;
+
+    // If recording, redirect to DisplayList
+    if( mRecordingDisplayList ) {
+        mRecordingDisplayList->recordDrawImage( image, destRect );
+        return;
+    }
+
+    if( ! mInFrame || ! mRiveRenderer ) return;
 
     auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
     if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage ) {
@@ -612,7 +848,15 @@ void CanvasD3d12::drawImage( const ImageRef &image, const Rectf &destRect )
 
 void CanvasD3d12::drawImage( const ImageRef &image, const Rectf &srcRect, const Rectf &destRect )
 {
-    if( ! mInFrame || ! mRiveRenderer || ! image ) return;
+    if( ! image ) return;
+
+    // If recording, redirect to DisplayList
+    if( mRecordingDisplayList ) {
+        mRecordingDisplayList->recordDrawImage( image, srcRect, destRect );
+        return;
+    }
+
+    if( ! mInFrame || ! mRiveRenderer ) return;
 
     auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
     if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage )
@@ -694,55 +938,6 @@ void CanvasD3d12::drawImageMesh( const ImageRef &image,
         opacity );
 
     mRiveRenderer->restore();
-}
-
-// ------------------------------------------------------------------------------------------------
-// FrozenPath API
-// ------------------------------------------------------------------------------------------------
-
-FrozenPathRef CanvasD3d12::freezePathFill( const CachedPathRef &path, const Paint &paint, FillRule rule )
-{
-    if( ! path ) return nullptr;
-
-    auto frozen = std::make_shared<FrozenPathD3d12>();
-    frozen->mSourcePath = path;
-    frozen->mBounds = path->getBounds();
-    frozen->mIsStroke = false;
-    frozen->mFillRule = rule;
-    frozen->mImpl->cachedPath = path;
-    frozen->mImpl->isStroke = false;
-
-    return frozen;
-}
-
-FrozenPathRef CanvasD3d12::freezePathStroke( const CachedPathRef &path, const Paint &paint )
-{
-    if( ! path ) return nullptr;
-
-    auto frozen = std::make_shared<FrozenPathD3d12>();
-    frozen->mSourcePath = path;
-    frozen->mBounds = path->getBounds();
-    frozen->mIsStroke = true;
-    frozen->mStrokeWidth = paint.getStrokeWidth();
-    frozen->mImpl->cachedPath = path;
-    frozen->mImpl->isStroke = true;
-
-    return frozen;
-}
-
-void CanvasD3d12::drawFrozenPath( const FrozenPathRef &frozenPath, const Paint &paint )
-{
-    if( ! frozenPath ) return;
-
-    auto d3d12Frozen = std::dynamic_pointer_cast<FrozenPathD3d12>( frozenPath );
-    if( ! d3d12Frozen || ! d3d12Frozen->mImpl->cachedPath ) return;
-
-    // Just draw the cached path - D3D12/Rive handles caching internally
-    if( d3d12Frozen->mImpl->isStroke ) {
-        strokePath( d3d12Frozen->mImpl->cachedPath, paint );
-    } else {
-        fillPath( d3d12Frozen->mImpl->cachedPath, paint, d3d12Frozen->mFillRule );
-    }
 }
 
 // ------------------------------------------------------------------------------------------------
