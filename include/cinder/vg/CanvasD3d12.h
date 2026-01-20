@@ -30,7 +30,6 @@
 #include <wrl/client.h>
 
 #include <vector>
-#include <functional>
 
 // Forward declarations for Rive types
 namespace rive {
@@ -226,9 +225,18 @@ public:
     CanvasD3d12& operator=( const CanvasD3d12& ) = delete;
 
     // === Frame Management ===
-    //! Begin rendering at the given size
+    //! Begin rendering at the given size with the provided command list.
+    //! The command list must be in the recording state (Reset() already called).
+    //! After end(), the command list remains open for additional rendering (e.g., ImGui).
+    //! The caller is responsible for closing and executing the command list.
+    void begin( const ivec2 &size, ID3D12GraphicsCommandList* commandList );
+
+    //! Legacy begin() without command list - will assert. Use begin(size, commandList) instead.
     void begin( const ivec2 &size ) override;
 
+    //! End canvas rendering. Flushes Rive but leaves command list open.
+    //! After this call, the render target is in RENDER_TARGET state and ready for
+    //! additional rendering. Caller must close and execute the command list.
     void end() override;
     bool inFrame() const override { return Canvas::mInFrame; }
 
@@ -238,15 +246,6 @@ public:
 
     //! Get the current clear color
     ColorAf getClearColor() const { return mClearColor; }
-
-    //! Callback type for post-flush rendering (e.g., ImGui)
-    //! Called after Rive flush but before command list is closed.
-    //! The command list and render target are ready for additional rendering.
-    using PostFlushCallback = std::function<void( ID3D12GraphicsCommandList* cmdList )>;
-
-    //! Set callback for post-flush rendering (e.g., ImGui)
-    //! The callback is invoked in end() after Rive's flush with render target in RENDER_TARGET state
-    void setPostFlushCallback( PostFlushCallback callback ) { mPostFlushCallback = std::move( callback ); }
 
     // === Cached Path API ===
     using Canvas::createPath;  // Bring createPath(Path2d) into scope
@@ -287,9 +286,9 @@ public:
     //! Get the D3D12 renderer
     app::RendererD3d12Ref getRenderer() const { return mRenderer; }
 
-    //! Get the current frame's command list (valid after begin(), before end())
+    //! Get the current frame's command list (valid after begin())
     //! Useful for interleaving custom D3D12 rendering (e.g., ImGui) with canvas commands
-    ID3D12GraphicsCommandList* getCommandList() const { return mCommandList.Get(); }
+    ID3D12GraphicsCommandList* getCommandList() const { return mCommandList; }
 
     //! Release cached render targets that hold references to back buffers.
     //! Call this in your app's resize() handler so the renderer can successfully
@@ -314,10 +313,8 @@ private:
     // D3D12-specific Rive context access
     rive::gpu::RenderContextD3D12Impl* mRiveContextD3d12 = nullptr;  // Raw pointer for D3D12-specific calls
 
-    // Per-frame command allocators (one per swap chain buffer)
-    static const UINT MaxFrameCount = app::RendererD3d12::MaxFrameCount;
-    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> mCommandAllocators[MaxFrameCount];
-    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList;
+    // Command list provided by caller (not owned)
+    ID3D12GraphicsCommandList* mCommandList = nullptr;
 
     // Cached render targets (one per swap chain buffer)
     std::vector<rive::rcp<rive::gpu::RenderTargetD3D12>> mRenderTargets;
@@ -338,9 +335,6 @@ private:
 
     // Clear color for frame (used with Rive's clear loadAction)
     ColorAf mClearColor = ColorAf( 0.2f, 0.2f, 0.25f, 1.0f );
-
-    // Post-flush callback for additional D3D12 rendering (e.g., ImGui)
-    PostFlushCallback mPostFlushCallback;
 };
 
 } } // namespace cinder::vg

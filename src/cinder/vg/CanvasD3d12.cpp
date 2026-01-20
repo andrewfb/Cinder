@@ -184,12 +184,11 @@ void CanvasD3d12::releaseRenderTargets()
     // Track if we were in a Rive frame - affects what cleanup we can do
     bool wasInRiveFrame = mInFrame;
 
-    // If we're in a frame, abort it and close the command list
+    // If we're in a frame, abort it (don't close command list - caller owns it)
     if( mInFrame ) {
         mRiveRenderer = nullptr;
         mOwnedRiveRenderer.reset();
-        if( mCommandList )
-            mCommandList->Close();
+        mCommandList = nullptr;
         mInFrame = false;
     }
 
@@ -229,58 +228,50 @@ void CanvasD3d12::releaseRenderTargets()
 
 void CanvasD3d12::initializeD3d12()
 {
-    CI_LOG_I( "Creating Rive D3D12 context" );
-
     auto device = mRenderer->getDevice();
     CI_ASSERT_MSG( device, "RendererD3d12 device is null" );
 
     UINT bufferCount = mRenderer->getBufferCount();
 
-    // Create per-frame command allocators
-    for( UINT i = 0; i < bufferCount; i++ ) {
-        HRESULT hr = device->CreateCommandAllocator(
-            D3D12_COMMAND_LIST_TYPE_DIRECT,
-            IID_PPV_ARGS( &mCommandAllocators[i] ) );
-        if( FAILED( hr ) ) {
-            throw vg::Exc( "Failed to create D3D12 command allocator" );
-        }
-    }
+    // Create temporary command allocator and list for Rive initialization
+    ComPtr<ID3D12CommandAllocator> initAllocator;
+    ComPtr<ID3D12GraphicsCommandList> initCommandList;
 
-    // Create command list (starts in recording state with first allocator)
-    HRESULT hr = device->CreateCommandList(
+    HRESULT hr = device->CreateCommandAllocator(
+        D3D12_COMMAND_LIST_TYPE_DIRECT,
+        IID_PPV_ARGS( &initAllocator ) );
+    if( FAILED( hr ) )
+        throw vg::Exc( "Failed to create D3D12 command allocator for initialization" );
+
+    hr = device->CreateCommandList(
         0,
         D3D12_COMMAND_LIST_TYPE_DIRECT,
-        mCommandAllocators[0].Get(),
-        nullptr,  // No initial pipeline state
-        IID_PPV_ARGS( &mCommandList ) );
-    if( FAILED( hr ) ) {
-        throw vg::Exc( "Failed to create D3D12 command list" );
-    }
+        initAllocator.Get(),
+        nullptr,
+        IID_PPV_ARGS( &initCommandList ) );
+    if( FAILED( hr ) )
+        throw vg::Exc( "Failed to create D3D12 command list for initialization" );
 
-    // Create Rive context - this records initialization commands to mCommandList
+    // Create Rive context - this records initialization commands
     D3DContextOptions riveOptions;
-    // Use default options for now
 
     mRiveContext = RenderContextD3D12Impl::MakeContext(
         ComPtr<ID3D12Device>( device ),
-        mCommandList.Get(),
+        initCommandList.Get(),
         riveOptions );
 
-    if( ! mRiveContext ) {
+    if( ! mRiveContext )
         throw vg::Exc( "Failed to create Rive D3D12 RenderContext" );
-    }
 
     // Store the D3D12-specific pointer for D3D12-specific calls
     mRiveContextD3d12 = mRiveContext->static_impl_cast<RenderContextD3D12Impl>();
 
-    // CRITICAL: Execute initialization commands
-    // Rive records static buffer uploads during MakeContext - we must execute them
-    mCommandList->Close();
-    ID3D12CommandList* lists[] = { mCommandList.Get() };
+    // Execute initialization commands
+    initCommandList->Close();
+    ID3D12CommandList* lists[] = { initCommandList.Get() };
     mRenderer->getCommandQueue()->ExecuteCommandLists( 1, lists );
 
-    // Wait for initialization to complete using a dedicated fence
-    // We can't use waitForGpu() here because it returns early if mFenceCounter == 0
+    // Wait for initialization to complete
     {
         ComPtr<ID3D12Fence> initFence;
         HANDLE initEvent = CreateEvent( nullptr, FALSE, FALSE, nullptr );
@@ -295,13 +286,17 @@ void CanvasD3d12::initializeD3d12()
 
     // Pre-allocate render target vector (will lazily create targets)
     mRenderTargets.resize( bufferCount );
-
-    CI_LOG_I( "CanvasD3d12 created successfully with " << bufferCount << " back buffers" );
 }
 
 void CanvasD3d12::begin( const ivec2 &size )
 {
+    CI_ASSERT_MSG( false, "begin(size) is deprecated. Use begin(size, commandList) instead." );
+}
+
+void CanvasD3d12::begin( const ivec2 &size, ID3D12GraphicsCommandList* commandList )
+{
     CI_ASSERT_MSG( ! mInFrame, "begin() called while already in frame - did you forget to call end()?" );
+    CI_ASSERT_MSG( commandList, "begin() requires a valid command list" );
 
     // During resize/minimize, size can be 0 - skip frame gracefully
     if( size.x <= 0 || size.y <= 0 ) {
@@ -312,27 +307,21 @@ void CanvasD3d12::begin( const ivec2 &size )
 
     mFrameSize = size;
     mInFrame = true;
+    mCommandList = commandList;
 
     UINT frameIndex = mRenderer->getCurrentBackBufferIndex();
 
-    // Wait for this frame's GPU work to complete before reusing its allocator
-    // Note: After resize, fence values are preserved (set to mFenceCounter), so this still works
+    // Wait for this frame's GPU work to complete before caller reuses their allocator
     mRenderer->waitForFrame( frameIndex );
 
     // Get back buffer first - it should always be valid after proper initialization
-    // If this fails, the renderer is in a bad state (resize failed or not initialized)
     auto backBuffer = mRenderer->getCurrentBackBuffer();
     if( ! backBuffer ) {
-        // Can happen briefly during ResizeBuffers when the app's draw() is invoked while
-        // swapchain buffers are being torn down/recreated. Skip the frame gracefully.
         CI_LOG_W( "CanvasD3d12::begin() skipping frame: back buffer is null (resize in progress)" );
         mInFrame = false;
+        mCommandList = nullptr;
         return;
     }
-
-    // Reset command allocator and command list for this frame
-    mCommandAllocators[frameIndex]->Reset();
-    mCommandList->Reset( mCommandAllocators[frameIndex].Get(), nullptr );
 
     // Use actual back buffer size as the authoritative render size
     D3D12_RESOURCE_DESC backDesc = backBuffer->GetDesc();
@@ -400,17 +389,11 @@ void CanvasD3d12::end()
     UINT frameIndex = mRenderer->getCurrentBackBufferIndex();
 
     // Set up command lists for Rive flush
-    // Rive's D3D12 implementation expects a CommandLists struct via externalCommandBuffer
     RenderContextD3D12Impl::CommandLists cmdLists;
-    cmdLists.copyComandList = nullptr;  // Use directComandList for copies too
-    cmdLists.directComandList = mCommandList.Get();
+    cmdLists.copyComandList = nullptr;
+    cmdLists.directComandList = mCommandList;
 
     // Flush Rive rendering to cached render target
-    // Use proper frame numbers for resource lifecycle management
-    // safeFrameNumber = frame that's definitely completed on GPU
-    // With triple buffering: frame N is being recorded, frame N-1 may be executing,
-    // frame N-2 may still be in flight, frame N-3 is definitely done.
-    // Use bufferCount as the lag to ensure safety across different buffer configurations.
     UINT bufferCount = mRenderer->getBufferCount();
     uint64_t safeFrame = (mFrameNumber > bufferCount) ? (mFrameNumber - bufferCount - 1) : 0;
 
@@ -421,55 +404,36 @@ void CanvasD3d12::end()
     flushRes.safeFrameNumber = safeFrame;
     mRiveContext->flush( flushRes );
 
-    // Increment frame counter for next frame
     ++mFrameNumber;
 
-    // Invoke post-flush callback for additional D3D12 rendering (e.g., ImGui)
-    // After Rive flush, render target is in COMMON state
-    if( mPostFlushCallback ) {
-        // Get current back buffer
-        auto backBuffer = mRenderer->getCurrentBackBuffer();
-        if( backBuffer ) {
-            // Transition COMMON → RENDER_TARGET for ImGui rendering
-            CD3DX12_RESOURCE_BARRIER toRenderTarget = CD3DX12_RESOURCE_BARRIER::Transition(
-                backBuffer,
-                D3D12_RESOURCE_STATE_COMMON,
-                D3D12_RESOURCE_STATE_RENDER_TARGET );
-            mCommandList->ResourceBarrier( 1, &toRenderTarget );
+    // After Rive flush, render target is in COMMON state.
+    // Transition to RENDER_TARGET so caller can do additional rendering (e.g., ImGui).
+    auto backBuffer = mRenderer->getCurrentBackBuffer();
+    if( backBuffer && mCommandList ) {
+        CD3DX12_RESOURCE_BARRIER toRenderTarget = CD3DX12_RESOURCE_BARRIER::Transition(
+            backBuffer,
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_RENDER_TARGET );
+        mCommandList->ResourceBarrier( 1, &toRenderTarget );
 
-            // Set render target for ImGui
-            D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mRenderer->getRtvHandle( frameIndex );
-            mCommandList->OMSetRenderTargets( 1, &rtvHandle, FALSE, nullptr );
+        // Set render target and viewport/scissor for caller's convenience
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = mRenderer->getRtvHandle( frameIndex );
+        mCommandList->OMSetRenderTargets( 1, &rtvHandle, FALSE, nullptr );
 
-            // Set viewport and scissor
-            D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)mFrameSize.x, (float)mFrameSize.y, 0.0f, 1.0f };
-            D3D12_RECT scissor = { 0, 0, (LONG)mFrameSize.x, (LONG)mFrameSize.y };
-            mCommandList->RSSetViewports( 1, &viewport );
-            mCommandList->RSSetScissorRects( 1, &scissor );
-
-            // Invoke callback (e.g., ImGui rendering)
-            mPostFlushCallback( mCommandList.Get() );
-
-            // Transition RENDER_TARGET → PRESENT for swap chain
-            CD3DX12_RESOURCE_BARRIER toPresent = CD3DX12_RESOURCE_BARRIER::Transition(
-                backBuffer,
-                D3D12_RESOURCE_STATE_RENDER_TARGET,
-                D3D12_RESOURCE_STATE_PRESENT );
-            mCommandList->ResourceBarrier( 1, &toPresent );
-        }
+        D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)mFrameSize.x, (float)mFrameSize.y, 0.0f, 1.0f };
+        D3D12_RECT scissor = { 0, 0, (LONG)mFrameSize.x, (LONG)mFrameSize.y };
+        mCommandList->RSSetViewports( 1, &viewport );
+        mCommandList->RSSetScissorRects( 1, &scissor );
     }
-    // Note: If no callback, Rive's flush() transitions the render target to COMMON state.
-    // D3D12_RESOURCE_STATE_COMMON is implicitly promotable to PRESENT for swap chain buffers.
 
-    // Close and execute command list
-    mCommandList->Close();
-    ID3D12CommandList* lists[] = { mCommandList.Get() };
-    mRenderer->getCommandQueue()->ExecuteCommandLists( 1, lists );
-
-    // Signal frame fence for synchronization
-    mRenderer->signalFrameFence();
+    // Command list remains open - caller is responsible for:
+    // 1. Additional rendering (e.g., ImGui)
+    // 2. Transitioning render target to PRESENT state
+    // 3. Closing and executing the command list
+    // 4. Signaling the frame fence via mRenderer->signalFrameFence()
 
     mInFrame = false;
+    mCommandList = nullptr;
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -1,5 +1,4 @@
 /*
- VectorGraphicsDemoD3d12 - Interactive demo framework using Cinder's built-in ImGui
  D3D12 version of VectorGraphicsDemo
 */
 
@@ -16,6 +15,7 @@
 
 #include "cinder/vg/CanvasD3d12.h"
 #include "cinder/vg/Paint.h"
+#include "cinder/vg/rive/d3dx12.h"
 
 #include <set>
 
@@ -1448,6 +1448,11 @@ class VectorGraphicsDemoD3d12App : public App {
 	double				  mLastTime = 0;
 	float				  mFps = 60;
 	bool				  mDemoDragging = false;
+
+	// D3D12 command list management
+	static const UINT								   MaxFrameCount = 3;
+	Microsoft::WRL::ComPtr<ID3D12CommandAllocator>	   mCommandAllocators[MaxFrameCount];
+	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList>  mCommandList;
 };
 
 void VectorGraphicsDemoD3d12App::setup()
@@ -1461,12 +1466,17 @@ void VectorGraphicsDemoD3d12App::setup()
 		return;
 	}
 
+	// Create command allocators and command list
+	auto device = mRenderer->getDevice();
+	UINT bufferCount = mRenderer->getBufferCount();
+	for( UINT i = 0; i < bufferCount; i++ ) {
+		device->CreateCommandAllocator( D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS( &mCommandAllocators[i] ) );
+	}
+	device->CreateCommandList( 0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocators[0].Get(), nullptr, IID_PPV_ARGS( &mCommandList ) );
+	mCommandList->Close();
+
 	// Initialize ImGui - CinderImGui handles input via signals, we handle D3D12 rendering
 	ImGui::Initialize();
-
-	// Set up post-flush callback for ImGui rendering
-	// This is called after Rive flush, with render target in RENDER_TARGET state
-	mCanvas->setPostFlushCallback( [this]( ID3D12GraphicsCommandList* cmdList ) { renderImGui( cmdList ); } );
 
 	// Release render targets before swap chain buffers are recreated
 	mRenderer->getSignalSwapChainBuffersWillRecreate().connect( [this]() {
@@ -1526,8 +1536,13 @@ void VectorGraphicsDemoD3d12App::draw()
 	D3D12_RESOURCE_DESC bufferDesc = backBuffer->GetDesc();
 	ivec2				bufferSize( static_cast<int>( bufferDesc.Width ), static_cast<int>( bufferDesc.Height ) );
 
+	// Reset command allocator and command list for this frame
+	UINT frameIndex = mRenderer->getCurrentBackBufferIndex();
+	mCommandAllocators[frameIndex]->Reset();
+	mCommandList->Reset( mCommandAllocators[frameIndex].Get(), nullptr );
+
 	// Canvas rendering
-	mCanvas->begin( bufferSize );
+	mCanvas->begin( bufferSize, mCommandList.Get() );
 	mCanvas->setTransform( mCanvasUi.getTransform2d() );
 
 	if( mDemo ) {
@@ -1538,6 +1553,22 @@ void VectorGraphicsDemoD3d12App::draw()
 	}
 
 	mCanvas->end();
+
+	// After end(), render target is in RENDER_TARGET state - render ImGui
+	renderImGui( mCommandList.Get() );
+
+	// Transition to PRESENT state
+	CD3DX12_RESOURCE_BARRIER toPresent = CD3DX12_RESOURCE_BARRIER::Transition(
+		backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT );
+	mCommandList->ResourceBarrier( 1, &toPresent );
+
+	// Close and execute command list
+	mCommandList->Close();
+	ID3D12CommandList* lists[] = { mCommandList.Get() };
+	mRenderer->getCommandQueue()->ExecuteCommandLists( 1, lists );
+
+	// Signal frame fence for synchronization
+	mRenderer->signalFrameFence();
 }
 
 // Separate method called via post-flush callback

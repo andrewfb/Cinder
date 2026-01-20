@@ -57,70 +57,20 @@ RendererImplD3d12::~RendererImplD3d12()
 
 bool RendererImplD3d12::initialize( WindowImplMsw* windowImpl, RendererRef sharedRenderer )
 {
-	CI_LOG_I( "[D3D12] === INITIALIZE START ===" );
 	mWnd = windowImpl->getHwnd();
 
-	CI_LOG_I( "[D3D12] Creating factory..." );
-	if( ! createFactory() ) {
-		CI_LOG_E( "Failed to create DXGI factory" );
+	if( !createFactory() || !selectAdapter() || !createDevice() || !createCommandQueue() ||
+	    !createSwapChain() || !createRtvHeap() || !createBackBufferRtvs() || !createFrameFence() ) {
+		CI_LOG_E( "[D3D12] Initialization failed" );
 		return false;
 	}
 
-	CI_LOG_I( "[D3D12] Selecting adapter..." );
-	if( ! selectAdapter() ) {
-		CI_LOG_E( "Failed to select adapter" );
-		return false;
-	}
-
-	CI_LOG_I( "[D3D12] Creating device..." );
-	if( ! createDevice() ) {
-		CI_LOG_E( "Failed to create D3D12 device" );
-		return false;
-	}
-
-	CI_LOG_I( "[D3D12] Creating command queue..." );
-	if( ! createCommandQueue() ) {
-		CI_LOG_E( "Failed to create command queue" );
-		return false;
-	}
-
-	CI_LOG_I( "[D3D12] Creating swap chain..." );
-	if( ! createSwapChain() ) {
-		CI_LOG_E( "Failed to create swap chain" );
-		return false;
-	}
-
-	CI_LOG_I( "[D3D12] Creating RTV heap..." );
-	if( ! createRtvHeap() ) {
-		CI_LOG_E( "Failed to create RTV heap" );
-		return false;
-	}
-
-	CI_LOG_I( "[D3D12] Creating back buffer RTVs..." );
-	if( ! createBackBufferRtvs() ) {
-		CI_LOG_E( "Failed to create back buffer RTVs" );
-		return false;
-	}
-
-	CI_LOG_I( "[D3D12] Creating frame fence..." );
-	if( ! createFrameFence() ) {
-		CI_LOG_E( "Failed to create present fence" );
-		return false;
-	}
-
-	// Create MSAA target if requested
-	if( mOptions.getMsaa() > 1 ) {
-		CI_LOG_I( "[D3D12] Creating MSAA target..." );
-		if( ! createMsaaTarget() ) {
-			CI_LOG_W( "[D3D12] Failed to create MSAA target, falling back to no MSAA" );
-			mMsaaSamples = 1;
-		}
+	if( mOptions.getMsaa() > 1 && !createMsaaTarget() ) {
+		CI_LOG_W( "[D3D12] MSAA target creation failed, falling back to no MSAA" );
+		mMsaaSamples = 1;
 	}
 
 	mFrameIndex = mSwapChain->GetCurrentBackBufferIndex();
-	CI_LOG_I( "[D3D12] Initial frame index: " << mFrameIndex );
-	CI_LOG_I( "[D3D12] === INITIALIZE COMPLETE ===" );
-
 	return true;
 }
 
@@ -128,27 +78,22 @@ bool RendererImplD3d12::createFactory()
 {
 	UINT dxgiFactoryFlags = 0;
 
-	// Enable debug layer if requested
 	if( mOptions.getDebugLayer() ) {
 		msw::ComPtr<ID3D12Debug> debugController;
 		if( SUCCEEDED( D3D12GetDebugInterface( IID_PPV_ARGS( debugController.releaseAndGetAddressOf() ) ) ) ) {
 			debugController->EnableDebugLayer();
 			dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
-			CI_LOG_I( "[D3D12] Debug layer enabled" );
 
-			// Enable GPU-based validation if requested (very slow but thorough)
 			if( mOptions.getGpuValidation() ) {
 				msw::ComPtr<ID3D12Debug1> debugController1;
-				if( SUCCEEDED( debugController->QueryInterface( IID_PPV_ARGS( debugController1.releaseAndGetAddressOf() ) ) ) ) {
+				if( SUCCEEDED( debugController->QueryInterface( IID_PPV_ARGS( debugController1.releaseAndGetAddressOf() ) ) ) )
 					debugController1->SetEnableGPUBasedValidation( TRUE );
-					CI_LOG_I( "[D3D12] GPU-based validation enabled" );
-				}
 			}
 		}
 	}
 
 	msw::ComPtr<IDXGIFactory6> factory;
-	HRESULT					   hr = CreateDXGIFactory2( dxgiFactoryFlags, IID_PPV_ARGS( factory.releaseAndGetAddressOf() ) );
+	HRESULT hr = CreateDXGIFactory2( dxgiFactoryFlags, IID_PPV_ARGS( factory.releaseAndGetAddressOf() ) );
 	if( SUCCEEDED( hr ) )
 		mFactory = factory.detach();
 
@@ -157,46 +102,24 @@ bool RendererImplD3d12::createFactory()
 
 bool RendererImplD3d12::selectAdapter()
 {
-	// This function just validates adapter availability; actual selection happens in createDevice
 	msw::ComPtr<IDXGIAdapter1> adapter;
 
 	if( mOptions.getForceWarp() ) {
-		HRESULT hr = mFactory->EnumWarpAdapter( IID_PPV_ARGS( adapter.releaseAndGetAddressOf() ) );
-		if( FAILED( hr ) )
-			return false;
-		CI_LOG_I( "[D3D12] WARP adapter available (forced)" );
-	}
-	else {
-		// Map our preference enum to DXGI preference
-		DXGI_GPU_PREFERENCE dxgiPref = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
-		switch( mOptions.getGpuPreference() ) {
-			case RendererD3d12::GpuPreference::HIGH_PERFORMANCE:
-				dxgiPref = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
-				break;
-			case RendererD3d12::GpuPreference::MINIMUM_POWER:
-				dxgiPref = DXGI_GPU_PREFERENCE_MINIMUM_POWER;
-				break;
-			case RendererD3d12::GpuPreference::UNSPECIFIED:
-				dxgiPref = DXGI_GPU_PREFERENCE_UNSPECIFIED;
-				break;
-		}
-
-		HRESULT hr = mFactory->EnumAdapterByGpuPreference( 0, dxgiPref, IID_PPV_ARGS( adapter.releaseAndGetAddressOf() ) );
-
-		if( FAILED( hr ) ) {
-			hr = mFactory->EnumWarpAdapter( IID_PPV_ARGS( adapter.releaseAndGetAddressOf() ) );
-			if( FAILED( hr ) )
-				return false;
-			CI_LOG_I( "[D3D12] Using WARP software adapter (fallback)" );
-		}
-		else {
-			DXGI_ADAPTER_DESC1 desc;
-			adapter->GetDesc1( &desc );
-			CI_LOG_I( "[D3D12] Using adapter: " << msw::toUtf8String( desc.Description ) );
-		}
+		return SUCCEEDED( mFactory->EnumWarpAdapter( IID_PPV_ARGS( adapter.releaseAndGetAddressOf() ) ) );
 	}
 
-	return true;
+	DXGI_GPU_PREFERENCE dxgiPref = DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
+	switch( mOptions.getGpuPreference() ) {
+		case RendererD3d12::GpuPreference::MINIMUM_POWER: dxgiPref = DXGI_GPU_PREFERENCE_MINIMUM_POWER; break;
+		case RendererD3d12::GpuPreference::UNSPECIFIED: dxgiPref = DXGI_GPU_PREFERENCE_UNSPECIFIED; break;
+		default: break;
+	}
+
+	HRESULT hr = mFactory->EnumAdapterByGpuPreference( 0, dxgiPref, IID_PPV_ARGS( adapter.releaseAndGetAddressOf() ) );
+	if( FAILED( hr ) )
+		hr = mFactory->EnumWarpAdapter( IID_PPV_ARGS( adapter.releaseAndGetAddressOf() ) );
+
+	return SUCCEEDED( hr );
 }
 
 bool RendererImplD3d12::createDevice()
@@ -250,10 +173,8 @@ bool RendererImplD3d12::createDevice()
 	msw::ComPtr<ID3D12Device> device;
 	for( auto featureLevel : featureLevels ) {
 		hr = D3D12CreateDevice( adapter.get(), featureLevel, IID_PPV_ARGS( device.releaseAndGetAddressOf() ) );
-		if( SUCCEEDED( hr ) ) {
-			CI_LOG_I( "[D3D12] Created device with feature level 0x" << std::hex << featureLevel );
+		if( SUCCEEDED( hr ) )
 			break;
-		}
 	}
 
 	if( FAILED( hr ) )
@@ -267,7 +188,6 @@ bool RendererImplD3d12::createDevice()
 		if( SUCCEEDED( mDevice->QueryInterface( IID_PPV_ARGS( infoQueue.releaseAndGetAddressOf() ) ) ) ) {
 			infoQueue->SetBreakOnSeverity( D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE );
 			infoQueue->SetBreakOnSeverity( D3D12_MESSAGE_SEVERITY_ERROR, TRUE );
-			CI_LOG_I( "[D3D12] Debug break on error enabled" );
 		}
 	}
 
@@ -368,31 +288,21 @@ bool RendererImplD3d12::createBackBufferRtvs()
 
 bool RendererImplD3d12::createFrameFence()
 {
-	CI_LOG_I( "[D3D12] createFrameFence: Creating fence..." );
 	msw::ComPtr<ID3D12Fence> fence;
 	HRESULT					 hr = mDevice->CreateFence( 0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS( fence.releaseAndGetAddressOf() ) );
-	if( FAILED( hr ) ) {
-		CI_LOG_E( "[D3D12] createFrameFence: Failed to create fence, hr=" << std::hex << hr );
+	if( FAILED( hr ) )
 		return false;
-	}
 
 	mFrameFence = fence.detach();
-	mFenceCounter = 0; // Monotonic counter for fence values
-	CI_LOG_I( "[D3D12] createFrameFence: Fence created, mFenceCounter=" << mFenceCounter );
+	mFenceCounter = 0;
 
-	// Initialize fence values for each buffer to 0 (no work pending)
-	for( UINT i = 0; i < mBufferCount; i++ ) {
+	for( UINT i = 0; i < mBufferCount; i++ )
 		mFenceValues[i] = 0;
-	}
 
-	// Create single event for waiting
 	mFenceEvent = CreateEvent( nullptr, FALSE, FALSE, nullptr );
-	if( mFenceEvent == nullptr ) {
-		CI_LOG_E( "[D3D12] createFrameFence: Failed to create fence event" );
+	if( mFenceEvent == nullptr )
 		return false;
-	}
 
-	CI_LOG_I( "[D3D12] createFrameFence: Fence and event created successfully" );
 	return true;
 }
 
@@ -508,8 +418,6 @@ bool RendererImplD3d12::createMsaaTarget()
 		mMsaaSamples = requestedSamples;
 	}
 
-	CI_LOG_I( "[D3D12] Creating MSAA " << mMsaaSamples << "x render target" );
-
 	// Create MSAA RTV heap
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
 	rtvHeapDesc.NumDescriptors = 1;
@@ -561,7 +469,6 @@ bool RendererImplD3d12::createMsaaTarget()
 	mMsaaRtvHandle = mMsaaRtvHeap->GetCPUDescriptorHandleForHeapStart();
 	mDevice->CreateRenderTargetView( mMsaaTarget.get(), nullptr, mMsaaRtvHandle );
 
-	CI_LOG_I( "[D3D12] MSAA " << mMsaaSamples << "x target created successfully" );
 	return true;
 }
 
@@ -689,7 +596,7 @@ void RendererImplD3d12::defaultResize() const
 	HRESULT hr = mSwapChain->ResizeBuffers( self->mBufferCount, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, flags );
 
 	if( FAILED( hr ) ) {
-		CI_LOG_E( "[D3D12] ResizeBuffers failed (hr=" << std::hex << hr << "). Ensure all back buffer references are released via getSignalResizeBegin()." );
+		CI_LOG_E( "[D3D12] ResizeBuffers failed (hr=" << std::hex << hr << "). Ensure all back buffer references are released via getSignalSwapChainBuffersWillRecreate()." );
 		return;
 	}
 
