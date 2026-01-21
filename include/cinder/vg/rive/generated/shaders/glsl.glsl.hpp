@@ -29,6 +29,14 @@ const char glsl[] = R"===(#define nb
 #define U5 bvec3
 #define W6 bvec4
 #define W mat2
+// unpackHalf2x16 and packHalf2x16 are built-in in GLSL 4.2+ but not in 4.1
+// Provide software fallback for GL 4.1 (macOS core profile)
+#if CC>=400 && CC<420
+float j7(uint h){uint S9=(h>>15u)&1u;uint T9=(h>>10u)&0x1Fu;uint U9=h&0x3FFu;if(T9==0u){if(U9==0u)return S9!=0u?-0.0:0.0;float f=float(U9)/1024.0;return S9!=0u?-f*pow(2.0,-14.0):f*pow(2.0,-14.0);}else if(T9==31u){return U9==0u?(S9!=0u?-1.0/0.0:1.0/0.0):0.0/0.0;}float f=float(U9)/1024.0+1.0;f*=pow(2.0,float(T9)-15.0);return S9!=0u?-f:f;}
+E unpackHalf2x16(uint u){return c(j7(u&0xFFFFu),j7(u>>16u));}
+uint k7(float f){if(f==0.0)return 0u;uint S9=f<0.0?0x8000u:0u;f=abs(f);if(isinf(f))return S9|0x7C00u;if(isnan(f))return S9|0x7E00u;float V9=floor(log2(f));float W9=f/pow(2.0,V9)-1.0;int T9=int(V9)+15;if(T9<=0){W9=f/pow(2.0,-14.0);return S9|uint(W9*1024.0);}if(T9>=31)return S9|0x7C00u;return S9|(uint(T9)<<10u)|uint(W9*1024.0);}
+uint packHalf2x16(c v){return k7(v.x)|(k7(v.y)<<16u);}
+#endif
 #define d
 #define q1(S1) out S1
 #define H4(S1) inout S1
@@ -59,7 +67,7 @@ const char glsl[] = R"===(#define nb
 #extension GL_ANGLE_clip_cull_distance:require
 #endif
 #endif
-#if CC>=310
+#if CC>=420||(CC>=310&&defined(GL_ES))
 #define K5(f,a) layout(binding=f,std140)uniform a{
 #else
 #define K5(f,a) layout(std140)uniform a{
@@ -69,14 +77,15 @@ const char glsl[] = R"===(#define nb
 #define l0(f,V,a) layout(location=f)in V a
 #define x1
 #define n0(i8,F,a,V)
+// Skip layout(location) for varyings on GL 4.0/4.1 due to ordering issues with flat/noperspective
 #ifdef BB
-#if CC>=310
+#if CC>=420||(CC>=310&&CC<400)
 #define X(f,V,a) layout(location=f)out V a
 #else
 #define X(f,V,a) out V a
 #endif
 #else
-#if CC>=310
+#if CC>=420||(CC>=310&&CC<400)
 #define X(f,V,a) layout(location=f)in V a
 #else
 #define X(f,V,a) in V a
@@ -114,7 +123,8 @@ const char glsl[] = R"===(#define nb
 #define G9(K,f,a) layout(binding=f)uniform highp utexture2D a
 #if defined(GB)&&defined(AB)
 #endif
-#elif CC>=310
+// binding qualifier requires GL 4.2+ on desktop GL, or GLES 3.1+
+#elif CC>=420||(CC>=310&&defined(GL_ES))
 #define Z3(K,f,a) layout(binding=f)uniform highp usampler2D a
 #define P4(K,f,a) layout(binding=f)uniform highp sampler2D a
 #define K2(K,f,a) layout(binding=f)uniform mediump sampler2D a
