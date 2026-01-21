@@ -53,6 +53,16 @@ list( APPEND CINDER_INCLUDE_SYSTEM_PRIVATE
 	${CINDER_INC_DIR}/oggvorbis
 )
 
+# Rive include paths for vg:: vector graphics module
+if( NOT CINDER_DISABLE_VECTOR_GRAPHICS )
+	list( APPEND CINDER_INCLUDE_SYSTEM_PRIVATE
+		${CINDER_INC_DIR}/cinder/vg/rive            # For rive/ headers (rive/renderer/*, rive/math/*, etc.)
+		${CINDER_INC_DIR}/cinder/vg/rive/glad       # For glad_custom.h
+		${CINDER_SRC_DIR}/cinder/vg/rive            # For internal rive headers (renderer/gradient.hpp, etc.)
+		${CINDER_SRC_DIR}/cinder/vg/rive/renderer   # For internal renderer headers (rive_render_path.hpp, etc.)
+	)
+endif()
+
 # find cross-platform packages
 
 # TODO: this can cause a system include location to appear before cinder/include's,

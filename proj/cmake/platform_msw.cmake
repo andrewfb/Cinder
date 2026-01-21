@@ -39,17 +39,19 @@ list( APPEND SRC_SET_APP_MSW
 )
 
 # vg:: D3D12 renderer (Rive GPU)
-list( APPEND SRC_SET_RIVE_RENDERER_D3D12
-	${CINDER_SRC_DIR}/cinder/vg/CanvasD3d12.cpp
-	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/d3d/d3d_utils.cpp
-	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/d3d/pipeline_manager.cpp
-	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/d3d12/d3d12_pipeline_manager.cpp
-	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/d3d12/d3d12_utils.cpp
-	${CINDER_SRC_DIR}/cinder/vg/rive/renderer/d3d12/render_context_d3d12_impl.cpp
-)
+if( NOT CINDER_DISABLE_VECTOR_GRAPHICS )
+	list( APPEND SRC_SET_RIVE_RENDERER_D3D12
+		${CINDER_SRC_DIR}/cinder/vg/CanvasD3d12.cpp
+		${CINDER_SRC_DIR}/cinder/vg/rive/renderer/d3d/d3d_utils.cpp
+		${CINDER_SRC_DIR}/cinder/vg/rive/renderer/d3d/pipeline_manager.cpp
+		${CINDER_SRC_DIR}/cinder/vg/rive/renderer/d3d12/d3d12_pipeline_manager.cpp
+		${CINDER_SRC_DIR}/cinder/vg/rive/renderer/d3d12/d3d12_utils.cpp
+		${CINDER_SRC_DIR}/cinder/vg/rive/renderer/d3d12/render_context_d3d12_impl.cpp
+	)
 
-list( APPEND CINDER_SRC_FILES ${SRC_SET_RIVE_RENDERER_D3D12} )
-source_group( "thirdparty\\rive\\renderer\\d3d12" FILES ${SRC_SET_RIVE_RENDERER_D3D12} )
+	list( APPEND CINDER_SRC_FILES ${SRC_SET_RIVE_RENDERER_D3D12} )
+	source_group( "thirdparty\\rive\\renderer\\d3d12" FILES ${SRC_SET_RIVE_RENDERER_D3D12} )
+endif()
 
 # ANGLE or native OpenGL renderer
 if( CINDER_GL_ANGLE )
