@@ -218,6 +218,11 @@ void CanvasGl::initializeGl( bool forceMsaaMode )
 	CI_LOG_I( "CanvasGl created - supportsRasterOrderingMode=" << features.supportsRasterOrderingMode << " supportsAtomicMode=" << features.supportsAtomicMode << " supportsClockwiseMode=" << features.supportsClockwiseMode
 															   << " supportsClockwiseAtomicMode=" << features.supportsClockwiseAtomicMode );
 
+	// Query and log max MSAA samples supported
+	GLint maxSamples = 0;
+	glGetIntegerv( GL_MAX_SAMPLES, &maxSamples );
+	CI_LOG_I( "GL_MAX_SAMPLES=" << maxSamples );
+
 	// CRITICAL: Clean up Rive's initialization state
 	// Rive's context creation modifies VAOs, VBOs, textures, shaders, etc.
 	// unbindGLInternalResources() uses raw GL calls, so we must invalidate
@@ -477,7 +482,20 @@ void CanvasGl::begin( const ivec2& size )
 		// mode instead, where the assertion passes.
 		frameDesc.clockwiseFillOverride = true; // Enable feathering
 		frameDesc.disableRasterOrdering = true; // Force atomics mode to avoid assertion
-		frameDesc.msaaSampleCount = 0;			// Always render to non-MSAA target (internal FBO or non-MSAA window)
+#if defined( CINDER_MAC )
+		// macOS OpenGL Limitations:
+		// - Stuck at GL 4.1 (Apple deprecated OpenGL in favor of Metal)
+		// - No Pixel Local Storage (PLS) - requires extensions not available
+		// - No Fragment Shader Interlock (FSI) - requires GL 4.5+ (GL_ARB_fragment_shader_interlock)
+		// - No atomic image operations for coverage - requires GL 4.2+
+		// Therefore MSAA is the ONLY rendering mode available on macOS.
+		// GL_MAX_SAMPLES=4 on macOS, so 8x MSAA fails silently (incomplete framebuffer).
+		// Rive doesn't query GL_MAX_SAMPLES or check glCheckFramebufferStatus, so exceeding
+		// the limit produces a blank canvas with no error message.
+		frameDesc.msaaSampleCount = 4;			// macOS GL 4.1: MSAA only, max 4x (GL_MAX_SAMPLES=4)
+#else
+		frameDesc.msaaSampleCount = 0;			// Other platforms: use PLS/atomic mode for analytical AA
+#endif
 
 		// Invalidate GL state since Cinder may have modified it
 		invalidateState();
