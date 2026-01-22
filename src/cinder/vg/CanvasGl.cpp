@@ -439,29 +439,45 @@ void CanvasGl::begin()
 	// Offscreen mode - use FBO dimensions
 	CI_ASSERT_MSG( mRenderMode == RenderMode::Offscreen, "begin() without size argument is only valid for offscreen canvases. Use begin(size) for window mode." );
 	CI_ASSERT_MSG( mInternalFbo, "Offscreen FBO not created" );
-	begin( mInternalFboSize );
+	begin( mInternalFboSize, 1.0f );
 }
 
 void CanvasGl::begin( const ivec2& size )
 {
+	begin( size, 1.0f );
+}
+
+void CanvasGl::begin( const ivec2& pointSize, float contentScale )
+{
 	CI_ASSERT_MSG( ! mInFrame, "begin() called while already in frame - did you forget to call end()?" );
-	CI_ASSERT_MSG( size.x > 0 && size.y > 0, "begin() size must be positive" );
+	CI_ASSERT_MSG( pointSize.x > 0 && pointSize.y > 0, "begin() size must be positive" );
+	CI_ASSERT_MSG( contentScale > 0, "contentScale must be positive" );
+
+	// Reset transform at start of each frame
+	resetTransform();
+	mTransformStack.clear();
+
+	// Store point size and content scale for blit in end()
+	mPointSize = pointSize;
+	mContentScale = contentScale;
+
+	// Calculate pixel dimensions for FBO and Rive rendering
+	ivec2 pixelSize = ivec2( int( pointSize.x * contentScale ), int( pointSize.y * contentScale ) );
 
 	// Determine if we need an internal FBO:
 	// - Offscreen mode: always use FBO (that's the point)
 	// - Window mode with MSAA: use FBO to avoid MSAA/PLS interaction issues
 	bool needsInternalFbo = ( mRenderMode == RenderMode::Offscreen ) || ( mRenderMode == RenderMode::Window && mWindowHasMsaa );
 
-	// Create/resize internal FBO if needed
-	if( needsInternalFbo && ( ! mInternalFbo || size != mInternalFboSize ) ) {
+	// Create/resize internal FBO if needed (at pixel dimensions for Retina quality)
+	if( needsInternalFbo && ( ! mInternalFbo || pixelSize != mInternalFboSize ) ) {
 		gl::Fbo::Format format;
 		format.colorTexture( gl::Texture::Format().internalFormat( GL_RGBA16F ).minFilter( GL_LINEAR ).magFilter( GL_LINEAR ) );
-		mInternalFbo = gl::Fbo::create( size.x, size.y, format );
-		mInternalFboSize = size;
-		CI_LOG_I( "Created/resized internal RGBA16F FBO: " << size.x << "x" << size.y );
+		mInternalFbo = gl::Fbo::create( pixelSize.x, pixelSize.y, format );
+		mInternalFboSize = pixelSize;
 	}
 
-	mFrameSize = size;
+	mFrameSize = pixelSize;  // Store pixel dimensions for Rive
 	mInFrame = true;
 
 	if( mRiveContext ) {
@@ -469,8 +485,8 @@ void CanvasGl::begin( const ivec2& size )
 		saveHostState();
 
 		RenderContext::FrameDescriptor frameDesc;
-		frameDesc.renderTargetWidth = size.x;
-		frameDesc.renderTargetHeight = size.y;
+		frameDesc.renderTargetWidth = pixelSize.x;
+		frameDesc.renderTargetHeight = pixelSize.y;
 		frameDesc.loadAction = gpu::LoadAction::clear;
 		frameDesc.clearColor = 0x00000000; // Transparent black
 		// clockwiseFillOverride enables feathering (ENABLE_FEATHER shader feature).
@@ -505,6 +521,12 @@ void CanvasGl::begin( const ivec2& size )
 		// Create RiveRenderer for this frame and set base class pointer
 		mOwnedRiveRenderer = std::make_unique<RiveRenderer>( mRiveContext.get() );
 		mRiveRenderer = mOwnedRiveRenderer.get();
+
+		// Apply content scale transform so user can draw in point coordinates
+		// This scales point coordinates to pixel coordinates for Rive rendering
+		if( contentScale != 1.0f ) {
+			scale( vec2( contentScale ) );
+		}
 	}
 }
 
@@ -530,11 +552,17 @@ void CanvasGl::end()
 		// Restore Cinder's expected GL state
 		restoreHostState( mFrameSize );
 
-		// Blit internal FBO to window if needed (window mode with MSAA)
+		// Blit internal FBO to window if needed (window mode with MSAA or offscreen mode)
 		if( needsBlit ) {
+			glBindFramebuffer( GL_FRAMEBUFFER, 0 );  // Bind window framebuffer
 			gl::ScopedBlendAlpha blendScope;
 			gl::ScopedDepth		 depthScope( false );
-			gl::draw( mInternalFbo->getColorTexture(), Rectf( 0, 0, (float)mFrameSize.x, (float)mFrameSize.y ) );
+			gl::ScopedMatrices	 matScope;
+			// Set up projection for point coordinates, viewport at pixel dimensions
+			// This is the standard Cinder Retina pattern
+			gl::setMatricesWindow( mPointSize );
+			gl::viewport( 0, 0, mFrameSize.x, mFrameSize.y );
+			gl::draw( mInternalFbo->getColorTexture(), Rectf( 0, 0, (float)mPointSize.x, (float)mPointSize.y ) );
 		}
 	}
 

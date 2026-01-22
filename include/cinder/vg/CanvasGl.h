@@ -245,7 +245,12 @@ public:
     CanvasGl& operator=( const CanvasGl& ) = delete;
 
     // === Frame Management ===
-    //! Begin rendering at the given size (window mode)
+    //! Begin rendering at the given size in points with content scale for Retina support
+    //! \param pointSize Size in points (not pixels)
+    //! \param contentScale Content scale factor (e.g., 2.0 for Retina). Use getWindowContentScale().
+    void begin( const ivec2 &pointSize, float contentScale );
+
+    //! Begin rendering at the given size (assumes contentScale = 1.0)
     void begin( const ivec2 &size ) override;
 
     //! Begin rendering (offscreen mode uses FBO dimensions)
@@ -352,8 +357,10 @@ private:
     gl::FboRef mInternalFbo;
     ivec2 mInternalFboSize;
 
-    // Frame size (for end() to know dimensions)
-    ivec2 mFrameSize;
+    // Frame dimensions
+    ivec2 mFrameSize;      // Pixel dimensions (for Rive rendering)
+    ivec2 mPointSize;      // Point dimensions (for blit destination on Retina)
+    float mContentScale = 1.0f;  // Content scale factor for Retina
 
     // DisplayList recording - when non-null, draw calls are recorded instead of rendered
     friend class DisplayListGl;
