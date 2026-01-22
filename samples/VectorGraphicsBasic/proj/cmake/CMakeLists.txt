@@ -15,7 +15,7 @@ ci_make_app(
 
 if( CMAKE_SYSTEM_NAME STREQUAL "Darwin" )
     add_custom_command( TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND plutil -replace NSHighResolutionCapable -bool false
+        COMMAND plutil -replace NSHighResolutionCapable -bool true
                 "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Info.plist"
     )
 endif()

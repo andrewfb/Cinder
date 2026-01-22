@@ -430,7 +430,13 @@ class PathsDemo : public Demo {
 		mShapes.push_back( quad );
 	}
 
-	vec2 toContent( vec2 windowPos ) const { return mCanvasUi ? mCanvasUi->toContent( windowPos ) : windowPos; }
+	vec2 toContent( vec2 windowPos ) const {
+		if( ! mCanvasUi ) {
+			CI_LOG_W( "PathsDemo: mCanvasUi is null!" );
+			return windowPos;
+		}
+		return mCanvasUi->toContent( windowPos );
+	}
 
 	void drawControlPoints( vg::CanvasGlRef canvas, const Shape& shape, ColorAf color )
 	{
@@ -480,7 +486,7 @@ class PathsDemo : public Demo {
 			// Hover glow
 			if( mHovered == idx ) {
 				vg::Paint glow;
-				glow.setColor( ColorAf( 1, 1, 1, 0.25f ) ).setFeather( 8 ).setStrokeWidth( isFilled ? 6 : 10 );
+				glow.setColor( ColorAf( 1, 1, 1, 0.95f ) ).setFeather( 8 ).setStrokeWidth( isFilled ? 6 : 10 );
 				canvas->strokePath( canvas->createPath( path ), glow );
 			}
 
@@ -523,9 +529,10 @@ class PathsDemo : public Demo {
 			vec2		local = contentPos - shape.offset;
 			bool		isFilled = shape.fillColor.a > 0;
 
+			float dist = path.calcDistance( local );
+
 			if( isFilled && path.contains( local ) )
 				return idx;
-			float dist = path.calcDistance( local );
 			if( dist < threshold )
 				hits.push_back( { idx, dist } );
 		}
@@ -550,7 +557,11 @@ class PathsDemo : public Demo {
 
 	bool onMouseMove( ci::app::MouseEvent event ) override
 	{
-		mHovered = hitTestShapes( toContent( vec2( event.getPos() ) ) );
+		vec2 contentPos = toContent( vec2( event.getPos() ) );
+		int hit = hitTestShapes( contentPos );
+		mHovered = hit;
+		// Debug: store last mouse content position for visualization
+		mLastMouseContent = contentPos;
 		return false;
 	}
 
@@ -604,6 +615,7 @@ class PathsDemo : public Demo {
 	std::vector<Shape> mShapes;
 	int				   mHovered = -1, mSelected = -1, mDragShape = -1, mDragIndex = -1;
 	int				   mSides = 6;
+	vec2			   mLastMouseContent{ -1000, -1000 };  // Debug visualization
 };
 
 // ============================================================================
@@ -1522,7 +1534,9 @@ void VectorGraphicsDemoApp::setup()
 	}
 
 	ImGui::Initialize();
-
+    ImGui::GetStyle().ScaleAllSizes( getWindowContentScale() ); // for Retina / hi-dpi
+    ImGui::GetStyle().FontScaleMain = getWindowContentScale();
+    
 	mDemos = { std::make_shared<PrimitivesDemo>(), std::make_shared<GradientsDemo>(), std::make_shared<TransformsDemo>(), std::make_shared<PathsDemo>(), std::make_shared<FeatheringDemo>(), std::make_shared<InstancingDemo>(),
 		std::make_shared<BlendModesDemo>(), std::make_shared<ClippingDemo>(), std::make_shared<ImagesDemo>(), std::make_shared<ImageMeshDemo>(), std::make_shared<ShadowDemo>() };
 	for( auto& d : mDemos )
@@ -1587,10 +1601,10 @@ void VectorGraphicsDemoApp::draw()
 	ImGui::Text( "Keys: 1-9 demos, 0 fit, Q quit" );
 	ImGui::End();
 
-	// Canvas rendering - both modes use begin(size) now
-	// Offscreen mode will auto-resize FBO if window size changes
-	mCanvas->begin( toPixels( getWindowSize() ) );
-	mCanvas->setTransform( mCanvasUi.getTransform2d() );
+	// Canvas rendering with Retina support
+	// Pass point dimensions and content scale - canvas handles pixel scaling internally
+	mCanvas->begin( getWindowSize(), getWindowContentScale() );
+	mCanvas->transform( mCanvasUi.getTransform2d() );
 
 	try {
 		if( mDemo ) {
@@ -1652,6 +1666,7 @@ void prepareSettings( VectorGraphicsDemoApp::Settings* s )
 {
 	s->setTitle( "VectorGraphics Demo" );
 	s->setWindowSize( 1200, 800 );
+	s->setHighDensityDisplayEnabled( true );
 }
 
 #if USE_OFFSCREEN_FBO
@@ -1659,5 +1674,5 @@ void prepareSettings( VectorGraphicsDemoApp::Settings* s )
 CINDER_APP( VectorGraphicsDemoApp, RendererGl, prepareSettings )
 #else
 // Window mode: use MSAA for hardware antialiasing
-CINDER_APP( VectorGraphicsDemoApp, RendererGl( RendererGl::Options().msaa( 16 ) ), prepareSettings )
+CINDER_APP( VectorGraphicsDemoApp, RendererGl( RendererGl::Options().msaa( 4 ) ), prepareSettings )
 #endif

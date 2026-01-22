@@ -29,8 +29,8 @@ private:
 
 void VectorGraphicsBasicApp::setup()
 {
-    mCanvas = vg::CanvasGl::create( getWindowWidth(), getWindowHeight() );
-//	mCanvas = vg::CanvasGl::create();
+    // Window mode - auto-detects MSAA and handles it internally
+    mCanvas = vg::CanvasGl::create();
 
     // Create a star path using Path2d
     Path2d star;
@@ -51,7 +51,8 @@ void VectorGraphicsBasicApp::draw()
 {
     gl::clear( Color( 0.15f, 0.15f, 0.18f ) );
 
-    mCanvas->begin( toPixels( getWindowSize() ) );
+    // Begin with point dimensions and content scale - canvas handles Retina internally
+    mCanvas->begin( getWindowSize(), getWindowContentScale() );
 
     // ========================================
     // 1. CIRCLE WITH SOLID COLOR
@@ -108,9 +109,10 @@ void VectorGraphicsBasicApp::draw()
     mCanvas->end();
 }
 
-CINDER_APP( VectorGraphicsBasicApp, RendererGl( RendererGl::Options().msaa( 0 ) ),
+CINDER_APP( VectorGraphicsBasicApp, RendererGl( RendererGl::Options().msaa( 4 ) ),
     []( App::Settings* settings ) {
         settings->setTitle( "VectorGraphicsBasic" );
         settings->setWindowSize( 880, 600 );
+        settings->setHighDensityDisplayEnabled( true );
     }
 )
