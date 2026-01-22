@@ -320,5 +320,5 @@ void ImGuiApp::cleanup()
 CINDER_APP( ImGuiApp, RendererGl, []( App::Settings* settings ) {
 	settings->setWindowSize( 1200, 800 );
 	settings->setTitle( "ImGui v1.92.2b Test - CinderImGui Extensions" );
-	settings->setHighDensityDisplayEnabled( false ); // to make this 'true' on macOS set the NSHighResolutionCapable Info.plist property to YES
+	settings->setHighDensityDisplayEnabled( true ); // to make this 'true' on macOS set the NSHighResolutionCapable Info.plist property to YES
 } )
