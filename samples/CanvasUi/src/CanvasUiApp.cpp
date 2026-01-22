@@ -65,6 +65,8 @@ void CanvasUiSampleApp::setup()
 {
 	// Setup ImGui first - must be before setWindowSize() as resize triggers draw
 	ImGui::Initialize();
+    ImGui::GetStyle().ScaleAllSizes( getWindowContentScale() ); // for Retina / hi-dpi
+    ImGui::GetStyle().FontScaleMain = getWindowContentScale();
 
 	setWindowSize( 1280, 800 );
 
@@ -252,7 +254,7 @@ void CanvasUiSampleApp::drawGui()
 
 	// === CONTENT MODE ===
 	if( ImGui::CollapsingHeader( "Content Mode" ) ) {
-		bool isBounded = mCanvas.isBounded();
+		static bool isBounded = mCanvas.isBounded();
 		if( ImGui::Checkbox( "Bounded Canvas", &isBounded ) )
 			updateCanvasSettings( isBounded );
 		if( ImGui::IsItemHovered() )
@@ -544,4 +546,6 @@ void CanvasUiSampleApp::resize()
 	updateViewportSettings();
 }
 
-CINDER_APP( CanvasUiSampleApp, RendererGl( RendererGl::Options().msaa( 16 ) ) )
+CINDER_APP( CanvasUiSampleApp, RendererGl( RendererGl::Options().msaa( 16 ) ), []( App::Settings* settings ) {
+    settings->setHighDensityDisplayEnabled( true );
+} )
