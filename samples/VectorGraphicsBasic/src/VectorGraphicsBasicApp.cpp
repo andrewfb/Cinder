@@ -18,101 +18,98 @@ using namespace ci;
 using namespace ci::app;
 
 class VectorGraphicsBasicApp : public App {
-public:
-    void setup() override;
-    void draw() override;
+  public:
+	void setup() override;
+	void draw() override;
 
-private:
-    vg::CanvasGlRef     mCanvas;
-    vg::CachedPathRef   mStarPath;
+  private:
+	vg::CanvasGlRef	  mCanvas;
+	vg::CachedPathRef mStarPath;
 };
 
 void VectorGraphicsBasicApp::setup()
 {
-    // Window mode - auto-detects MSAA and handles it internally
-    mCanvas = vg::CanvasGl::create();
+	// Window mode - auto-detects MSAA and handles it internally
+	mCanvas = vg::CanvasGl::create();
 
-    // Create a star path using Path2d
-    Path2d star;
-    for( int i = 0; i < 10; i++ ) {
-        float angle = i * M_PI / 5.0f - M_PI / 2.0f;
-        float radius = (i % 2 == 0) ? 80.0f : 35.0f;
-        vec2 pt = vec2( cos( angle ), sin( angle ) ) * radius;
-        if( i == 0 )
-            star.moveTo( pt );
-        else
-            star.lineTo( pt );
-    }
-    star.close();
-    mStarPath = mCanvas->createPath( star );
+	// Create a star path using Path2d
+	Path2d star;
+	for( int i = 0; i < 10; i++ ) {
+		float angle = i * M_PI / 5.0f - M_PI / 2.0f;
+		float radius = ( i % 2 == 0 ) ? 80.0f : 35.0f;
+		vec2  pt = vec2( cos( angle ), sin( angle ) ) * radius;
+		if( i == 0 )
+			star.moveTo( pt );
+		else
+			star.lineTo( pt );
+	}
+	star.close();
+	mStarPath = mCanvas->createPath( star );
 }
 
 void VectorGraphicsBasicApp::draw()
 {
-    gl::clear( Color( 0.15f, 0.15f, 0.18f ) );
+	gl::clear( Color( 0.15f, 0.15f, 0.18f ) );
 
-    // Begin with point dimensions and content scale - canvas handles Retina internally
-    mCanvas->begin( getWindowSize(), getWindowContentScale() );
+	// Begin with point dimensions and content scale - canvas handles Retina internally
+	mCanvas->begin( getWindowSize(), getWindowContentScale() );
 
-    // ========================================
-    // 1. CIRCLE WITH SOLID COLOR
-    // ========================================
-    {
-        vg::Paint solidPaint;
-        solidPaint.setColor( ColorAf( 0.2f, 0.7f, 1.0f, 1.0f ) );
+	// ========================================
+	// 1. CIRCLE WITH SOLID COLOR
+	// ========================================
+	{
+		vg::Paint solidPaint;
+		solidPaint.setColor( ColorAf( 0.2f, 0.7f, 1.0f, 1.0f ) );
 
-        mCanvas->fillCircle( vec2( 150, 300 ), 80, solidPaint );
-    }
+		mCanvas->fillCircle( vec2( 150, 300 ), 80, solidPaint );
+	}
 
-    // ========================================
-    // 2. STAR PATH WITH GRADIENT
-    // ========================================
-    {
-        vg::Paint gradientPaint;
-        gradientPaint.setLinearGradient(
-            vec2( 400 - 80, 300 - 80 ),    // start point
-            vec2( 400 + 80, 300 + 80 ),    // end point
-            ColorAf( 1.0f, 0.3f, 0.3f, 1.0f ),  // start color (red)
-            ColorAf( 1.0f, 0.9f, 0.2f, 1.0f )   // end color (yellow)
-        );
+	// ========================================
+	// 2. STAR PATH WITH GRADIENT
+	// ========================================
+	{
+		vg::Paint gradientPaint;
+		gradientPaint.setLinearGradient( vec2( 400 - 80, 300 - 80 ), // start point
+			vec2( 400 + 80, 300 + 80 ),								 // end point
+			ColorAf( 1.0f, 0.3f, 0.3f, 1.0f ),						 // start color (red)
+			ColorAf( 1.0f, 0.9f, 0.2f, 1.0f )						 // end color (yellow)
+		);
 
-        mCanvas->save();
-        mCanvas->translate( vec2( 400, 300 ) );
-        mCanvas->fillPath( mStarPath, gradientPaint );
-        mCanvas->restore();
-    }
+		mCanvas->save();
+		mCanvas->translate( vec2( 400, 300 ) );
+		mCanvas->fillPath( mStarPath, gradientPaint );
+		mCanvas->restore();
+	}
 
-    // ========================================
-    // 3. RECTANGLE WITH FEATHERING
-    // ========================================
-    {
-        vg::Paint featherPaint;
-        featherPaint.setColor( ColorAf( 0.4f, 1.0f, 0.5f, 1.0f ) );
-        featherPaint.setFeather( 20.0f );
+	// ========================================
+	// 3. RECTANGLE WITH FEATHERING
+	// ========================================
+	{
+		vg::Paint featherPaint;
+		featherPaint.setColor( ColorAf( 0.4f, 1.0f, 0.5f, 1.0f ) );
+		featherPaint.setFeather( 20.0f );
 
-        mCanvas->fillRect( Rectf( 570, 220, 730, 380 ), featherPaint );
-    }
+		mCanvas->fillRect( Rectf( 570, 220, 730, 380 ), featherPaint );
+	}
 
-    // ========================================
-    // LABELS
-    // ========================================
-    {
-        Font font( "Arial", 48 );
-        vg::Paint textPaint;
-        textPaint.setColor( ColorAf( 0.8f, 0.8f, 0.8f, 1.0f ) );
+	// ========================================
+	// LABELS
+	// ========================================
+	{
+		Font	  font( "Arial", 48 );
+		vg::Paint textPaint;
+		textPaint.setColor( ColorAf( 0.8f, 0.8f, 0.8f, 1.0f ) );
 
-        mCanvas->drawString( "Solid Fill", vec2( 110, 420 ), font, textPaint );
-        mCanvas->drawString( "Gradient", vec2( 360, 420 ), font, textPaint );
-        mCanvas->drawString( "Feathering", vec2( 605, 420 ), font, textPaint );
-    }
+		mCanvas->drawString( "Solid Fill", vec2( 110, 420 ), font, textPaint );
+		mCanvas->drawString( "Gradient", vec2( 360, 420 ), font, textPaint );
+		mCanvas->drawString( "Feathering", vec2( 605, 420 ), font, textPaint );
+	}
 
-    mCanvas->end();
+	mCanvas->end();
 }
 
-CINDER_APP( VectorGraphicsBasicApp, RendererGl( RendererGl::Options().msaa( 4 ) ),
-    []( App::Settings* settings ) {
-        settings->setTitle( "VectorGraphicsBasic" );
-        settings->setWindowSize( 880, 600 );
-        settings->setHighDensityDisplayEnabled( true );
-    }
-)
+CINDER_APP( VectorGraphicsBasicApp, RendererGl( RendererGl::Options().msaa( 4 ) ), []( App::Settings* settings ) {
+	settings->setTitle( "VectorGraphicsBasic" );
+	settings->setWindowSize( 880, 600 );
+	settings->setHighDensityDisplayEnabled( true );
+} )
