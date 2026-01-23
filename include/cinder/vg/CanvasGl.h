@@ -273,7 +273,8 @@ public:
     ivec2 getFboSize() const;
 
     // === Transform Stack ===
-    // save(), restore() - use base class implementations (delegates to implSave/implRestore)
+    void save() override;
+    void restore() override;
     // translate, rotate, scale, transform, setTransform, resetTransform - use base class implementations
     // fillRect, strokeRect, fillCircle, strokeCircle, etc. - use base class implementations
 

@@ -108,7 +108,7 @@ void GlyphCache::clear()
 // ------------------------------------------------------------------------------------------------
 
 Canvas::Canvas()
-	: mTransform( mat3() )
+	: mUserTransform( mat3() )
 {
 }
 
@@ -237,7 +237,7 @@ void Canvas::drawPathInternal( RawPath rawPath, const Paint& paint, bool fill, b
 	if( fill ) {
 		auto rivePaint = paint.createRivePaint( mRiveContext.get(), false );
 		mRiveRenderer->save();
-		mRiveRenderer->transform( toRiveMat( mTransform ) );
+		mRiveRenderer->transform( toRiveMat( getTotalTransform() ) );
 		mRiveRenderer->drawPath( path.get(), rivePaint.get() );
 		mRiveRenderer->restore();
 	}
@@ -245,7 +245,7 @@ void Canvas::drawPathInternal( RawPath rawPath, const Paint& paint, bool fill, b
 	if( stroke ) {
 		auto rivePaint = paint.createRivePaint( mRiveContext.get(), true );
 		mRiveRenderer->save();
-		mRiveRenderer->transform( toRiveMat( mTransform ) );
+		mRiveRenderer->transform( toRiveMat( getTotalTransform() ) );
 		mRiveRenderer->drawPath( path.get(), rivePaint.get() );
 		mRiveRenderer->restore();
 	}
@@ -284,9 +284,9 @@ void Canvas::implClipPath( const Path2d& path, FillRule rule )
 
 	// Apply transform, clip, then restore transform (but keep clip)
 	// Rive clips accumulate within a save/restore block
-	mRiveRenderer->transform( toRiveMat( mTransform ) );
+	mRiveRenderer->transform( toRiveMat( getTotalTransform() ) );
 	mRiveRenderer->clipPath( rivePath.get() );
-	mRiveRenderer->transform( toRiveMat( glm::inverse( mTransform ) ) );
+	mRiveRenderer->transform( toRiveMat( glm::inverse( mUserTransform ) ) );
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -298,7 +298,7 @@ void Canvas::translate( const vec2& offset )
 	mat3 t( 1.0f );
 	t[2][0] = offset.x;
 	t[2][1] = offset.y;
-	mTransform = mTransform * t;
+	mUserTransform = mUserTransform * t;
 }
 
 void Canvas::rotate( float radians )
@@ -310,7 +310,7 @@ void Canvas::rotate( float radians )
 	r[0][1] = s;
 	r[1][0] = -s;
 	r[1][1] = c;
-	mTransform = mTransform * r;
+	mUserTransform = mUserTransform * r;
 }
 
 void Canvas::scale( const vec2& s )
@@ -318,22 +318,22 @@ void Canvas::scale( const vec2& s )
 	mat3 sc( 1.0f );
 	sc[0][0] = s.x;
 	sc[1][1] = s.y;
-	mTransform = mTransform * sc;
+	mUserTransform = mUserTransform * sc;
 }
 
 void Canvas::transform( const mat3& m )
 {
-	mTransform = mTransform * m;
+	mUserTransform = mUserTransform * m;
 }
 
 void Canvas::setTransform( const mat3& m )
 {
-	mTransform = m;
+	mUserTransform = m;
 }
 
 void Canvas::resetTransform()
 {
-	mTransform = mat3();
+	mUserTransform = mat3();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -342,7 +342,7 @@ void Canvas::resetTransform()
 
 void Canvas::save()
 {
-	mTransformStack.push_back( mTransform );
+	mTransformStack.push_back( mUserTransform );
 	if( mRiveRenderer ) {
 		mRiveRenderer->save();
 	}
@@ -351,7 +351,7 @@ void Canvas::save()
 void Canvas::restore()
 {
 	if( ! mTransformStack.empty() ) {
-		mTransform = mTransformStack.back();
+		mUserTransform = mTransformStack.back();
 		mTransformStack.pop_back();
 	}
 	if( mRiveRenderer ) {

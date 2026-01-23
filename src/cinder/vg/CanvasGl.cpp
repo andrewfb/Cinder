@@ -522,10 +522,13 @@ void CanvasGl::begin( const ivec2& pointSize, float contentScale )
 		mOwnedRiveRenderer = std::make_unique<RiveRenderer>( mRiveContext.get() );
 		mRiveRenderer = mOwnedRiveRenderer.get();
 
-		// Apply content scale transform so user can draw in point coordinates
-		// This scales point coordinates to pixel coordinates for Rive rendering
+		// Set view transform for content scale (converts point coordinates to pixel coordinates)
+		// User transforms (via setTransform, transform, etc.) are separate and unaffected
 		if( contentScale != 1.0f ) {
-			scale( vec2( contentScale ) );
+			mViewTransform = glm::scale( mat3( 1.0f ), vec2( contentScale ) );
+		}
+		else {
+			mViewTransform = mat3( 1.0f );
 		}
 	}
 }
@@ -615,6 +618,32 @@ CachedPathRef CanvasGl::createPath( const Shape2d& shape )
 	cachedPath->mImpl->rivePath = mRiveContext->makeRenderPath( rawPath, rive::FillRule::nonZero );
 
 	return cachedPath;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Transform Stack - Override for DisplayList recording
+// ------------------------------------------------------------------------------------------------
+
+void CanvasGl::save()
+{
+	// Record to DisplayList if recording
+	if( mRecordingDisplayList ) {
+		mRecordingDisplayList->recordSave();
+	}
+
+	// Call base class implementation
+	Canvas::save();
+}
+
+void CanvasGl::restore()
+{
+	// Record to DisplayList if recording
+	if( mRecordingDisplayList ) {
+		mRecordingDisplayList->recordRestore();
+	}
+
+	// Call base class implementation
+	Canvas::restore();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -811,7 +840,7 @@ void CanvasGl::drawImage( const ImageRef& image, const Rectf& destRect )
 		return;
 
 	mRiveRenderer->save();
-	mRiveRenderer->transform( toRiveMat( mTransform ) );
+	mRiveRenderer->transform( toRiveMat( getTotalTransform() ) );
 
 	// Scale and position the image
 	float sx = destRect.getWidth() / image->getWidth();
@@ -868,8 +897,9 @@ void CanvasGl::drawImageMesh( const ImageRef& image, std::span<const vec2> verti
 	uint16_t* indexData = static_cast<uint16_t*>( indexBuffer->map() );
 
 	// Apply current transform to vertices
+	mat3 totalTransform = getTotalTransform();
 	for( size_t i = 0; i < vertices.size(); ++i ) {
-		vec3 transformed = mTransform * vec3( vertices[i], 1.0f );
+		vec3 transformed = totalTransform * vec3( vertices[i], 1.0f );
 		vertexData[i * 2] = transformed.x;
 		vertexData[i * 2 + 1] = transformed.y;
 
@@ -906,7 +936,7 @@ void CanvasGl::drawCachedPathInternal( const CachedPathGl* cachedPath, const Pai
 	if( fill ) {
 		auto rivePaint = paint.createRivePaint( mRiveContext.get(), false );
 		mRiveRenderer->save();
-		mRiveRenderer->transform( toRiveMat( mTransform ) );
+		mRiveRenderer->transform( toRiveMat( getTotalTransform() ) );
 		mRiveRenderer->drawPath( cachedPath->mImpl->rivePath.get(), rivePaint.get() );
 		mRiveRenderer->restore();
 	}
@@ -914,7 +944,7 @@ void CanvasGl::drawCachedPathInternal( const CachedPathGl* cachedPath, const Pai
 	if( stroke ) {
 		auto rivePaint = paint.createRivePaint( mRiveContext.get(), true );
 		mRiveRenderer->save();
-		mRiveRenderer->transform( toRiveMat( mTransform ) );
+		mRiveRenderer->transform( toRiveMat( getTotalTransform() ) );
 		mRiveRenderer->drawPath( cachedPath->mImpl->rivePath.get(), rivePaint.get() );
 		mRiveRenderer->restore();
 	}
@@ -1042,6 +1072,9 @@ void DisplayListGl::replay( Canvas* canvas )
 		return;
 	}
 
+	// Capture the current user transform at replay time - this will be combined with each recorded command's transform
+	mat3 replayTransform = canvas->getTransform();
+
 	for( const auto& cmd : mCommands ) {
 		switch( cmd.type ) {
 			case CommandType::Save:
@@ -1057,6 +1090,8 @@ void DisplayListGl::replay( Canvas* canvas )
 				break;
 
 			case CommandType::FillPath:
+				// Combine replay transform with the recorded command transform
+				canvas->setTransform( replayTransform * cmd.transform );
 				if( cmd.frozenPath && cmd.frozenPath->isValid() ) {
 					glCanvas->drawFrozenPath( cmd.frozenPath, cmd.paint );
 				}
@@ -1066,6 +1101,8 @@ void DisplayListGl::replay( Canvas* canvas )
 				break;
 
 			case CommandType::StrokePath:
+				// Combine replay transform with the recorded command transform
+				canvas->setTransform( replayTransform * cmd.transform );
 				if( cmd.frozenPath && cmd.frozenPath->isValid() ) {
 					glCanvas->drawFrozenPath( cmd.frozenPath, cmd.paint );
 				}
@@ -1075,6 +1112,8 @@ void DisplayListGl::replay( Canvas* canvas )
 				break;
 
 			case CommandType::DrawImage:
+				// Combine replay transform with the recorded command transform
+				canvas->setTransform( replayTransform * cmd.transform );
 				if( cmd.image ) {
 					if( cmd.srcRect.getWidth() > 0 && cmd.srcRect.getHeight() > 0 ) {
 						canvas->drawImage( cmd.image, cmd.srcRect, cmd.destRect );
@@ -1086,12 +1125,17 @@ void DisplayListGl::replay( Canvas* canvas )
 				break;
 
 			case CommandType::Clip:
+				// Combine replay transform with the recorded command transform
+				canvas->setTransform( replayTransform * cmd.transform );
 				if( cmd.cachedPath ) {
 					canvas->clipPath( cmd.cachedPath, cmd.fillRule );
 				}
 				break;
 		}
 	}
+
+	// Restore the original transform
+	canvas->setTransform( replayTransform );
 }
 
 void DisplayListGl::clear()
@@ -1238,6 +1282,7 @@ void DisplayListGl::recordClip( const CachedPathRef& path, FillRule rule )
 	cmd.type = CommandType::Clip;
 	cmd.cachedPath = path;
 	cmd.fillRule = rule;
+	cmd.transform = mRecordingCanvas ? mRecordingCanvas->getTransform() : mat3();
 	mCommands.push_back( std::move( cmd ) );
 }
 

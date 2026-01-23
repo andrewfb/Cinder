@@ -4,7 +4,7 @@
       <title>Vector Graphics Guide</title>
 
       <!-- keywords used for searching -->
-      <meta name="keywords" content="guide, vector, graphics, vg, canvas, rive, path, stroke, fill, gradient, feather">
+      <meta name="keywords" content="guide, vector, graphics, vg, canvas, rive, path, stroke, fill, gradient, feather, retina, hidpi, transform">
       <meta name="viewport" content="width=device-width, initial-scale=1">
 
       <!-- reference to Cinder classes -->
@@ -104,10 +104,15 @@
       <section>
          <h2>Introduction</h2>
 
-         <p>The <ci>cinder::vg</ci> rendering engine is built on the GPU renderer from <a href="https://rive.app/">Rive</a>,
-         a real-time interactive design tool. However, this is <strong>not</strong> the Rive runtime for playing
-         <code>.riv</code> animation files&mdash;it is the standalone rendering engine extracted and adapted for
-         general-purpose 2D vector graphics.</p>
+         <p>The <ci>cinder::vg</ci> rendering engine is built on the excellent open-source GPU renderer from
+         <a href="https://rive.app/">Rive</a>. We are deeply grateful to the Rive team for open-sourcing their
+         high-performance rendering technology, which forms the core of this module. Rive is a powerful real-time
+         interactive design tool, and their renderer represents years of engineering work on GPU-accelerated
+         vector graphics.</p>
+
+         <p>Note that <ci>cinder::vg</ci> is <strong>not</strong> the Rive runtime for playing <code>.riv</code>
+         animation files&mdash;it uses Rive's standalone rendering engine, adapted and wrapped with a Cinder-friendly
+         API for general-purpose 2D vector graphics.</p>
 
          <p>Key features include:</p>
          <ul>
@@ -122,6 +127,12 @@
 
          <p>The API follows familiar conventions from HTML5 Canvas and other 2D graphics libraries, making it
          approachable while offering significant performance advantages through GPU acceleration.</p>
+
+         <div class="note">
+            <strong>Acknowledgment:</strong> The rendering technology in <ci>cinder::vg</ci> is powered by
+            <a href="https://github.com/rive-app/rive-runtime">Rive's open-source renderer</a>, licensed under the
+            MIT License. Thank you to the Rive team for making this possible.
+         </div>
       </section>
 
 
@@ -208,6 +219,32 @@ void draw() override {
 
          <p>Offscreen mode always uses atomic mode for consistent analytical anti-aliasing, regardless of
          window MSAA settings. The internal texture format is RGBA16F.</p>
+
+         <a class="anchor" id="hidpi"></a>
+         <h3>HiDPI / Retina Display Support</h3>
+
+         <p>For Retina and other HiDPI displays, use the overload of <code>begin()</code> that accepts a content scale:</p>
+
+<pre><code class="language-cpp">
+void draw() override {
+    // pointSize is in logical points, contentScale converts to pixels
+    mCanvas->begin( getWindowSize(), getWindowContentScale() );
+
+    // Draw in point coordinates (not pixels)
+    // A 100-point circle will be 200 pixels on a 2x Retina display
+    mCanvas->fillCircle( vec2( 100, 100 ), 50, paint );
+
+    mCanvas->end();
+}
+</code></pre>
+
+         <p>The content scale is applied via the internal <em>view transform</em>, which is separate from user transforms.
+         This means:</p>
+         <ul>
+            <li>Your drawing code works in logical points, not pixels</li>
+            <li><code>resetTransform()</code> returns to point coordinates, not pixel coordinates</li>
+            <li>Transforms you apply are relative to point space</li>
+         </ul>
 
          <a class="anchor" id="d3d12"></a>
          <h3>Direct3D 12 (Experimental)</h3>
@@ -361,6 +398,31 @@ void draw() override {
 
          <p>The canvas maintains a transform stack similar to HTML5 Canvas. Use <ci dox="cinder::vg::Canvas::save">save()</ci> and
          <ci dox="cinder::vg::Canvas::restore">restore()</ci> to push and pop the current transform and clip state:</p>
+
+         <a class="anchor" id="view_vs_user_transform"></a>
+         <h3>View Transform vs User Transform</h3>
+
+         <p>The canvas uses a two-level transform architecture:</p>
+
+         <ul>
+            <li><strong>View Transform</strong> &ndash; Set internally by <code>begin()</code> for content scaling
+            (e.g., Retina displays). Not affected by user transform methods.</li>
+            <li><strong>User Transform</strong> &ndash; Manipulated by <code>setTransform()</code>, <code>translate()</code>,
+            <code>rotate()</code>, <code>scale()</code>, <code>save()</code>/<code>restore()</code>, etc.</li>
+         </ul>
+
+         <p>The final transform applied to drawing is: <code>viewTransform * userTransform</code></p>
+
+         <p>This separation ensures that:</p>
+         <ul>
+            <li>Calling <code>resetTransform()</code> returns to identity in user space, not pixel space</li>
+            <li>Content scale for HiDPI displays is handled automatically</li>
+            <li><code>getTransform()</code> returns the user transform (what you set), not the total transform</li>
+            <li><code>getTotalTransform()</code> returns the combined transform (for hit testing, etc.)</li>
+         </ul>
+
+         <a class="anchor" id="save_restore"></a>
+         <h3>Save and Restore</h3>
 
 <pre><code class="language-cpp">
 mCanvas->save();
@@ -606,9 +668,12 @@ mCanvas->restore();  // Transform reverted
             <li><ci dox="cinder::vg::Canvas::rotate"><code>rotate( float radians )</code></ci></li>
             <li><ci dox="cinder::vg::Canvas::scale"><code>scale( const vec2& s )</code></ci></li>
             <li><ci dox="cinder::vg::Canvas::transform"><code>transform( const mat3& m )</code></ci> &ndash; concatenate matrix</li>
-            <li><ci dox="cinder::vg::Canvas::setTransform"><code>setTransform( const mat3& m )</code></ci> &ndash; replace matrix</li>
-            <li><ci dox="cinder::vg::Canvas::resetTransform"><code>resetTransform()</code></ci></li>
-            <li><ci dox="cinder::vg::Canvas::getTransform"><code>getTransform()</code></ci> &ndash; returns current mat3</li>
+            <li><ci dox="cinder::vg::Canvas::setTransform"><code>setTransform( const mat3& m )</code></ci> &ndash; replace user transform</li>
+            <li><ci dox="cinder::vg::Canvas::resetTransform"><code>resetTransform()</code></ci> &ndash; reset user transform to identity</li>
+            <li><ci dox="cinder::vg::Canvas::getTransform"><code>getTransform()</code></ci> &ndash; returns current user transform</li>
+            <li><ci dox="cinder::vg::Canvas::getTotalTransform"><code>getTotalTransform()</code></ci> &ndash; returns viewTransform * userTransform</li>
+            <li><ci dox="cinder::vg::Canvas::getViewTransform"><code>getViewTransform()</code></ci> &ndash; returns view transform</li>
+            <li><ci dox="cinder::vg::Canvas::setViewTransform"><code>setViewTransform( const mat3& m )</code></ci> &ndash; set view transform (advanced)</li>
          </ul>
       </section>
 
@@ -1326,6 +1391,32 @@ void draw() {
          <p><strong>When to use:</strong> Static SVG content, complex scenes that don't change,
          UI backgrounds.</p>
 
+         <h4>DisplayList Transform Behavior</h4>
+
+         <p>When you call <code>replay()</code>, the current user transform is combined with each recorded
+         command's transform. This allows you to position and scale the replayed content:</p>
+
+<pre><code class="language-cpp">
+// Record at origin
+displayList->beginRecording( mCanvas.get() );
+mCanvas->fillCircle( vec2( 0, 0 ), 50, paint );  // Circle at origin
+displayList->endRecording();
+
+// Replay at different positions
+mCanvas->begin( size );
+
+mCanvas->translate( vec2( 100, 100 ) );
+displayList->replay( mCanvas.get() );  // Circle at (100, 100)
+
+mCanvas->translate( vec2( 200, 0 ) );
+displayList->replay( mCanvas.get() );  // Circle at (300, 100)
+
+mCanvas->end();
+</code></pre>
+
+         <p>The replay transform is applied <em>before</em> each recorded command's transform, so
+         <code>translate</code>, <code>rotate</code>, and <code>scale</code> work as expected.</p>
+
          <a class="anchor" id="instanced"></a>
          <h3>Instanced Drawing</h3>
 
@@ -1394,7 +1485,8 @@ mCanvas->drawPaths( positions, cachedPath, paint );
 
          <table class="config-table">
             <tr><th>Method</th><th>Description</th></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::begin"><code>begin( ivec2 size )</code></ci></td><td>Start a rendering frame</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::begin"><code>begin( ivec2 size )</code></ci></td><td>Start a rendering frame (contentScale = 1.0)</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::begin"><code>begin( ivec2 pointSize, float contentScale )</code></ci></td><td>Start frame with HiDPI content scale</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::end"><code>end()</code></ci></td><td>Flush commands to GPU</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::inFrame"><code>inFrame()</code></ci></td><td>Returns true if between begin/end</td></tr>
             <tr><td colspan="2"><strong>Transform Stack</strong></td></tr>
@@ -1404,21 +1496,31 @@ mCanvas->drawPaths( positions, cachedPath, paint );
             <tr><td><ci dox="cinder::vg::Canvas::rotate"><code>rotate( float radians )</code></ci></td><td>Rotate current transform</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::scale"><code>scale( vec2 )</code></ci></td><td>Scale current transform</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::transform"><code>transform( mat3 )</code></ci></td><td>Concatenate matrix</td></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::setTransform"><code>setTransform( mat3 )</code></ci></td><td>Replace current transform</td></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::resetTransform"><code>resetTransform()</code></ci></td><td>Reset to identity</td></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::getTransform"><code>getTransform()</code></ci></td><td>Get current transform matrix</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::setTransform"><code>setTransform( mat3 )</code></ci></td><td>Replace current user transform</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::resetTransform"><code>resetTransform()</code></ci></td><td>Reset user transform to identity</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::getTransform"><code>getTransform()</code></ci></td><td>Get current user transform matrix</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::getTotalTransform"><code>getTotalTransform()</code></ci></td><td>Get viewTransform * userTransform (for hit testing)</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::getViewTransform"><code>getViewTransform()</code></ci></td><td>Get the view transform (set by begin() or setViewTransform())</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::setViewTransform"><code>setViewTransform( mat3 )</code></ci></td><td>Set view transform manually (advanced)</td></tr>
             <tr><td colspan="2"><strong>Primitives</strong></td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::fillRect"><code>fillRect( Rectf, Paint )</code></ci></td><td>Fill rectangle</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::strokeRect"><code>strokeRect( Rectf, Paint )</code></ci></td><td>Stroke rectangle</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::fillRoundedRect"><code>fillRoundedRect( Rectf, float radius, Paint )</code></ci></td><td>Fill rounded rectangle</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::strokeRoundedRect"><code>strokeRoundedRect( Rectf, float radius, Paint )</code></ci></td><td>Stroke rounded rectangle</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::fillCircle"><code>fillCircle( vec2 center, float radius, Paint )</code></ci></td><td>Fill circle</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::strokeCircle"><code>strokeCircle( vec2 center, float radius, Paint )</code></ci></td><td>Stroke circle</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::fillEllipse"><code>fillEllipse( vec2 center, vec2 radii, Paint )</code></ci></td><td>Fill ellipse</td></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::strokeRect"><code>strokeRect</code></ci>, <ci dox="cinder::vg::Canvas::strokeRoundedRect"><code>strokeRoundedRect</code></ci>, etc.</td><td>Stroke variants</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::strokeEllipse"><code>strokeEllipse( vec2 center, vec2 radii, Paint )</code></ci></td><td>Stroke ellipse</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::drawLine"><code>drawLine( vec2 p0, vec2 p1, Paint )</code></ci></td><td>Draw line segment</td></tr>
             <tr><td colspan="2"><strong>Paths</strong></td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::fillPath"><code>fillPath( Path2d, Paint, FillRule )</code></ci></td><td>Fill path</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::strokePath"><code>strokePath( Path2d, Paint )</code></ci></td><td>Stroke path</td></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::fillShape"><code>fillShape( Shape2d, Paint, FillRule )</code></ci></td><td>Fill shape</td></tr>
-            <tr><td><ci dox="cinder::vg::Canvas::createPath"><code>createPath( Path2d )</code></ci></td><td>Create CachedPath</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::fillShape"><code>fillShape( Shape2d, Paint, FillRule )</code></ci></td><td>Fill shape (multi-contour)</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::strokeShape"><code>strokeShape( Shape2d, Paint )</code></ci></td><td>Stroke shape (multi-contour)</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::fillPath"><code>fillPath( CachedPathRef, Paint, FillRule )</code></ci></td><td>Fill cached path</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::strokePath"><code>strokePath( CachedPathRef, Paint )</code></ci></td><td>Stroke cached path</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::createPath"><code>createPath( Path2d )</code></ci></td><td>Create CachedPath from Path2d</td></tr>
+            <tr><td><ci dox="cinder::vg::Canvas::createPath"><code>createPath( Shape2d )</code></ci></td><td>Create CachedPath from Shape2d</td></tr>
             <tr><td colspan="2"><strong>Clipping</strong></td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::clipRect"><code>clipRect( Rectf )</code></ci></td><td>Clip to rectangle</td></tr>
             <tr><td><ci dox="cinder::vg::Canvas::clipPath"><code>clipPath( Path2d, FillRule )</code></ci></td><td>Clip to path</td></tr>

@@ -295,10 +295,10 @@ public:
 
     // === Transform Stack ===
     //! Push current transform and clipping state onto the stack
-    void save();
+    virtual void save();
 
     //! Pop transform and clipping state from the stack
-    void restore();
+    virtual void restore();
 
     //! Translate the current transform (base implementation provided)
     virtual void translate( const vec2 &offset );
@@ -321,8 +321,18 @@ public:
     //! Reset transform to identity (base implementation provided)
     virtual void resetTransform();
 
-    //! Get the current transform matrix
-    mat3 getTransform() const { return mTransform; }
+    //! Get the current user transform matrix (does not include view transform)
+    mat3 getTransform() const { return mUserTransform; }
+
+    //! Get the total transform (viewTransform * userTransform) - used for hit testing, etc.
+    mat3 getTotalTransform() const { return mViewTransform * mUserTransform; }
+
+    //! Get the view transform (set by begin() for content scale, or manually via setViewTransform())
+    mat3 getViewTransform() const { return mViewTransform; }
+
+    //! Set the view transform manually (advanced usage). Normally set automatically by begin().
+    //! The view transform is applied before the user transform: totalTransform = viewTransform * userTransform
+    void setViewTransform( const mat3 &m ) { mViewTransform = m; }
 
     // === Drawing Primitives ===
     // These have base implementations using fillPath/strokePath, but can be overridden for efficiency
@@ -541,8 +551,12 @@ protected:
     bool mInFrame = false;
 
     // Transform state
-    mat3 mTransform;
-    std::vector<mat3> mTransformStack;
+    // viewTransform: Set by begin() for contentScale, not affected by user transform methods
+    // userTransform: Manipulated by setTransform(), transform(), save()/restore(), etc.
+    // Total transform used for drawing = viewTransform * userTransform
+    mat3 mViewTransform;
+    mat3 mUserTransform;
+    std::vector<mat3> mTransformStack;  // Saves userTransform only
 
     // Caches
     GlyphCache mGlyphCache;

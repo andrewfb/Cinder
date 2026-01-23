@@ -259,6 +259,9 @@ void CanvasD3d12::begin( const ivec2 &size )
     mFrameSize = size;
     mInFrame = true;
 
+    // Initialize view transform to identity (D3D12 doesn't support contentScale yet)
+    mViewTransform = mat3( 1.0f );
+
     UINT frameIndex = mRenderer->getCurrentBackBufferIndex();
 
     // Wait for this frame's GPU work to complete before reusing its allocator
@@ -482,7 +485,7 @@ void CanvasD3d12::drawCachedPathInternal( const CachedPathD3d12* cachedPath, con
         rivePath->fillRule( toRiveFillRule( rule ) );
         auto rivePaint = paint.createRivePaint( mRiveContext.get(), false );
         mRiveRenderer->save();
-        mRiveRenderer->transform( toRiveMat( mTransform ) );
+        mRiveRenderer->transform( toRiveMat( getTotalTransform() ) );
         mRiveRenderer->drawPath( rivePath, rivePaint.get() );
         mRiveRenderer->restore();
     }
@@ -492,7 +495,7 @@ void CanvasD3d12::drawCachedPathInternal( const CachedPathD3d12* cachedPath, con
         rivePath->fillRule( rive::FillRule::nonZero );
         auto rivePaint = paint.createRivePaint( mRiveContext.get(), true );
         mRiveRenderer->save();
-        mRiveRenderer->transform( toRiveMat( mTransform ) );
+        mRiveRenderer->transform( toRiveMat( getTotalTransform() ) );
         mRiveRenderer->drawPath( rivePath, rivePaint.get() );
         mRiveRenderer->restore();
     }
@@ -529,31 +532,103 @@ ImageRef CanvasD3d12::createImage( const gl::Texture2dRef &texture )
 
 ImageRef CanvasD3d12::createImage( const Surface &surface )
 {
-    // TODO: Create D3D12 texture from surface and wrap in Image
-    CI_LOG_W( "CanvasD3d12::createImage(Surface) not yet implemented" );
-    return nullptr;
+    if( ! mRiveContextD3d12 ) {
+        CI_LOG_W( "Cannot create image without valid context" );
+        return nullptr;
+    }
+
+    auto image = std::make_shared<ImageD3d12>();
+    image->mSize = ivec2( surface.getWidth(), surface.getHeight() );
+
+    // Convert surface to RGBA premultiplied format (required by Rive)
+    Surface8u rgbaSurface( surface.getWidth(), surface.getHeight(), true, SurfaceChannelOrder::RGBA );
+
+    const uint8_t* srcData = surface.getData();
+    uint8_t* dstData = rgbaSurface.getData();
+
+    bool srcHasAlpha = surface.hasAlpha();
+    int srcPixelInc = surface.getPixelInc();
+    int srcRowBytes = surface.getRowBytes();
+    int dstRowBytes = rgbaSurface.getRowBytes();
+
+    for( int y = 0; y < surface.getHeight(); ++y ) {
+        const uint8_t* srcRow = srcData + y * srcRowBytes;
+        uint8_t* dstRow = dstData + y * dstRowBytes;
+
+        for( int x = 0; x < surface.getWidth(); ++x ) {
+            uint8_t r = srcRow[0];
+            uint8_t g = srcRow[1];
+            uint8_t b = srcRow[2];
+            uint8_t a = srcHasAlpha ? srcRow[3] : 255;
+
+            // Premultiply alpha
+            dstRow[0] = ( r * a ) / 255;
+            dstRow[1] = ( g * a ) / 255;
+            dstRow[2] = ( b * a ) / 255;
+            dstRow[3] = a;
+
+            srcRow += srcPixelInc;
+            dstRow += 4;
+        }
+    }
+
+    // Upload to Rive texture
+    auto riveTexture = mRiveContextD3d12->makeImageTexture(
+        surface.getWidth(), surface.getHeight(),
+        1, // mip levels
+        rgbaSurface.getData() );
+
+    if( ! riveTexture ) {
+        CI_LOG_W( "Failed to create Rive texture from surface" );
+        return nullptr;
+    }
+
+    image->mImpl->riveImage = make_rcp<RiveRenderImage>( std::move( riveTexture ) );
+
+    return image;
 }
 
 void CanvasD3d12::drawImage( const ImageRef &image, const Rectf &destRect )
 {
-    if( ! image || ! mRiveRenderer ) return;
+    if( ! mInFrame || ! mRiveRenderer || ! image ) return;
 
     auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
-    if( ! d3d12Image || ! d3d12Image->mImpl->riveImage ) {
+    if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage ) {
         CI_LOG_W( "drawImage: Invalid D3D12 image" );
         return;
     }
 
-    // TODO: Implement image drawing
-    CI_LOG_W( "CanvasD3d12::drawImage not yet implemented" );
+    mRiveRenderer->save();
+    mRiveRenderer->transform( toRiveMat( getTotalTransform() ) );
+
+    // Scale and position the image
+    float sx = destRect.getWidth() / image->getWidth();
+    float sy = destRect.getHeight() / image->getHeight();
+    mRiveRenderer->transform( Mat2D( sx, 0, 0, sy, destRect.x1, destRect.y1 ) );
+
+    mRiveRenderer->drawImage( d3d12Image->mImpl->riveImage.get(), rive::ImageSampler::LinearClamp(), rive::BlendMode::srcOver, 1.0f );
+    mRiveRenderer->restore();
 }
 
 void CanvasD3d12::drawImage( const ImageRef &image, const Rectf &srcRect, const Rectf &destRect )
 {
-    if( ! image || ! mRiveRenderer ) return;
+    if( ! mInFrame || ! mRiveRenderer || ! image ) return;
 
-    // TODO: Implement image drawing with source rect
-    CI_LOG_W( "CanvasD3d12::drawImage(srcRect) not yet implemented" );
+    auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
+    if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage )
+        return;
+
+    // Create a mesh for the sub-rectangle
+    float u0 = srcRect.x1 / image->getWidth();
+    float v0 = srcRect.y1 / image->getHeight();
+    float u1 = srcRect.x2 / image->getWidth();
+    float v1 = srcRect.y2 / image->getHeight();
+
+    std::vector<vec2> vertices = { vec2( destRect.x1, destRect.y1 ), vec2( destRect.x2, destRect.y1 ), vec2( destRect.x2, destRect.y2 ), vec2( destRect.x1, destRect.y2 ) };
+    std::vector<vec2> uvs = { vec2( u0, v0 ), vec2( u1, v0 ), vec2( u1, v1 ), vec2( u0, v1 ) };
+    std::vector<uint16_t> indices = { 0, 1, 2, 0, 2, 3 };
+
+    drawImageMesh( image, vertices, uvs, indices, 1.0f );
 }
 
 void CanvasD3d12::drawImageMesh( const ImageRef &image,
@@ -562,10 +637,45 @@ void CanvasD3d12::drawImageMesh( const ImageRef &image,
                                   std::span<const uint16_t> indices,
                                   float opacity )
 {
-    if( ! image || ! mRiveRenderer ) return;
+    if( ! mInFrame || ! mRiveRenderer || ! mRiveContext || ! image ) return;
+    if( vertices.size() != uvs.size() ) return;
 
-    // TODO: Implement mesh image drawing
-    CI_LOG_W( "CanvasD3d12::drawImageMesh not yet implemented" );
+    auto d3d12Image = std::dynamic_pointer_cast<ImageD3d12>( image );
+    if( ! d3d12Image || ! d3d12Image->mImpl || ! d3d12Image->mImpl->riveImage )
+        return;
+
+    // Create Rive render buffers for vertex/UV/index data
+    auto vertexBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::vertex, RenderBufferFlags::none, vertices.size_bytes() );
+    auto uvBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::vertex, RenderBufferFlags::none, uvs.size_bytes() );
+    auto indexBuffer = mRiveContext->makeRenderBuffer( RenderBufferType::index, RenderBufferFlags::none, indices.size_bytes() );
+
+    if( ! vertexBuffer || ! uvBuffer || ! indexBuffer )
+        return;
+
+    // Map and copy data
+    void* vertMap = vertexBuffer->map();
+    void* uvMap = uvBuffer->map();
+    void* idxMap = indexBuffer->map();
+
+    if( vertMap && uvMap && idxMap ) {
+        memcpy( vertMap, vertices.data(), vertices.size_bytes() );
+        memcpy( uvMap, uvs.data(), uvs.size_bytes() );
+        memcpy( idxMap, indices.data(), indices.size_bytes() );
+    }
+
+    vertexBuffer->unmap();
+    uvBuffer->unmap();
+    indexBuffer->unmap();
+
+    mRiveRenderer->save();
+    mRiveRenderer->transform( toRiveMat( getTotalTransform() ) );
+    mRiveRenderer->drawImageMesh( d3d12Image->mImpl->riveImage.get(),
+        rive::ImageSampler::LinearClamp(),
+        vertexBuffer, uvBuffer, indexBuffer,
+        static_cast<uint32_t>( vertices.size() ),
+        static_cast<uint32_t>( indices.size() ),
+        rive::BlendMode::srcOver, opacity );
+    mRiveRenderer->restore();
 }
 
 // ------------------------------------------------------------------------------------------------
