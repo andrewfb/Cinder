@@ -1021,14 +1021,28 @@ class SvgRendererVg : public svg::Renderer {
 			for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
 				stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
 			}
-			paint.setLinearGradient( svgPaint.getCoords0(), svgPaint.getCoords1(), stops );
+			// Apply gradient transform to coordinates if specified
+			vec2 p0 = svgPaint.getCoords0();
+			vec2 p1 = svgPaint.getCoords1();
+			if( svgPaint.specifiesTransform() ) {
+				mat3 t = svgPaint.getTransform();
+				p0 = vec2( t * vec3( p0, 1.0f ) );
+				p1 = vec2( t * vec3( p1, 1.0f ) );
+			}
+			paint.setLinearGradient( p0, p1, stops );
 		}
 		else if( svgPaint.isRadialGradient() ) {
 			std::vector<GradientStop> stops;
 			for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
 				stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
 			}
-			paint.setRadialGradient( svgPaint.getCoords0(), svgPaint.getRadius(), stops );
+			// Apply gradient transform to center if specified
+			vec2 center = svgPaint.getCoords0();
+			if( svgPaint.specifiesTransform() ) {
+				mat3 t = svgPaint.getTransform();
+				center = vec2( t * vec3( center, 1.0f ) );
+			}
+			paint.setRadialGradient( center, svgPaint.getRadius(), stops );
 		}
 		else {
 			ColorAf color( svgPaint.getColor() );
@@ -1049,14 +1063,28 @@ class SvgRendererVg : public svg::Renderer {
 			for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
 				stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
 			}
-			paint.setLinearGradient( svgPaint.getCoords0(), svgPaint.getCoords1(), stops );
+			// Apply gradient transform to coordinates if specified
+			vec2 p0 = svgPaint.getCoords0();
+			vec2 p1 = svgPaint.getCoords1();
+			if( svgPaint.specifiesTransform() ) {
+				mat3 t = svgPaint.getTransform();
+				p0 = vec2( t * vec3( p0, 1.0f ) );
+				p1 = vec2( t * vec3( p1, 1.0f ) );
+			}
+			paint.setLinearGradient( p0, p1, stops );
 		}
 		else if( svgPaint.isRadialGradient() ) {
 			std::vector<GradientStop> stops;
 			for( size_t i = 0; i < svgPaint.getNumColors(); ++i ) {
 				stops.push_back( GradientStop( svgPaint.getOffset( i ), ColorAf( svgPaint.getColor( i ) ) ) );
 			}
-			paint.setRadialGradient( svgPaint.getCoords0(), svgPaint.getRadius(), stops );
+			// Apply gradient transform to center if specified
+			vec2 center = svgPaint.getCoords0();
+			if( svgPaint.specifiesTransform() ) {
+				mat3 t = svgPaint.getTransform();
+				center = vec2( t * vec3( center, 1.0f ) );
+			}
+			paint.setRadialGradient( center, svgPaint.getRadius(), stops );
 		}
 		else {
 			ColorAf color( svgPaint.getColor() );
