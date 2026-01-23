@@ -72,11 +72,11 @@ v=c1(i4(BC,I9,Q5,M4));
 v=c1(G5(v.x),G5(v.y),G5(v.z),G5(v.w));v.xw=mix(v.xw,v.yz,d1(L9.x+.5-Q5.x));v.x=mix(v.w,v.x,d1(L9.y+.5-Q5.y));return a4(v.x);}
 #endif
 #if defined(BB)&&defined(ZC)
-d S U4(int Ub){return S(Ub&((1<<zb)-1),Ub>>zb);}d float Vb(W O0,c Oe){c Q1=P0(O0,Oe);return(abs(Q1.x)+abs(Q1.y))*(1./dot(Q1,Q1));}d bool K8(g N6,g M9,int O,q1(uint)L2,q1(c)Pe
+d S U4(int Ub){return S(Ub&((1<<zb)-1),Ub>>zb);}d float Vb(W O0,c Oe){c Q1=P0(O0,Oe);return(abs(Q1.x)+abs(Q1.y))*(1./dot(Q1,Q1));}d bool K8(g N6,g M9,int O,q1(uint) L2,q1(c) Pe
 #ifndef AB
-,q1(g)E1
+,q1(g) E1
 #else
-,q1(Y)O6
+,q1(Y) O6
 #endif
 R5){int Z7=int(N6.x);float r1=N6.y;float N9=N6.z;int Wb=floatBitsToInt(N6.w)>>2;int P6=floatBitsToInt(N6.w)&3;int O9=min(Z7,Wb-1);int j4=O*Wb+O9;Y3 V4=D1(AC,U4(j4));uint a0=Q4(V4.w);uint a8=max(a0&Gb,1u);M P9=E0(VC,a8-1u);c Xb=uintBitsToFloat(P9.xy);L2=P9.z&0xffffu;uint Yb=P9.w;W O0=X1(uintBitsToFloat(E0(LB,L2*4u)));M k4=E0(LB,L2*4u+1u);c O1=uintBitsToFloat(k4.xy);float v2=uintBitsToFloat(k4.z);float w2=uintBitsToFloat(k4.w);uint Zb=a0&e3;if(Zb!=0u){Z7=int(M9.x);r1=M9.y;N9=M9.z;}if(Z7!=O9){int ac=j4+Z7-O9;Y3 bc=D1(AC,U4(ac));if((Q4(bc.w)&(e3|0xffffu))!=(a0&(e3|0xffffu))){bool Qe=v2==.0||Xb.x!=.0;if(Qe){j4=int(Yb);V4=D1(AC,U4(j4));}}else{j4=ac;V4=bc;}a0=(Q4(V4.w)&~e3)|Zb;}float X0;
 #ifdef HB
@@ -115,11 +115,11 @@ E1.xy=mix(E1.xy,c(1.,-1.),Yd(A.fe!=0u));
 return true;}
 #endif
 #if defined(BB)&&defined(DB)
-d c Da(U S5,q1(uint)L2
+d c Da(U S5,q1(uint) L2
 #ifdef AB
-,q1(Y)O6
+,q1(Y) O6
 #else
-,q1(e)ff
+,q1(e) ff
 #endif
 R5){L2=floatBitsToUint(S5.z)&0xffffu;
 #ifdef AB
@@ -130,11 +130,11 @@ ff=p9(floatBitsToInt(S5.z)>>16);
 c T5=S5.xy;W O0=X1(uintBitsToFloat(E0(LB,L2*4u)));M k4=E0(LB,L2*4u+1u);c O1=uintBitsToFloat(k4.xy);T5=P0(O0,T5)+O1;return T5;}
 #endif
 #if defined(BB)&&defined(CB)
-d c Ca(U S5,q1(uint)L2,
+d c Ca(U S5,q1(uint) L2,
 #ifdef AB
-q1(Y)O6,
+q1(Y) O6,
 #endif
-q1(c)gf R5){L2=floatBitsToUint(S5.z)&0xffffu;M m4=E0(LB,L2*4u+2u);
+q1(c) gf R5){L2=floatBitsToUint(S5.z)&0xffffu;M m4=E0(LB,L2*4u+2u);
 #ifdef AB
 O6=W1(m4.x);
 #endif

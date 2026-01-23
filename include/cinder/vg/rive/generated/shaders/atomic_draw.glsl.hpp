@@ -162,7 +162,7 @@ U0(C4,K0);
 #endif
 M3(h6,N3);o2 D4 E4(S8,Fa,QC);F4(T8,Ga,PB);G4 d uint Dd(float x){return uint(round(x*U8+V8));}d e v7(uint x){return A4(float(x)*Ha+(-V8*Ha));}
 #ifdef L
-d void Ia(uint L0,L3 D0,H4(e)l){
+d void Ia(uint L0,L3 D0,H4(e) l){
 #ifdef XB
 if(all(lessThan(abs(D0.xy-unpackUnorm4x8(L0).xy),X2(.25/255.))))l=min(l,D0.z);else l=.0;
 #else
@@ -170,9 +170,9 @@ if(L0==D0>>16)l=min(l,unpackHalf2x16(D0).x);else l=.0;
 #endif
 }
 #endif
-d void w7(uint o0,e E2,q1(i)Q
+d void w7(uint o0,e E2,q1(i) Q
 #if defined(L)&&!defined(PC)
-,H4(L3)i1
+,H4(L3) i1
 #endif
 i6 O3){j1 k1=q5(QC,o0);e l=E2;if((k1.x&(Ed|W8))!=0u){l=abs(l);
 #ifdef HC

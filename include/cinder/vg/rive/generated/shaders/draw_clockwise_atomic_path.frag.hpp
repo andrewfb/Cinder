@@ -10,7 +10,7 @@ D4 E4(S8,Fa,QC);F4(T8,Ga,PB);jf(se,ih,v1);G4
 #ifdef JB
 d void dg(e eg,uint U1){uint Yc=uint(abs(eg)*E9+.5);uint Zc=A.p3|(K6-Yc);uint i3=Z9(v1,U1,Zc);if(i3>=A.p3){uint fg=i3-max(i3,Zc);rc(v1,U1,fg-Yc);}}
 #endif
-d void gg(H4(float)D3,e a1,uint U1){if(min(D3,a1)>=1.){return;}e o;uint hg=uint(abs(a1)*E9+.5);uint i3=Z9(v1,U1,A.p3|hg);if(i3<A.p3){o=a1;}else{e I1=H5(i3&D9)*F9;e E3=max(I1,a1);o=(E3-I1)/(1.-I1*D3);}D3*=o;}d void ig(H4(float)D3,e w4,uint U1){uint pa=kf(v1,U1);if(min(D3,w4)>=1.&&(pa<A.p3||pa>=(A.p3|K6))){return;}e o=.0;uint qa=uint(abs(w4)*E9+.5);if(pa<A.p3){uint ad=A.p3|(K6+qa);uint i3=Z9(v1,U1,ad);if(i3<=A.p3){o=w4;
+d void gg(H4(float) D3,e a1,uint U1){if(min(D3,a1)>=1.){return;}e o;uint hg=uint(abs(a1)*E9+.5);uint i3=Z9(v1,U1,A.p3|hg);if(i3<A.p3){o=a1;}else{e I1=H5(i3&D9)*F9;e E3=max(I1,a1);o=(E3-I1)/(1.-I1*D3);}D3*=o;}d void ig(H4(float) D3,e w4,uint U1){uint pa=kf(v1,U1);if(min(D3,w4)>=1.&&(pa<A.p3||pa>=(A.p3|K6))){return;}e o=.0;uint qa=uint(abs(w4)*E9+.5);if(pa<A.p3){uint ad=A.p3|(K6+qa);uint i3=Z9(v1,U1,ad);if(i3<=A.p3){o=w4;
 #ifdef DB
 o=min(o,1.);
 #endif
